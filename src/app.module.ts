@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/mongoose/mongoose.module';
 import { HealthModule } from './modules/health/health.module';
@@ -17,10 +19,12 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { UsageModule } from './modules/usage/usage.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { PackageInquiriesModule } from './modules/package-inquiries/package-inquiries.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     DatabaseModule,
     HealthModule,
     AuthModule,
@@ -37,6 +41,8 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
     UsageModule,
     BillingModule,
     AuditLogsModule,
+    PackageInquiriesModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
