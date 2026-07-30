@@ -36,9 +36,13 @@ export class ApprovalsRepository {
       .exec();
   }
 
-  async updateStatus(id: string, status: ApprovalStatus) {
+  async updateStatus(
+    organizationId: string,
+    id: string,
+    status: ApprovalStatus,
+  ) {
     const approval = await this.approvalModel
-      .findByIdAndUpdate(id, { status }, { new: true })
+      .findOneAndUpdate({ _id: id, organizationId }, { status }, { new: true })
       .lean()
       .exec();
 

@@ -18,10 +18,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    const exceptionResponse =
+      exception instanceof HttpException ? exception.getResponse() : undefined;
     const message =
-      exception instanceof HttpException
-        ? exception.message
-        : 'Internal server error';
+      typeof exceptionResponse === 'string'
+        ? exceptionResponse
+        : exceptionResponse &&
+            typeof exceptionResponse === 'object' &&
+            'message' in exceptionResponse
+          ? exceptionResponse.message
+          : exception instanceof HttpException
+            ? exception.message
+            : 'Internal server error';
 
     response.status(status).json({
       success: false,

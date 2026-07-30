@@ -12,6 +12,12 @@ import { Approval, ApprovalSchema } from '../schemas/approval.schema';
 import { TaskItem, TaskItemSchema } from '../schemas/task-item.schema';
 import { UsageRecord, UsageRecordSchema } from '../schemas/usage-record.schema';
 import { AuditLog, AuditLogSchema } from '../schemas/audit-log.schema';
+import { AuthSession, AuthSessionSchema } from '../schemas/auth-session.schema';
+import { AuthToken, AuthTokenSchema } from '../schemas/auth-token.schema';
+import {
+  PackageInquiry,
+  PackageInquirySchema,
+} from '../schemas/package-inquiry.schema';
 
 @Global()
 @Module({
@@ -32,6 +38,9 @@ import { AuditLog, AuditLogSchema } from '../schemas/audit-log.schema';
       { name: TaskItem.name, schema: TaskItemSchema },
       { name: UsageRecord.name, schema: UsageRecordSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: AuthSession.name, schema: AuthSessionSchema },
+      { name: AuthToken.name, schema: AuthTokenSchema },
+      { name: PackageInquiry.name, schema: PackageInquirySchema },
     ]),
   ],
   exports: [MongooseModule],

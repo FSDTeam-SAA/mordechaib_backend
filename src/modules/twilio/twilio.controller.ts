@@ -7,9 +7,13 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../../common/decorators/public.decorator';
 import { TwilioService } from './twilio.service';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
 
+@Public()
+@SkipThrottle()
 @Controller('webhooks/twilio')
 export class TwilioController {
   constructor(private readonly twilioService: TwilioService) {}

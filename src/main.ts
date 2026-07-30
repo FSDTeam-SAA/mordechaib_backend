@@ -12,7 +12,10 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.use(helmet());
-  app.enableCors({ origin: true, credentials: true });
+  app.enableCors({
+    origin: config.getOrThrow<string[]>('cors.origins'),
+    credentials: true,
+  });
   app.setGlobalPrefix(config.get<string>('API_PREFIX', 'api/v1'));
 
   app.useGlobalPipes(
