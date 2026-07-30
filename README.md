@@ -74,6 +74,49 @@ MONGO_URI=mongodb://localhost:27017/noltra
 The API starts at `http://localhost:5000/api/v1`, and Swagger UI is available at
 `http://localhost:5000/api/docs`.
 
+## Authentication
+
+Authentication uses short-lived JWT access tokens and rotating opaque refresh tokens.
+Send access tokens as `Authorization: Bearer <token>`. Refresh, reset, and verification
+tokens are stored as SHA-256 hashes and active sessions can be revoked immediately.
+
+Public endpoints:
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/reset-password`
+- `POST /api/v1/auth/verify-email`
+- `POST /api/v1/package-inquiries`
+
+Authenticated endpoints:
+
+- `GET /api/v1/auth/me`
+- `PATCH /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/logout-all`
+- `PATCH /api/v1/auth/change-password`
+- `POST /api/v1/auth/resend-verification`
+
+When SMTP is configured, verification and password-reset links are sent by email. During
+local development, `.env` can set `AUTH_EXPOSE_DEVELOPMENT_TOKENS=true` to include these
+one-time tokens in API responses. Never enable that option in production.
+
+## Business onboarding
+
+The authenticated user's organization is derived from the access token; clients cannot
+select another tenant by changing a header.
+
+Complete onboarding in this order:
+
+1. `PATCH /api/v1/organizations/onboarding/company-details`
+2. `PATCH /api/v1/organizations/onboarding/industry`
+3. `PATCH /api/v1/organizations/onboarding/business-size`
+
+Use `GET /api/v1/organizations` to retrieve the current business profile and onboarding
+status. The removed social-links/business-tools screen is not part of this flow.
+
 ## Quality checks
 
 ```bash

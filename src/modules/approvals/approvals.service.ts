@@ -19,11 +19,19 @@ export class ApprovalsService {
     return this.approvalsRepository.findByOrganization(organizationId);
   }
 
-  approve(id: string) {
-    return this.approvalsRepository.updateStatus(id, ApprovalStatus.APPROVED);
+  approve(organizationId: string, id: string) {
+    return this.approvalsRepository.updateStatus(
+      organizationId,
+      id,
+      ApprovalStatus.APPROVED,
+    );
   }
 
-  reject(id: string) {
-    return this.approvalsRepository.updateStatus(id, ApprovalStatus.REJECTED);
+  reject(organizationId: string, id: string) {
+    return this.approvalsRepository.updateStatus(
+      organizationId,
+      id,
+      ApprovalStatus.REJECTED,
+    );
   }
 }

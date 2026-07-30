@@ -31,12 +31,12 @@ export class ApprovalsController {
   }
 
   @Patch(':id/approve')
-  approve(@Param('id') id: string) {
-    return this.approvalsService.approve(id);
+  approve(@CurrentOrg() org: { id: string }, @Param('id') id: string) {
+    return this.approvalsService.approve(org.id, id);
   }
 
   @Patch(':id/reject')
-  reject(@Param('id') id: string) {
-    return this.approvalsService.reject(id);
+  reject(@CurrentOrg() org: { id: string }, @Param('id') id: string) {
+    return this.approvalsService.reject(org.id, id);
   }
 }

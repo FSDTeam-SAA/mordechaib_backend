@@ -5,7 +5,7 @@ import { UsersRepository } from './users.repository';
 export class UsersService {
   constructor(private readonly repository: UsersRepository) {}
 
-  findAll() {
-    return this.repository.findAll();
+  findByOrganization(organizationId: string) {
+    return this.repository.findByOrganization(organizationId);
   }
 }

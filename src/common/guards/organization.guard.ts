@@ -2,20 +2,29 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { RequestUser } from '../types/request-context.type';
 
 @Injectable()
 export class OrganizationGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    const organizationId = request.headers['x-organization-id'];
+    const user = request.user as RequestUser | undefined;
+    if (!user) throw new UnauthorizedException('Authentication is required');
 
-    if (!organizationId) {
-      throw new BadRequestException('Missing x-organization-id header');
+    const requestedOrganizationId = request.headers['x-organization-id'];
+    if (
+      requestedOrganizationId &&
+      requestedOrganizationId !== user.organizationId
+    ) {
+      throw new ForbiddenException(
+        'You do not have access to this organization',
+      );
     }
 
-    request.organization = { id: organizationId };
+    request.organization = { id: user.organizationId };
     return true;
   }
 }
