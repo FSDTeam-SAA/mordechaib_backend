@@ -1,0 +1,9 @@
+export enum CallStatus {
+  INITIATED = 'INITIATED',
+  RINGING = 'RINGING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  BUSY = 'BUSY',
+  NO_ANSWER = 'NO_ANSWER',
+}
