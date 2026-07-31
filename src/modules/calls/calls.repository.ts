@@ -1,21 +1,56 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { CallDirection } from '../../common/enums/call-direction.enum';
+import { CallStatus } from '../../common/enums/call-status.enum';
 import { CallLog } from '../../database/schemas/call-log.schema';
+import { CallRecording } from '../../database/schemas/call-recording.schema';
 
 type CreateCallInput = {
   organizationId: string;
   callSid: string;
   fromNumber: string;
   toNumber: string;
-  direction: string;
-  status: string;
+  direction: CallDirection;
+  status: CallStatus;
+};
+
+type UpsertInboundCallInput = {
+  organizationId: string;
+  callSid: string;
+  parentCallSid?: string;
+  accountSid: string;
+  fromNumber: string;
+  toNumber: string;
+  twilioNumber: string;
+  forwardingNumber: string;
+  status: CallStatus;
+};
+
+type UpdateDialStatusInput = {
+  status: CallStatus;
+  dialCallSid?: string;
+  durationSeconds?: number;
+  endedAt?: Date;
+};
+
+type UpsertRecordingInput = {
+  organizationId: string;
+  callSid: string;
+  providerCallSid: string;
+  recordingSid: string;
+  recordingUrl: string;
+  recordingStatus: string;
+  recordingDuration?: number;
+  recordingChannels?: number;
 };
 
 @Injectable()
 export class CallsRepository {
   constructor(
     @InjectModel(CallLog.name) private readonly callModel: Model<CallLog>,
+    @InjectModel(CallRecording.name)
+    private readonly recordingModel: Model<CallRecording>,
   ) {}
 
   create(data: CreateCallInput) {
@@ -26,6 +61,78 @@ export class CallsRepository {
     return this.callModel
       .find({ organizationId })
       .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+  }
+
+  upsertInboundCall(input: UpsertInboundCallInput) {
+    return this.callModel
+      .findOneAndUpdate(
+        { callSid: input.callSid },
+        {
+          $setOnInsert: {
+            organizationId: input.organizationId,
+            callSid: input.callSid,
+            parentCallSid: input.parentCallSid,
+            fromNumber: input.fromNumber,
+            toNumber: input.toNumber,
+            twilioNumber: input.twilioNumber,
+            forwardingNumber: input.forwardingNumber,
+            direction: CallDirection.INBOUND,
+            startedAt: new Date(),
+          },
+          $set: {
+            accountSid: input.accountSid,
+            status: input.status,
+          },
+        },
+        { new: true, upsert: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  updateDialStatus(callSid: string, input: UpdateDialStatusInput) {
+    return this.callModel
+      .findOneAndUpdate({ callSid }, { $set: input }, { new: true })
+      .lean()
+      .exec();
+  }
+
+  findByAnyCallSid(callSids: string[]) {
+    return this.callModel
+      .findOne({
+        $or: [
+          { callSid: { $in: callSids } },
+          { parentCallSid: { $in: callSids } },
+          { dialCallSid: { $in: callSids } },
+        ],
+      })
+      .lean()
+      .exec();
+  }
+
+  upsertRecording(input: UpsertRecordingInput) {
+    return this.recordingModel
+      .findOneAndUpdate(
+        { recordingSid: input.recordingSid },
+        {
+          $setOnInsert: {
+            organizationId: input.organizationId,
+            callSid: input.callSid,
+            providerCallSid: input.providerCallSid,
+            recordingSid: input.recordingSid,
+            aiStatus: 'PENDING',
+          },
+          $set: {
+            recordingUrl: input.recordingUrl,
+            recordingStatus: input.recordingStatus,
+            recordingDuration: input.recordingDuration,
+            recordingChannels: input.recordingChannels,
+          },
+        },
+        { new: true, upsert: true },
+      )
       .lean()
       .exec();
   }

@@ -4,17 +4,21 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { TwilioService } from './twilio.service';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
+import { TwilioSignatureGuard } from './guards/twilio-signature.guard';
 
 @Public()
 @SkipThrottle()
 @Controller('webhooks/twilio')
+@UseGuards(TwilioSignatureGuard)
 export class TwilioController {
   constructor(private readonly twilioService: TwilioService) {}
 
@@ -23,17 +27,33 @@ export class TwilioController {
   handleIncomingCall(
     @Body() body: TwilioVoiceWebhookDto,
     @Res() response: Response,
-  ): void {
-    response.type('text/xml').send(this.twilioService.handleIncomingCall(body));
+  ): Promise<void> {
+    return this.twilioService.handleIncomingCall(body).then((twiml) => {
+      response.type('text/xml').send(twiml);
+    });
   }
 
   @Post('recording')
-  handleRecording(@Body() body: Record<string, unknown>) {
-    return this.twilioService.handleRecordingCallback(body);
+  @HttpCode(HttpStatus.OK)
+  handleRecording(
+    @Query('callSid') primaryCallSid: string | undefined,
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    return this.twilioService.handleRecordingCallback(primaryCallSid, body);
+  }
+
+  @Post('dial-status')
+  @HttpCode(HttpStatus.OK)
+  handleDialStatus(
+    @Query('callSid') primaryCallSid: string | undefined,
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    return this.twilioService.handleDialStatusCallback(primaryCallSid, body);
   }
 
   @Post('call-status')
-  handleCallStatus(@Body() body: Record<string, unknown>) {
+  @HttpCode(HttpStatus.OK)
+  handleCallStatus(@Body() body: Record<string, string | undefined>) {
     return this.twilioService.handleCallStatusCallback(body);
   }
 }

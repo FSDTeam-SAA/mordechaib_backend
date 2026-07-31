@@ -20,6 +20,7 @@ import { UsageModule } from './modules/usage/usage.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PackageInquiriesModule } from './modules/package-inquiries/package-inquiries.module';
+import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { PackageInquiriesModule } from './modules/package-inquiries/package-inqu
     BillingModule,
     AuditLogsModule,
     PackageInquiriesModule,
+    OnboardingSetupsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

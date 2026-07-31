@@ -6,4 +6,5 @@ export enum CallStatus {
   FAILED = 'FAILED',
   BUSY = 'BUSY',
   NO_ANSWER = 'NO_ANSWER',
+  CANCELED = 'CANCELED',
 }
