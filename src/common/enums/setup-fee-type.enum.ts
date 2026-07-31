@@ -1,0 +1,6 @@
+export enum SetupFeeType {
+  INCLUDED_IN_PLAN = 'INCLUDED_IN_PLAN',
+  PAID_ADDON = 'PAID_ADDON',
+  FREE = 'FREE',
+  NOT_APPLICABLE = 'NOT_APPLICABLE',
+}

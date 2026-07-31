@@ -1,0 +1,7 @@
+export enum IntegrationSetupStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  SKIPPED = 'SKIPPED',
+}

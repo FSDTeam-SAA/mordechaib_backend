@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { CallDirection } from '../../common/enums/call-direction.enum';
+import { CallStatus } from '../../common/enums/call-status.enum';
 import { TwilioService } from '../twilio/twilio.service';
 import { CreateOutboundCallDto } from './dto/create-outbound-call.dto';
 import { CallsRepository } from './calls.repository';
@@ -21,8 +23,8 @@ export class CallsService {
       callSid: call.callSid,
       fromNumber: call.from,
       toNumber: dto.clientPhone,
-      direction: 'OUTBOUND',
-      status: 'INITIATED',
+      direction: CallDirection.OUTBOUND,
+      status: CallStatus.INITIATED,
     });
   }
 

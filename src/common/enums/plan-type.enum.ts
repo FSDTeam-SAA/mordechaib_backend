@@ -1,0 +1,5 @@
+export enum PlanType {
+  STARTER = 'STARTER',
+  GROWTH = 'GROWTH',
+  ENTERPRISE = 'ENTERPRISE',
+}
