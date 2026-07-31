@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { BusinessIndustry } from '../../common/enums/business-industry.enum';
-import { BusinessSize } from '../../common/enums/business-size.enum';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
 import { Organization } from '../../database/schemas/organization.schema';
-import { UpdateCompanyDetailsDto } from './dto/update-company-details.dto';
+import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
+
+type UpdateOnboardingInput = UpdateOnboardingDto & {
+  onboardingStep?: OnboardingStep;
+  onboardingCompletedAt?: Date;
+};
 
 @Injectable()
 export class OrganizationsRepository {
@@ -30,58 +33,45 @@ export class OrganizationsRepository {
     return this.organizationModel.findByIdAndDelete(id).exec();
   }
 
-  updateCompanyDetails(
-    id: string,
-    input: UpdateCompanyDetailsDto,
-    onboardingStep: OnboardingStep,
-  ) {
-    return this.organizationModel
-      .findByIdAndUpdate(
-        id,
-        {
-          name: input.companyName,
-          website: input.website,
-          phoneNumber: input.phoneNumber,
-          businessHours: {
-            start: input.businessHoursStart,
-            end: input.businessHoursEnd,
-          },
-          address: {
-            city: input.city,
-            street: input.street,
-            state: input.state,
-            postalCode: input.postalCode,
-          },
-          onboardingStep,
-        },
-        { new: true },
-      )
-      .lean()
-      .exec();
-  }
+  updateOnboarding(id: string, input: UpdateOnboardingInput) {
+    const update: Record<string, unknown> = {
+      ...(input.companyName ? { name: input.companyName } : {}),
+      ...(input.website ? { website: input.website } : {}),
+      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
+      ...(input.businessHoursStart || input.businessHoursEnd
+        ? {
+            businessHours: {
+              ...(input.businessHoursStart
+                ? { start: input.businessHoursStart }
+                : {}),
+              ...(input.businessHoursEnd
+                ? { end: input.businessHoursEnd }
+                : {}),
+            },
+          }
+        : {}),
+      ...(input.city || input.street || input.state || input.postalCode
+        ? {
+            address: {
+              ...(input.city ? { city: input.city } : {}),
+              ...(input.street ? { street: input.street } : {}),
+              ...(input.state ? { state: input.state } : {}),
+              ...(input.postalCode ? { postalCode: input.postalCode } : {}),
+            },
+          }
+        : {}),
+      ...(input.industry ? { industry: input.industry } : {}),
+      ...(input.businessSize ? { businessSize: input.businessSize } : {}),
+      ...(input.onboardingStep
+        ? { onboardingStep: input.onboardingStep }
+        : {}),
+      ...(input.onboardingCompletedAt
+        ? { onboardingCompletedAt: input.onboardingCompletedAt }
+        : {}),
+    };
 
-  updateIndustry(
-    id: string,
-    industry: BusinessIndustry,
-    onboardingStep: OnboardingStep,
-  ) {
     return this.organizationModel
-      .findByIdAndUpdate(id, { industry, onboardingStep }, { new: true })
-      .lean()
-      .exec();
-  }
-
-  updateBusinessSize(id: string, businessSize: BusinessSize) {
-    return this.organizationModel
-      .findByIdAndUpdate(
-        id,
-        {
-          businessSize,
-          onboardingStep: OnboardingStep.COMPLETED,
-          onboardingCompletedAt: new Date(),
-        },
-        { new: true },
-      )
+      .findByIdAndUpdate(id, update, { new: true })
       .lean()
       .exec();
   }

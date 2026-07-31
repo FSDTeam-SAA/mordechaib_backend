@@ -18,6 +18,18 @@ import {
   PackageInquiry,
   PackageInquirySchema,
 } from '../schemas/package-inquiry.schema';
+import {
+  CallRecording,
+  CallRecordingSchema,
+} from '../schemas/call-recording.schema';
+import {
+  TwilioSetting,
+  TwilioSettingSchema,
+} from '../schemas/twilio-setting.schema';
+import {
+  OnboardingSetup,
+  OnboardingSetupSchema,
+} from '../schemas/onboarding-setup.schema';
 
 @Global()
 @Module({
@@ -41,6 +53,9 @@ import {
       { name: AuthSession.name, schema: AuthSessionSchema },
       { name: AuthToken.name, schema: AuthTokenSchema },
       { name: PackageInquiry.name, schema: PackageInquirySchema },
+      { name: CallRecording.name, schema: CallRecordingSchema },
+      { name: TwilioSetting.name, schema: TwilioSettingSchema },
+      { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
     ]),
   ],
   exports: [MongooseModule],

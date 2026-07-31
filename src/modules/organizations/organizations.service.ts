@@ -1,12 +1,6 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { BusinessIndustry } from '../../common/enums/business-industry.enum';
-import { BusinessSize } from '../../common/enums/business-size.enum';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
-import { UpdateCompanyDetailsDto } from './dto/update-company-details.dto';
+import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { OrganizationsRepository } from './organizations.repository';
 
 @Injectable()
@@ -27,40 +21,41 @@ export class OrganizationsService {
     return organization;
   }
 
-  async updateCompanyDetails(id: string, input: UpdateCompanyDetailsDto) {
+  async updateOnboarding(id: string, input: UpdateOnboardingDto) {
     const organization = await this.findCurrent(id);
-    const nextStep =
-      organization.onboardingStep === OnboardingStep.COMPANY_DETAILS
-        ? OnboardingStep.INDUSTRY
-        : organization.onboardingStep;
 
-    return this.repository.updateCompanyDetails(id, input, nextStep);
-  }
+    let nextStep = organization.onboardingStep;
 
-  async updateIndustry(id: string, industry: BusinessIndustry) {
-    const organization = await this.findCurrent(id);
-    if (organization.onboardingStep === OnboardingStep.COMPANY_DETAILS) {
-      throw new BadRequestException(
-        'Complete company details before selecting an industry',
-      );
+    if (
+      nextStep === OnboardingStep.COMPANY_DETAILS &&
+      (input.companyName ||
+        input.website ||
+        input.phoneNumber ||
+        input.businessHoursStart ||
+        input.businessHoursEnd ||
+        input.city ||
+        input.street ||
+        input.state ||
+        input.postalCode)
+    ) {
+      nextStep = OnboardingStep.INDUSTRY;
     }
 
-    const nextStep =
-      organization.onboardingStep === OnboardingStep.INDUSTRY
-        ? OnboardingStep.BUSINESS_SIZE
-        : organization.onboardingStep;
-
-    return this.repository.updateIndustry(id, industry, nextStep);
-  }
-
-  async updateBusinessSize(id: string, businessSize: BusinessSize) {
-    const organization = await this.findCurrent(id);
-    if (!organization.industry) {
-      throw new BadRequestException(
-        'Select an industry before completing business size',
-      );
+    if (nextStep === OnboardingStep.INDUSTRY && input.industry) {
+      nextStep = OnboardingStep.BUSINESS_SIZE;
     }
 
-    return this.repository.updateBusinessSize(id, businessSize);
+    if (nextStep === OnboardingStep.BUSINESS_SIZE && input.businessSize) {
+      nextStep = OnboardingStep.COMPLETED;
+    }
+
+    return this.repository.updateOnboarding(id, {
+      ...input,
+      ...(nextStep === OnboardingStep.COMPLETED
+        ? { onboardingStep: nextStep, onboardingCompletedAt: new Date() }
+        : nextStep !== organization.onboardingStep
+          ? { onboardingStep: nextStep }
+          : {}),
+    });
   }
 }
