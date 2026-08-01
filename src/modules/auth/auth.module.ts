@@ -7,7 +7,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { AuthSessionsRepository } from './auth-sessions.repository';
 import { AuthTokensRepository } from './auth-tokens.repository';
-import { AuthMailService } from './auth-mail.service';
 import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
@@ -32,7 +31,6 @@ import { JwtStrategy } from './jwt.strategy';
     AuthRepository,
     AuthSessionsRepository,
     AuthTokensRepository,
-    AuthMailService,
     JwtStrategy,
     {
       provide: APP_GUARD,
