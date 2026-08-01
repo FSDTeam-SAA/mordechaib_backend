@@ -4,7 +4,7 @@ import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import {
   CalendarProvider,
   CreateCalendarEventInput,
-} from './interfaces/calendar-provider.interface';
+} from '../../common/types/calendar-provider.interface';
 import { CalendarRepository } from './calendar.repository';
 
 @Injectable()

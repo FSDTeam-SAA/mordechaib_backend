@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CalendarProvider,
   CreateCalendarEventInput,
-} from '../interfaces/calendar-provider.interface';
+} from '../../../common/types/calendar-provider.interface';
 
 @Injectable()
 export class GoogleCalendarProvider implements CalendarProvider {

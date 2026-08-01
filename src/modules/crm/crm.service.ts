@@ -4,7 +4,7 @@ import { SalesforceProvider } from './providers/salesforce.provider';
 import {
   CreateCrmContactInput,
   CrmProvider,
-} from './interfaces/crm-provider.interface';
+} from '../../common/types/crm-provider.interface';
 import { CrmRepository } from './crm.repository';
 
 @Injectable()

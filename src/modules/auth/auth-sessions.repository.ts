@@ -5,7 +5,7 @@ import {
   AuthSession,
   AuthSessionDocument,
 } from '../../database/schemas/auth-session.schema';
-import { SessionMetadata } from './types/session-metadata.type';
+import { SessionMetadata } from '../../common/types/session-metadata.type';
 
 @Injectable()
 export class AuthSessionsRepository {

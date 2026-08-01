@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CreateCrmContactInput,
   CrmProvider,
-} from '../interfaces/crm-provider.interface';
+} from '../../../common/types/crm-provider.interface';
 
 @Injectable()
 export class SalesforceProvider implements CrmProvider {
