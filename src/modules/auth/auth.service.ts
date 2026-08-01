@@ -22,8 +22,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { JwtPayload } from './types/jwt-payload.type';
-import { SessionMetadata } from './types/session-metadata.type';
+import { JwtPayload } from '../../common/types/jwt-payload.type';
+import { SessionMetadata } from '../../common/types/session-metadata.type';
 
 @Injectable()
 export class AuthService {

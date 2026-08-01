@@ -6,7 +6,7 @@ import { UserStatus } from '../../common/enums/user-status.enum';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AuthRepository } from './auth.repository';
 import { AuthSessionsRepository } from './auth-sessions.repository';
-import { JwtPayload } from './types/jwt-payload.type';
+import { JwtPayload } from '../../common/types/jwt-payload.type';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
