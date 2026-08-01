@@ -11,9 +11,11 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import { AuthTokenType } from '../../common/enums/auth-token-type.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { parseDurationToSeconds } from '../../common/helpers/duration.helper';
+import { sendEmail } from '../../common/helpers/mailer.helper';
+import { getEmailVerificationTemplate } from '../../common/templates/email-verification.template';
+import { getPasswordResetTemplate } from '../../common/templates/password-reset.template';
 import { UserDocument } from '../../database/schemas/user.schema';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { AuthMailService } from './auth-mail.service';
 import { AuthSessionsRepository } from './auth-sessions.repository';
 import { AuthTokensRepository } from './auth-tokens.repository';
 import { AuthRepository } from './auth.repository';
@@ -34,12 +36,12 @@ export class AuthService {
   private readonly emailVerificationExpiresIn: number;
   private readonly bcryptRounds: number;
   private readonly exposeDevelopmentTokens: boolean;
+  private readonly frontendUrl: string;
 
   constructor(
     private readonly repository: AuthRepository,
     private readonly sessionsRepository: AuthSessionsRepository,
     private readonly tokensRepository: AuthTokensRepository,
-    private readonly mailService: AuthMailService,
     private readonly organizationsService: OrganizationsService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
@@ -63,6 +65,9 @@ export class AuthService {
     this.exposeDevelopmentTokens = config.getOrThrow<boolean>(
       'auth.exposeDevelopmentTokens',
     );
+    this.frontendUrl = config
+      .getOrThrow<string>('mail.frontendUrl')
+      .replace(/\/$/, '');
 
     if (
       !Number.isInteger(this.bcryptRounds) ||
@@ -113,10 +118,13 @@ export class AuthService {
         this.emailVerificationExpiresIn,
       ),
     ]);
-    const emailVerificationSent = await this.mailService.sendEmailVerification(
-      user.email,
+    const emailVerificationTemplate = this.getEmailVerificationTemplate(
       emailVerificationToken,
     );
+    const emailVerificationSent = await sendEmail(this.config, {
+      to: user.email,
+      ...emailVerificationTemplate,
+    });
 
     return {
       user: this.toUserResponse(user),
@@ -223,7 +231,12 @@ export class AuthService {
         AuthTokenType.PASSWORD_RESET,
         this.passwordResetExpiresIn,
       );
-      await this.mailService.sendPasswordReset(user.email, passwordResetToken);
+      const passwordResetTemplate =
+        this.getPasswordResetTemplate(passwordResetToken);
+      await sendEmail(this.config, {
+        to: user.email,
+        ...passwordResetTemplate,
+      });
     }
 
     return {
@@ -308,10 +321,13 @@ export class AuthService {
       AuthTokenType.EMAIL_VERIFICATION,
       this.emailVerificationExpiresIn,
     );
-    const emailVerificationSent = await this.mailService.sendEmailVerification(
-      user.email,
+    const emailVerificationTemplate = this.getEmailVerificationTemplate(
       emailVerificationToken,
     );
+    const emailVerificationSent = await sendEmail(this.config, {
+      to: user.email,
+      ...emailVerificationTemplate,
+    });
     return {
       message: 'Email verification instructions have been created',
       emailVerificationSent,
@@ -357,6 +373,16 @@ export class AuthService {
       accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshTokenExpiresAt: session.expiresAt,
     };
+  }
+
+  private getEmailVerificationTemplate(token: string) {
+    const url = `${this.frontendUrl}/verify-email?token=${encodeURIComponent(token)}`;
+    return getEmailVerificationTemplate(url);
+  }
+
+  private getPasswordResetTemplate(token: string) {
+    const url = `${this.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    return getPasswordResetTemplate(url);
   }
 
   private async issueOneTimeToken(
