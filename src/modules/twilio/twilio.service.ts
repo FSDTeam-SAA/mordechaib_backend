@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CallStatus } from '../../common/enums/call-status.enum';
 import { CallRecordsService } from '../calls/call-records.service';
+import { RecordingStorageService } from './providers/recording-storage.service';
 import { TwilioProvider } from './providers/twilio.provider';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
 import { TwilioSettingsService } from './twilio-settings.service';
@@ -13,6 +14,7 @@ export class TwilioService {
     private readonly twilioProvider: TwilioProvider,
     private readonly settingsService: TwilioSettingsService,
     private readonly callRecordsService: CallRecordsService,
+    private readonly recordingStorage: RecordingStorageService,
   ) {}
 
   async handleIncomingCall(body: TwilioVoiceWebhookDto): Promise<string> {
@@ -90,11 +92,25 @@ export class TwilioService {
     primaryCallSid: string | undefined,
     body: Record<string, string | undefined>,
   ) {
+    const providerCallSid = this.requiredField(body, 'CallSid');
+    const recordingSid = this.requiredField(body, 'RecordingSid');
+    const recordingUrl = this.requiredField(body, 'RecordingUrl');
+
+    // Download the audio from Twilio and store it locally so the recording
+    // is persisted on our backend, not only referenced by a Twilio URL.
+    // Failure to store is non-fatal — we still save the metadata and return
+    // 200 so Twilio will not retry.
+    const localFilePath = await this.recordingStorage.storeRecording({
+      callSid: primaryCallSid || providerCallSid,
+      recordingSid,
+      recordingUrl,
+    });
+
     await this.callRecordsService.recordCompletedRecording({
       primaryCallSid,
-      providerCallSid: this.requiredField(body, 'CallSid'),
-      recordingSid: this.requiredField(body, 'RecordingSid'),
-      recordingUrl: this.requiredField(body, 'RecordingUrl'),
+      providerCallSid,
+      recordingSid,
+      recordingUrl,
       recordingStatus: this.requiredField(body, 'RecordingStatus'),
       recordingDuration: this.optionalNonNegativeInteger(
         body.RecordingDuration,
@@ -104,6 +120,7 @@ export class TwilioService {
         body.RecordingChannels,
         'RecordingChannels',
       ),
+      localFilePath: localFilePath || undefined,
     });
 
     return { received: true };
@@ -134,8 +151,9 @@ export class TwilioService {
   }
 
   private webhookUrl(path: string): string {
-    const appBaseUrl =
-      this.config.get<string>('APP_BASE_URL') || 'http://localhost:5000';
+    const appBaseUrl = (
+      this.config.get<string>('APP_BASE_URL') || 'http://localhost:5000'
+    ).trim();
     return `${appBaseUrl.replace(/\/+$/, '')}/api/v1/webhooks/twilio/${path}`;
   }
 

@@ -45,6 +45,7 @@ export class CallRecordsService {
     recordingStatus: string;
     recordingDuration?: number;
     recordingChannels?: number;
+    localFilePath?: string;
   }) {
     const candidateCallSids = [
       input.primaryCallSid,
@@ -63,6 +64,7 @@ export class CallRecordsService {
       recordingStatus: input.recordingStatus,
       recordingDuration: input.recordingDuration,
       recordingChannels: input.recordingChannels,
+      localFilePath: input.localFilePath,
     });
   }
 }

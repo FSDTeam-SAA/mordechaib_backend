@@ -38,6 +38,9 @@ export class CallRecording {
   aiStatus!: string;
 
   @Prop()
+  localFilePath?: string;
+
+  @Prop()
   transcriptText?: string;
 
   @Prop()
