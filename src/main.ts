@@ -8,7 +8,9 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody is required by StripeSignatureGuard — Stripe signs the exact
+  // request bytes, so the parsed/re-serialized JSON body can't be used.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
   app.use(helmet());
@@ -41,4 +43,5 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Noltra API running on http://localhost:${port}`);
 }
+
 bootstrap();

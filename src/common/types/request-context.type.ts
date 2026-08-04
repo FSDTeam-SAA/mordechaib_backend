@@ -8,6 +8,7 @@ export type RequestUser = {
   organizationId: string;
   role: UserRole;
   sessionId: string;
+  isPlatformAdmin: boolean;
 };
 
 export type RequestOrganization = {
