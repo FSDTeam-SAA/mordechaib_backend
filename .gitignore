@@ -5,3 +5,6 @@ dist
 !.env.example
 coverage
 .DS_Store
+storage
+ngrok.log
+ngrok.yml

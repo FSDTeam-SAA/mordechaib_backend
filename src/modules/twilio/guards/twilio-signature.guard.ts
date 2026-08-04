@@ -10,6 +10,7 @@ import twilio from 'twilio';
 
 type TwilioRequest = {
   body: Record<string, string>;
+  rawBody?: Buffer;
   headers: Record<string, string | string[] | undefined>;
   originalUrl: string;
 };
@@ -24,6 +25,7 @@ export class TwilioSignatureGuard implements CanActivate {
     const signature = Array.isArray(signatureHeader)
       ? signatureHeader[0]
       : signatureHeader;
+
     const authToken = this.config.get<string>('twilio.authToken');
     const appBaseUrl = this.config.get<string>('APP_BASE_URL');
 
@@ -37,13 +39,21 @@ export class TwilioSignatureGuard implements CanActivate {
       throw new UnauthorizedException('Missing Twilio signature');
     }
 
-    const webhookUrl = `${appBaseUrl.replace(/\/+$/, '')}${request.originalUrl}`;
-    const isValid = twilio.validateRequest(
-      authToken,
-      signature,
-      webhookUrl,
-      request.body,
-    );
+    const baseUrl = appBaseUrl.trim().replace(/\/+$/, '');
+    const webhookUrl = `${baseUrl}${request.originalUrl}`;
+
+    // Prefer the raw body bytes — Twilio signs the exact request payload.
+    // validateRequestWithBody expects the raw `application/x-www-form-urlencoded`
+    // string. Fall back to the parsed body object when rawBody is unavailable.
+    const isValid =
+      request.rawBody && request.rawBody.length > 0
+        ? twilio.validateRequestWithBody(
+            authToken,
+            signature,
+            webhookUrl,
+            request.rawBody.toString('utf8'),
+          )
+        : twilio.validateRequest(authToken, signature, webhookUrl, request.body);
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid Twilio signature');
