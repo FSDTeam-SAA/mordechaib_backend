@@ -24,7 +24,9 @@ export default () => {
   return {
     NODE_ENV: nodeEnv,
     PORT: Number(process.env.PORT || 5000),
-    APP_BASE_URL: process.env.APP_BASE_URL || 'http://localhost:5000',
+    APP_BASE_URL: (process.env.APP_BASE_URL || 'http://localhost:5000').trim(),
+    RECORDING_STORAGE_DIR:
+      process.env.RECORDING_STORAGE_DIR || './storage/recordings',
 
     cors: {
       origins: (process.env.CORS_ORIGINS || 'http://localhost:3000')
