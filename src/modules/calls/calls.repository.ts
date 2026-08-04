@@ -43,6 +43,7 @@ type UpsertRecordingInput = {
   recordingStatus: string;
   recordingDuration?: number;
   recordingChannels?: number;
+  localFilePath?: string;
 };
 
 @Injectable()
@@ -129,6 +130,9 @@ export class CallsRepository {
             recordingStatus: input.recordingStatus,
             recordingDuration: input.recordingDuration,
             recordingChannels: input.recordingChannels,
+            ...(input.localFilePath
+              ? { localFilePath: input.localFilePath }
+              : {}),
           },
         },
         { new: true, upsert: true },
