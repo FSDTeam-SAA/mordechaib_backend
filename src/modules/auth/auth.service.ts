@@ -361,6 +361,7 @@ export class AuthService {
       role: user.role,
       sessionId: String(session._id),
       tokenType: 'access',
+      isPlatformAdmin: user.isPlatformAdmin,
     };
     const accessToken = await this.jwtService.signAsync(payload, {
       expiresIn: this.accessTokenExpiresIn,
@@ -410,6 +411,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       status: user.status,
+      isPlatformAdmin: user.isPlatformAdmin,
       emailVerified: Boolean(user.emailVerifiedAt),
       emailVerifiedAt: user.emailVerifiedAt,
       lastLoginAt: user.lastLoginAt,

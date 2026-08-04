@@ -32,6 +32,9 @@ export class User {
   })
   status!: UserStatus;
 
+  @Prop({ default: false, index: true })
+  isPlatformAdmin!: boolean;
+
   @Prop()
   emailVerifiedAt?: Date;
 

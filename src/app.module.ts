@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/mongoose/mongoose.module';
 import { HealthModule } from './modules/health/health.module';
@@ -21,10 +22,12 @@ import { BillingModule } from './modules/billing/billing.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PackageInquiriesModule } from './modules/package-inquiries/package-inquiries.module';
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     DatabaseModule,
     HealthModule,
@@ -41,10 +44,12 @@ import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-s
     TasksModule,
     UsageModule,
     BillingModule,
+    SubscriptionsModule,
     AuditLogsModule,
     PackageInquiriesModule,
     OnboardingSetupsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
+
 export class AppModule {}

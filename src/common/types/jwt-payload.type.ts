@@ -7,4 +7,5 @@ export type JwtPayload = {
   role: UserRole;
   sessionId: string;
   tokenType: 'access';
+  isPlatformAdmin: boolean;
 };

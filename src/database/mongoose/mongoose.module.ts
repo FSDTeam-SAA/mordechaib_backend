@@ -30,6 +30,18 @@ import {
   OnboardingSetup,
   OnboardingSetupSchema,
 } from '../schemas/onboarding-setup.schema';
+import {
+  SubscriptionPlan,
+  SubscriptionPlanSchema,
+} from '../schemas/subscription-plan.schema';
+import {
+  OrganizationSubscription,
+  OrganizationSubscriptionSchema,
+} from '../schemas/organization-subscription.schema';
+import {
+  RevenueSnapshot,
+  RevenueSnapshotSchema,
+} from '../schemas/revenue-snapshot.schema';
 
 @Global()
 @Module({
@@ -56,6 +68,12 @@ import {
       { name: CallRecording.name, schema: CallRecordingSchema },
       { name: TwilioSetting.name, schema: TwilioSettingSchema },
       { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
+      { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
+      { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
+      {
+        name: OrganizationSubscription.name,
+        schema: OrganizationSubscriptionSchema,
+      },
     ]),
   ],
   exports: [MongooseModule],
