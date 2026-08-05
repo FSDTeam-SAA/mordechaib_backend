@@ -9,9 +9,19 @@ import { CallRecording } from '../../database/schemas/call-recording.schema';
 type CreateCallInput = {
   organizationId: string;
   callSid: string;
+  parentCallSid?: string;
   fromNumber: string;
   toNumber: string;
   direction: CallDirection;
+  status: CallStatus;
+};
+
+type UpsertOutboundCallInput = {
+  organizationId: string;
+  callSid: string;
+  fromNumber: string;
+  toNumber: string;
+  twilioNumber: string;
   status: CallStatus;
 };
 
@@ -62,6 +72,51 @@ export class CallsRepository {
     return this.callModel
       .find({ organizationId })
       .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+  }
+
+  findByCallSid(callSid: string) {
+    return this.callModel.findOne({ callSid }).lean().exec();
+  }
+
+  upsertOutboundCall(input: UpsertOutboundCallInput) {
+    return this.callModel
+      .findOneAndUpdate(
+        { callSid: input.callSid },
+        {
+          $setOnInsert: {
+            organizationId: input.organizationId,
+            callSid: input.callSid,
+            fromNumber: input.fromNumber,
+            toNumber: input.toNumber,
+            twilioNumber: input.twilioNumber,
+            direction: CallDirection.OUTBOUND,
+            startedAt: new Date(),
+          },
+          $set: {
+            status: input.status,
+          },
+        },
+        { new: true, upsert: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  updateByCallSid(
+    callSid: string,
+    input: {
+      status?: CallStatus;
+      dialCallSid?: string;
+      durationSeconds?: number;
+      price?: number;
+      priceUnit?: string;
+      endedAt?: Date;
+    },
+  ) {
+    return this.callModel
+      .findOneAndUpdate({ callSid }, { $set: input }, { new: true })
       .lean()
       .exec();
   }

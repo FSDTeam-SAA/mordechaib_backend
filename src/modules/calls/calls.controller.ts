@@ -1,9 +1,12 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { CreateOutboundCallDto } from './dto/create-outbound-call.dto';
 import { CallsService } from './calls.service';
 
+@ApiTags('Calls')
+@ApiBearerAuth()
 @Controller('calls')
 @UseGuards(OrganizationGuard)
 export class CallsController {
