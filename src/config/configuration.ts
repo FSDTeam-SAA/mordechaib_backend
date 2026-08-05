@@ -72,6 +72,7 @@ export default () => {
       accountSid: process.env.TWILIO_ACCOUNT_SID,
       authToken: process.env.TWILIO_AUTH_TOKEN,
       defaultNumber: process.env.TWILIO_PHONE_NUMBER,
+      liveMode: process.env.TWILIO_LIVE_MODE === 'true',
     },
 
     openai: {

@@ -63,4 +63,8 @@ export class TwilioSettingsService {
       normalizePhoneNumber(twilioNumber),
     );
   }
+
+  findActiveByOrganization(organizationId: string) {
+    return this.repository.findActiveByOrganization(organizationId);
+  }
 }

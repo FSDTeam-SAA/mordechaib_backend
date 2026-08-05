@@ -22,6 +22,13 @@ export class TwilioSettingsRepository {
       .exec();
   }
 
+  findActiveByOrganization(organizationId: string) {
+    return this.settingModel
+      .findOne({ organizationId, status: TwilioSettingStatus.ACTIVE })
+      .lean()
+      .exec();
+  }
+
   upsert(
     organizationId: string,
     input: {
