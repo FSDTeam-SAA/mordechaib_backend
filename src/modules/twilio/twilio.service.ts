@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CallStatus } from '../../common/enums/call-status.enum';
 import { CallRecordsService } from '../calls/call-records.service';
@@ -68,24 +72,146 @@ export class TwilioService {
     return response.toString();
   }
 
-  async startClickToCall(input: {
+  /**
+   * Initiates a click-to-call outbound call.
+   *
+   * Flow:
+   *   1. Twilio calls the agent's phone (first leg).
+   *   2. When the agent answers, Twilio fetches TwiML from
+   *      `/api/v1/webhooks/twilio/outbound-connect?clientPhone=...`.
+   *   3. That TwiML dials the client's phone and bridges both legs.
+   *
+   * In development (TWILIO_LIVE_MODE unset) the TwilioProvider returns a
+   * mocked `dev_*` call SID so the full API + database flow can be tested
+   * locally without placing a real call.
+   */
+  async initiateOutboundCall(input: {
     organizationId: string;
     clientPhone: string;
+    agentPhone?: string;
   }) {
-    const from =
-      this.config.get<string>('twilio.defaultNumber') || '+15555555555';
-    const appBaseUrl =
-      this.config.get<string>('APP_BASE_URL') || 'https://api.noltra.com';
+    const setting = await this.settingsService.findActiveByOrganization(
+      input.organizationId,
+    );
+
+    if (!setting) {
+      throw new NotFoundException(
+        'No active Twilio setting found for this organization. ' +
+          'Configure one via POST /api/v1/twilio/settings first.',
+      );
+    }
+
+    const fromNumber = setting.twilioNumber;
+    const agentPhone = input.agentPhone || setting.forwardingNumber;
+
+    if (agentPhone === input.clientPhone) {
+      throw new BadRequestException(
+        'agentPhone must be different from clientPhone',
+      );
+    }
 
     const call = await this.twilioProvider.createCall({
-      from,
-      // First call CEO real number. Then TwiML should dial client.
-      to: '+8801700000000',
-      url: `${appBaseUrl}/api/v1/webhooks/twilio/outbound-connect?clientPhone=${encodeURIComponent(input.clientPhone)}`,
-      statusCallback: `${appBaseUrl}/api/v1/webhooks/twilio/call-status`,
+      from: fromNumber,
+      to: agentPhone,
+      url: this.webhookUrl(
+        `outbound-connect?clientPhone=${encodeURIComponent(input.clientPhone)}`,
+      ),
+      statusCallback: this.webhookUrl('call-status'),
     });
 
-    return { callSid: call.sid, from };
+    // Record the outbound call even in mock mode so the full lifecycle
+    // (initiate → connect → status → complete) can be tested locally.
+    await this.callRecordsService.recordOutboundCall({
+      organizationId: input.organizationId,
+      callSid: call.sid,
+      fromNumber: call.from,
+      toNumber: input.clientPhone,
+      twilioNumber: fromNumber,
+      status: CallStatus.INITIATED,
+    });
+
+    return {
+      callSid: call.sid,
+      status: CallStatus.INITIATED,
+      from: call.from,
+      to: input.clientPhone,
+      agentPhone,
+    };
+  }
+
+  /**
+   * Generates the TwiML that bridges the agent (first leg) to the client
+   * (second leg). Twilio calls this endpoint after the agent answers.
+   *
+   * When the organization has recording enabled, the Dial verb includes
+   * `record="record-from-answer-dual"` and a `recordingStatusCallback` so the
+   * completed conversation is downloaded and stored on our backend — exactly
+   * like the incoming-call forwarding flow.
+   */
+  async handleOutboundConnect(input: {
+    callSid: string;
+    clientPhone: string;
+    fromNumber: string;
+  }): Promise<string> {
+    const response = this.twilioProvider.twiml();
+    const callQuery = `callSid=${encodeURIComponent(input.callSid)}`;
+    const dialStatusCallback = this.webhookUrl(`dial-status?${callQuery}`);
+
+    // `From` is the organization's Twilio number, so we can look up the
+    // same setting used for incoming calls to decide whether to record.
+    const setting = input.fromNumber
+      ? await this.settingsService.findActiveByTwilioNumber(input.fromNumber)
+      : undefined;
+
+    const dialAttributes: Record<string, unknown> = {
+      action: dialStatusCallback,
+      method: 'POST',
+      answerOnBridge: true,
+      timeout: 30,
+    };
+
+    if (input.fromNumber) {
+      dialAttributes.callerId = input.fromNumber;
+    }
+
+    if (setting?.isRecordingEnabled) {
+      const recordingCallback = this.webhookUrl(`recording?${callQuery}`);
+      dialAttributes.record = 'record-from-answer-dual';
+      dialAttributes.recordingStatusCallback = recordingCallback;
+      dialAttributes.recordingStatusCallbackEvent = ['completed'];
+      dialAttributes.recordingStatusCallbackMethod = 'POST';
+    }
+
+    const dial = response.dial(dialAttributes);
+    dial.number(input.clientPhone);
+
+    return response.toString();
+  }
+
+  /**
+   * Handles the outbound call status lifecycle webhook.
+   * Called by Twilio for every state transition (initiated, ringing,
+   * in-progress, completed, busy, no-answer, failed, canceled).
+   */
+  async handleCallStatusCallback(
+    body: Record<string, string | undefined>,
+  ): Promise<{ received: boolean }> {
+    const callSid = this.requiredField(body, 'CallSid');
+    const status = this.mapCallStatus(body.CallStatus, CallStatus.FAILED);
+
+    await this.callRecordsService.updateCallStatus({
+      callSid,
+      status,
+      durationSeconds: this.optionalNonNegativeInteger(
+        body.CallDuration,
+        'CallDuration',
+      ),
+      price: this.optionalNumber(body.CallPrice, 'CallPrice'),
+      priceUnit: body.PriceUnit,
+      endedAt: this.isFinalStatus(status) ? new Date() : undefined,
+    });
+
+    return { received: true };
   }
 
   async handleRecordingCallback(
@@ -145,11 +271,6 @@ export class TwilioService {
     return { received: true };
   }
 
-  handleCallStatusCallback(body: Record<string, string | undefined>) {
-    void body;
-    return { received: true };
-  }
-
   private webhookUrl(path: string): string {
     const appBaseUrl = (
       this.config.get<string>('APP_BASE_URL') || 'http://localhost:5000'
@@ -179,6 +300,29 @@ export class TwilioService {
       throw new BadRequestException(`Invalid Twilio field: ${field}`);
     }
     return parsed;
+  }
+
+  private optionalNumber(
+    value: string | undefined,
+    field: string,
+  ): number | undefined {
+    if (value === undefined || value === '') return undefined;
+
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) {
+      throw new BadRequestException(`Invalid Twilio field: ${field}`);
+    }
+    return parsed;
+  }
+
+  private isFinalStatus(status: CallStatus): boolean {
+    return [
+      CallStatus.COMPLETED,
+      CallStatus.FAILED,
+      CallStatus.BUSY,
+      CallStatus.NO_ANSWER,
+      CallStatus.CANCELED,
+    ].includes(status);
   }
 
   private mapCallStatus(

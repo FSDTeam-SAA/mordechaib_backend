@@ -20,6 +20,37 @@ export class CallRecordsService {
     return this.callsRepository.upsertInboundCall(input);
   }
 
+  recordOutboundCall(input: {
+    organizationId: string;
+    callSid: string;
+    fromNumber: string;
+    toNumber: string;
+    twilioNumber: string;
+    status: CallStatus;
+  }) {
+    return this.callsRepository.upsertOutboundCall(input);
+  }
+
+  async updateCallStatus(input: {
+    callSid: string;
+    status: CallStatus;
+    durationSeconds?: number;
+    price?: number;
+    priceUnit?: string;
+    endedAt?: Date;
+  }) {
+    const call = await this.callsRepository.updateByCallSid(input.callSid, {
+      status: input.status,
+      durationSeconds: input.durationSeconds,
+      price: input.price,
+      priceUnit: input.priceUnit,
+      endedAt: input.endedAt,
+    });
+
+    if (!call) throw new NotFoundException('Call log not found');
+    return call;
+  }
+
   async recordDialStatus(input: {
     callSid: string;
     dialCallSid?: string;

@@ -1,6 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import twilio from 'twilio';
+
+type TwilioApiError = {
+  status?: number;
+  code?: number;
+  message?: string;
+  moreInfo?: string;
+};
 
 @Injectable()
 export class TwilioProvider {
@@ -23,14 +30,41 @@ export class TwilioProvider {
     url: string;
     statusCallback?: string;
   }) {
-    if (this.config.get<string>('TWILIO_LIVE_MODE') !== 'true') {
+    if (!this.config.get<boolean>('twilio.liveMode')) {
       this.logger.warn(
         'Twilio calls are mocked. Set TWILIO_LIVE_MODE=true to place real calls.',
       );
       return { sid: `dev_${Date.now()}`, from: params.from, to: params.to };
     }
-    const call = await this.client.calls.create(params);
-    return { sid: call.sid, from: call.from, to: call.to };
+
+    try {
+      const call = await this.client.calls.create(params);
+      return { sid: call.sid, from: call.from, to: call.to };
+    } catch (error: unknown) {
+      const twilioError = error as TwilioApiError;
+      const message =
+        twilioError?.message || 'Unknown Twilio error while creating call';
+      this.logger.error(
+        `Twilio createCall failed: ${message} (code=${twilioError?.code ?? 'n/a'}, status=${twilioError?.status ?? 'n/a'})`,
+      );
+      throw new BadGatewayException(`Twilio call failed: ${message}`);
+    }
+  }
+
+  /**
+   * Ends an active call via the Twilio REST API.
+   * In development this is a no-op because calls are mocked.
+   */
+  async hangupCall(callSid: string) {
+    if (!this.config.get<boolean>('twilio.liveMode')) {
+      this.logger.warn(
+        `Hangup mocked for call ${callSid}. Set TWILIO_LIVE_MODE=true to actually end calls.`,
+      );
+      return { sid: callSid, status: 'completed' };
+    }
+
+    const call = await this.client.calls(callSid).update({ status: 'completed' });
+    return { sid: call.sid, status: call.status };
   }
 
   /**
