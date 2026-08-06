@@ -12,8 +12,17 @@ type UpsertSubscriptionInput = {
   stripeSubscriptionId?: string;
   currentPeriodStart?: Date;
   currentPeriodEnd?: Date;
+  billingInterval?: string;
   cancelAtPeriodEnd?: boolean;
   snapshotLimits?: OrganizationSubscription['snapshotLimits'];
+};
+
+type ListForAdminFilter = {
+  organizationIds?: string[];
+  planId?: string;
+  status?: SubscriptionStatus;
+  page: number;
+  limit: number;
 };
 
 @Injectable()
@@ -42,8 +51,6 @@ export class SubscriptionsRepository {
       .then(Boolean);
   }
 
-  // One subscription document per organization: create on first checkout,
-  // otherwise update in place as Stripe webhook events arrive.
   upsertForOrganization(input: UpsertSubscriptionInput) {
     return this.subscriptionModel
       .findOneAndUpdate(
@@ -65,5 +72,28 @@ export class SubscriptionsRepository {
         { new: true },
       )
       .exec();
+  }
+
+  async listForAdmin(filter: ListForAdminFilter) {
+    const query: Record<string, unknown> = {};
+    if (filter.organizationIds) {
+      query.organizationId = { $in: filter.organizationIds };
+    }
+    if (filter.planId) query.planId = filter.planId;
+    if (filter.status) query.status = filter.status;
+
+    const skip = (filter.page - 1) * filter.limit;
+    const [items, total] = await Promise.all([
+      this.subscriptionModel
+        .find(query)
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(filter.limit)
+        .lean()
+        .exec(),
+      this.subscriptionModel.countDocuments(query).exec(),
+    ]);
+
+    return { items, total };
   }
 }

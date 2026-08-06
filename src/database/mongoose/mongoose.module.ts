@@ -42,6 +42,7 @@ import {
   RevenueSnapshot,
   RevenueSnapshotSchema,
 } from '../schemas/revenue-snapshot.schema';
+import { Invoice, InvoiceSchema } from '../schemas/invoice.schema';
 
 @Global()
 @Module({
@@ -70,6 +71,7 @@ import {
       { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
       { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
+      { name: Invoice.name, schema: InvoiceSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,

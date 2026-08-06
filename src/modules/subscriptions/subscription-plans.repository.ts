@@ -25,11 +25,26 @@ export class SubscriptionPlansRepository {
     return this.planModel.findOne({ planType }).exec();
   }
 
-  create(input: CreateSubscriptionPlanDto) {
+  findByIds(ids: string[]) {
+    return this.planModel.find({ _id: { $in: ids } }).exec();
+  }
+
+  create(
+    input: CreateSubscriptionPlanDto & {
+      stripeProductId?: string;
+      stripePriceId?: string;
+    },
+  ) {
     return this.planModel.create(input);
   }
 
-  updateById(id: string, input: UpdateSubscriptionPlanDto) {
+  updateById(
+    id: string,
+    input: UpdateSubscriptionPlanDto & {
+      stripeProductId?: string;
+      stripePriceId?: string;
+    },
+  ) {
     return this.planModel.findByIdAndUpdate(id, input, { new: true }).exec();
   }
 
