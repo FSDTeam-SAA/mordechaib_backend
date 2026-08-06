@@ -2,18 +2,13 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
+import { InvoicesService } from '../invoices/invoices.service';
 import { SubscriptionPlansService } from '../subscriptions/subscription-plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { StripeProvider } from './providers/stripe.provider';
+import { StripeProvider } from '../stripe/stripe.provider';
 
-// Maps Stripe's own subscription statuses onto ours. Stripe has a couple of
-// extra states (`unpaid`, `paused`) that we fold into PAST_DUE/CANCELED
-// rather than modelling separately.
-const STRIPE_STATUS_MAP: Record<
-  Stripe.Subscription.Status,
-  SubscriptionStatus
-> = {
+const STRIPE_STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
   trialing: SubscriptionStatus.TRIALING,
   active: SubscriptionStatus.ACTIVE,
   past_due: SubscriptionStatus.PAST_DUE,
@@ -32,6 +27,7 @@ export class BillingService {
     private readonly stripeProvider: StripeProvider,
     private readonly plansService: SubscriptionPlansService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly invoicesService: InvoicesService,
   ) {}
 
   async createCheckoutSession(
@@ -75,8 +71,6 @@ export class BillingService {
     await this.stripeProvider.cancelSubscription(
       subscription.stripeSubscriptionId,
     );
-    // Reflect immediately rather than waiting for the webhook round-trip;
-    // the webhook event that follows will confirm/overwrite this.
     await this.subscriptionsService.syncSubscriptionStatus({
       stripeSubscriptionId: subscription.stripeSubscriptionId,
       status: subscription.status,
@@ -93,14 +87,24 @@ export class BillingService {
           event.data.object as Stripe.Checkout.Session,
         );
         break;
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
         await this.onSubscriptionUpdated(
           event.data.object as Stripe.Subscription,
         );
         break;
+      case 'invoice.paid':
+      case 'invoice.finalized':
+        await this.invoicesService.upsertFromStripeEvent(
+          event.data.object as Stripe.Invoice,
+        );
+        break;
       case 'invoice.payment_failed':
         await this.onInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        await this.invoicesService.upsertFromStripeEvent(
+          event.data.object as Stripe.Invoice,
+        );
         break;
       default:
         this.logger.debug(`Unhandled Stripe event type: ${event.type}`);
@@ -138,9 +142,8 @@ export class BillingService {
   }
 
   private async onSubscriptionUpdated(subscription: Stripe.Subscription) {
-    // As of the current Stripe API version, billing-period fields live on
-    // each subscription item rather than the subscription itself.
     const firstItem = subscription.items.data[0];
+    const billingInterval = firstItem?.price?.recurring?.interval;
 
     await this.subscriptionsService.syncSubscriptionStatus({
       stripeSubscriptionId: subscription.id,
@@ -151,14 +154,12 @@ export class BillingService {
       currentPeriodEnd: firstItem
         ? new Date(firstItem.current_period_end * 1000)
         : undefined,
+      billingInterval,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     });
   }
 
   private async onInvoicePaymentFailed(invoice: Stripe.Invoice) {
-    // The subscription reference on an invoice now lives under
-    // parent.subscription_details rather than a top-level `subscription`
-    // field.
     const subscriptionRef = invoice.parent?.subscription_details?.subscription;
     const stripeSubscriptionId =
       typeof subscriptionRef === 'string'
