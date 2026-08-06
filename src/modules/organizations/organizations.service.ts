@@ -21,6 +21,14 @@ export class OrganizationsService {
     return organization;
   }
 
+  searchIdsByName(query: string) {
+    return this.repository.searchIdsByName(query);
+  }
+
+  findByIds(ids: string[]) {
+    return this.repository.findByIds(ids);
+  }
+
   async updateOnboarding(id: string, input: UpdateOnboardingDto) {
     const organization = await this.findCurrent(id);
 

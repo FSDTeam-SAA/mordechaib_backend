@@ -29,6 +29,23 @@ export class OrganizationsRepository {
     return this.organizationModel.findById(id).lean().exec();
   }
 
+  async searchIdsByName(query: string): Promise<string[]> {
+    const orgs = await this.organizationModel
+      .find({ name: { $regex: query, $options: 'i' } })
+      .select('_id')
+      .lean()
+      .exec();
+    return orgs.map((org) => String(org._id));
+  }
+
+  findByIds(ids: string[]) {
+    return this.organizationModel
+      .find({ _id: { $in: ids } })
+      .select('name')
+      .lean()
+      .exec();
+  }
+
   deleteById(id: string) {
     return this.organizationModel.findByIdAndDelete(id).exec();
   }
@@ -62,9 +79,7 @@ export class OrganizationsRepository {
         : {}),
       ...(input.industry ? { industry: input.industry } : {}),
       ...(input.businessSize ? { businessSize: input.businessSize } : {}),
-      ...(input.onboardingStep
-        ? { onboardingStep: input.onboardingStep }
-        : {}),
+      ...(input.onboardingStep ? { onboardingStep: input.onboardingStep } : {}),
       ...(input.onboardingCompletedAt
         ? { onboardingCompletedAt: input.onboardingCompletedAt }
         : {}),

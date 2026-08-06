@@ -33,6 +33,11 @@ export class OrganizationSubscription {
   @Prop()
   currentPeriodEnd?: Date;
 
+  // 'month' | 'year', taken directly from the Stripe Price's billing
+  // interval — not hardcoded, since a plan may offer either later.
+  @Prop()
+  billingInterval?: string;
+
   @Prop({ default: false })
   cancelAtPeriodEnd!: boolean;
 

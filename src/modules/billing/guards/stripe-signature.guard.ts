@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { StripeProvider } from '../providers/stripe.provider';
+import { StripeProvider } from '../../stripe/stripe.provider';
 
 type StripeWebhookRequest = {
   rawBody?: Buffer;

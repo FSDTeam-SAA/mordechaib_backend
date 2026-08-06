@@ -99,8 +99,4 @@ export class CreateSubscriptionPlanDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
-
-  @IsOptional()
-  @IsString()
-  stripePriceId?: string;
 }
