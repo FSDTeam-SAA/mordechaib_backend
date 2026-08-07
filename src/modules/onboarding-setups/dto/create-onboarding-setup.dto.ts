@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  IsUrl,
 } from 'class-validator';
 import { PlanType } from '../../../common/enums/plan-type.enum';
 import { SetupFeeType } from '../../../common/enums/setup-fee-type.enum';
@@ -44,4 +45,12 @@ export class CreateOnboardingSetupDto {
   @IsString()
   @MaxLength(500)
   setupPackageDescription?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  paymentSuccessUrl?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  paymentCancelUrl?: string;
 }

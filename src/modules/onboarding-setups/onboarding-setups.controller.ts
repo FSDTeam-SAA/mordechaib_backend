@@ -19,6 +19,7 @@ import { AssignAdminDto } from './dto/assign-admin.dto';
 import { BookSetupMeetingDto } from './dto/book-setup-meeting.dto';
 import { ChangeSetupStatusDto } from './dto/change-setup-status.dto';
 import { CreateOnboardingSetupDto } from './dto/create-onboarding-setup.dto';
+import { CreateOnboardingPaymentSessionDto } from './dto/create-onboarding-payment-session.dto';
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
 import { UpdateOnboardingSetupDto } from './dto/update-onboarding-setup.dto';
 import { UpdateSetupPaymentDto } from './dto/update-setup-payment.dto';
@@ -71,6 +72,15 @@ export class OnboardingSetupsController {
     return this.service.bookMeeting(id, user, dto);
   }
 
+  @Post(':id/payment/checkout-session')
+  createPaymentCheckoutSession(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateOnboardingPaymentSessionDto,
+  ) {
+    return this.service.createPaymentCheckoutSession(id, user, dto);
+  }
+
   @Patch(':id/payment')
   updatePaymentStatus(
     @Param('id') id: string,
@@ -78,6 +88,15 @@ export class OnboardingSetupsController {
     @Body() dto: UpdateSetupPaymentDto,
   ) {
     return this.service.updatePaymentStatus(id, user, dto);
+  }
+
+  @Patch(':id/progress')
+  updateSelfConnectProgress(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateSetupProgressDto,
+  ) {
+    return this.service.updateSelfConnectProgress(id, user, dto);
   }
 
   @Post(':id/cancel')

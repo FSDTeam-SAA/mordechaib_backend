@@ -18,6 +18,23 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getClass(),
     ]);
 
-    return isPublic ? true : super.canActivate(context);
+    if (isPublic) return true;
+
+    // Swagger and some clients may serialize the token with surrounding
+    // quotes. Normalize only those boundary quotes; Passport still performs
+    // the complete JWT signature, expiration, and session validation.
+    const request = context.switchToHttp().getRequest<{
+      headers: { authorization?: string };
+    }>();
+    const authorization = request.headers.authorization;
+    if (authorization) {
+      const match = authorization.match(/^Bearer\s+(.+)$/i);
+      if (match) {
+        const token = match[1].replace(/^["']|["']$/g, '');
+        request.headers.authorization = `Bearer ${token}`;
+      }
+    }
+
+    return super.canActivate(context);
   }
 }
