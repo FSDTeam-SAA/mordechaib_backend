@@ -65,6 +65,7 @@ export default () => {
       user: process.env.SMTP_USER,
       password: process.env.SMTP_PASSWORD,
       from: process.env.MAIL_FROM || 'Noltra AI <no-reply@noltra.ai>',
+      supportEmail: process.env.SUPPORT_EMAIL,
       frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
     },
 

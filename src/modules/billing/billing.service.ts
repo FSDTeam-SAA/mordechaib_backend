@@ -7,8 +7,12 @@ import { SubscriptionPlansService } from '../subscriptions/subscription-plans.se
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { StripeProvider } from '../stripe/stripe.provider';
+import { OnboardingSetupsService } from '../onboarding-setups/onboarding-setups.service';
 
-const STRIPE_STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
+const STRIPE_STATUS_MAP: Record<
+  Stripe.Subscription.Status,
+  SubscriptionStatus
+> = {
   trialing: SubscriptionStatus.TRIALING,
   active: SubscriptionStatus.ACTIVE,
   past_due: SubscriptionStatus.PAST_DUE,
@@ -28,6 +32,7 @@ export class BillingService {
     private readonly plansService: SubscriptionPlansService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly invoicesService: InvoicesService,
+    private readonly onboardingSetupsService: OnboardingSetupsService,
   ) {}
 
   async createCheckoutSession(
@@ -113,6 +118,20 @@ export class BillingService {
   }
 
   private async onCheckoutCompleted(session: Stripe.Checkout.Session) {
+    const onboardingSetupId = session.metadata?.onboardingSetupId;
+    if (onboardingSetupId) {
+      if (session.payment_status !== 'paid') return;
+      await this.onboardingSetupsService.confirmStripePayment({
+        setupId: onboardingSetupId,
+        checkoutSessionId: session.id,
+        paymentIntentId:
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : undefined,
+      });
+      return;
+    }
+
     const organizationId = session.metadata?.organizationId;
     const planId = session.metadata?.planId;
     const stripeSubscriptionId = session.subscription;
