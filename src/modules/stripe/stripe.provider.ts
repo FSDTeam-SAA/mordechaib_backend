@@ -35,6 +35,34 @@ export class StripeProvider {
     });
   }
 
+  createOneTimeCheckoutSession(params: {
+    amount: number;
+    currency: string;
+    productName: string;
+    customerEmail?: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+  }) {
+    return this.client.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: {
+            currency: params.currency.toLowerCase(),
+            product_data: { name: params.productName },
+            unit_amount: Math.round(params.amount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      customer_email: params.customerEmail,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      metadata: params.metadata,
+    });
+  }
+
   cancelSubscription(stripeSubscriptionId: string) {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,

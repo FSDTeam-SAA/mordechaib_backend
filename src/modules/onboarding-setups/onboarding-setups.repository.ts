@@ -6,7 +6,6 @@ import {
   OnboardingSetup,
   StatusHistoryEntry,
 } from '../../database/schemas/onboarding-setup.schema';
-import { CreateOnboardingSetupDto } from './dto/create-onboarding-setup.dto';
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
 
 export type OnboardingSetupLean = OnboardingSetup & { _id: unknown };
@@ -18,11 +17,13 @@ export class OnboardingSetupsRepository {
     private readonly setupModel: Model<OnboardingSetup>,
   ) {}
 
-  create(input: CreateOnboardingSetupDto & {
-    organizationId: string;
-    organizerId: string;
-    createdBy: string;
-  }) {
+  create(
+    input: Record<string, unknown> & {
+      organizationId: string;
+      organizerId: string;
+      createdBy: string;
+    },
+  ) {
     return this.setupModel.create(input);
   }
 
