@@ -6,8 +6,10 @@ import {
 
 export class ResetPasswordDto {
   @IsString()
-  @MinLength(32)
-  token!: string;
+  @MinLength(6)
+  @MaxLength(6)
+  @Matches(/^\d{6}$/, { message: 'code must be a 6-digit number' })
+  code!: string;
 
   @IsString()
   @MinLength(8)

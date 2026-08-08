@@ -21,10 +21,23 @@ export type SendEmailInput = {
 };
 
 let transporter: Transporter | undefined;
-let transporterHost: string | undefined;
+let transporterKey: string | undefined;
 
 function createTransporter(config: MailerConfig): Transporter | undefined {
-  if (!config.host || transporterHost === config.host) {
+  if (!config.host) {
+    transporter = undefined;
+    transporterKey = undefined;
+    return transporter;
+  }
+
+  const transporterConfigKey = JSON.stringify({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    user: config.user,
+    hasPassword: Boolean(config.password),
+  });
+  if (transporter && transporterKey === transporterConfigKey) {
     return transporter;
   }
 
@@ -33,11 +46,11 @@ function createTransporter(config: MailerConfig): Transporter | undefined {
     port: config.port,
     secure: config.secure,
     auth:
-      config.user && config.password
+      config.user && config.password !== undefined
         ? { user: config.user, pass: config.password }
         : undefined,
   });
-  transporterHost = config.host;
+  transporterKey = transporterConfigKey;
   return transporter;
 }
 
@@ -54,15 +67,18 @@ export async function sendEmail(
     from: configService.getOrThrow<string>('mail.from'),
   };
 
-  createTransporter(config);
+  const currentTransporter = createTransporter(config);
 
-  if (!transporter) {
-    logger.debug(`SMTP is not configured; skipped "${input.subject}" email`);
+  if (!currentTransporter) {
+    logger.warn(
+      `SMTP is not configured; unable to send "${input.subject}" email. ` +
+        'Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and MAIL_FROM.',
+    );
     return false;
   }
 
   try {
-    await transporter.sendMail({
+    await currentTransporter.sendMail({
       from: config.from,
       to: input.to,
       subject: input.subject,
@@ -71,7 +87,8 @@ export async function sendEmail(
     });
     return true;
   } catch (error: unknown) {
-    logger.error(`Failed to send "${input.subject}" email`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to send "${input.subject}" email: ${message}`);
     return false;
   }
 }
