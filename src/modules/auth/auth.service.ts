@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { AuthTokenType } from '../../common/enums/auth-token-type.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { parseDurationToSeconds } from '../../common/helpers/duration.helper';
@@ -223,16 +223,16 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const user = await this.repository.findByEmail(email);
-    let passwordResetToken: string | undefined;
+    let passwordResetCode: string | undefined;
 
     if (user && user.status === UserStatus.ACTIVE) {
-      passwordResetToken = await this.issueOneTimeToken(
+      passwordResetCode = await this.issueOneTimeToken(
         String(user._id),
         AuthTokenType.PASSWORD_RESET,
         this.passwordResetExpiresIn,
       );
       const passwordResetTemplate =
-        this.getPasswordResetTemplate(passwordResetToken);
+        this.getPasswordResetTemplate(passwordResetCode);
       await sendEmail(this.config, {
         to: user.email,
         ...passwordResetTemplate,
@@ -242,15 +242,15 @@ export class AuthService {
     return {
       message:
         'If the account exists, password reset instructions have been created',
-      ...(this.exposeDevelopmentTokens && passwordResetToken
-        ? { passwordResetToken }
+      ...(this.exposeDevelopmentTokens && passwordResetCode
+        ? { passwordResetCode }
         : {}),
     };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
     const token = await this.tokensRepository.consume(
-      this.hashToken(dto.token),
+      this.hashToken(dto.code),
       AuthTokenType.PASSWORD_RESET,
     );
     if (!token)
@@ -382,8 +382,7 @@ export class AuthService {
   }
 
   private getPasswordResetTemplate(token: string) {
-    const url = `${this.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
-    return getPasswordResetTemplate(url);
+    return getPasswordResetTemplate(token);
   }
 
   private async issueOneTimeToken(
@@ -392,7 +391,10 @@ export class AuthService {
     expiresIn: number,
   ) {
     await this.tokensRepository.invalidateActive(userId, type);
-    const token = this.generateOpaqueToken();
+    const token =
+      type === AuthTokenType.PASSWORD_RESET
+        ? randomInt(0, 1_000_000).toString().padStart(6, '0')
+        : this.generateOpaqueToken();
     await this.tokensRepository.create({
       userId,
       type,

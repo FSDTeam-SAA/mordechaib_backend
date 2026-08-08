@@ -20,6 +20,13 @@ export default () => {
   }
 
   const exposeDevelopmentTokens = process.env.AUTH_EXPOSE_DEVELOPMENT_TOKENS;
+  const smtpPort = Number(
+    process.env.SMTP_PORT || process.env.EMAIL_PORT || 587,
+  );
+  const smtpSecure =
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE === 'true'
+      : smtpPort === 465;
 
   return {
     NODE_ENV: nodeEnv,
@@ -59,12 +66,21 @@ export default () => {
     },
 
     mail: {
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      user: process.env.SMTP_USER,
-      password: process.env.SMTP_PASSWORD,
-      from: process.env.MAIL_FROM || 'Noltra AI <no-reply@noltra.ai>',
+      // SMTP_* is the preferred naming. EMAIL_* is supported for existing
+      // deployments that already use the older names.
+      host: process.env.SMTP_HOST || process.env.EMAIL_HOST,
+      port: smtpPort,
+      secure: smtpSecure,
+      user:
+        process.env.SMTP_USER ||
+        process.env.EMAIL_USER ||
+        process.env.EMAIL_ADDRESS,
+      password: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS,
+      from:
+        process.env.MAIL_FROM ||
+        process.env.EMAIL_FROM ||
+        process.env.EMAIL_ADDRESS ||
+        'Noltra AI <no-reply@noltra.ai>',
       supportEmail: process.env.SUPPORT_EMAIL,
       frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
     },
