@@ -23,6 +23,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PackageInquiriesModule } from './modules/package-inquiries/package-inquiries.module';
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { MetaModule } from './modules/meta/meta.module';
 
 @Module({
   imports: [
@@ -48,8 +49,8 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
     AuditLogsModule,
     PackageInquiriesModule,
     OnboardingSetupsModule,
+    MetaModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-
 export class AppModule {}

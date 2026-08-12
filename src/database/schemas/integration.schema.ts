@@ -10,6 +10,7 @@ export enum IntegrationProvider {
   GOOGLE_CALENDAR = 'GOOGLE_CALENDAR',
   OUTLOOK_CALENDAR = 'OUTLOOK_CALENDAR',
   STRIPE = 'STRIPE',
+  META = 'META',
 }
 
 @Schema({ timestamps: true, collection: 'integrations' })
