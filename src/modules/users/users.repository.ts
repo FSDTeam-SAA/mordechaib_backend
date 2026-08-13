@@ -16,4 +16,8 @@ export class UsersRepository {
       .lean()
       .exec();
   }
+
+  findById(id: string) {
+    return this.userModel.findById(id).lean().exec();
+  }
 }

@@ -3,16 +3,15 @@ import Stripe from 'stripe';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 import { InvoicesService } from '../invoices/invoices.service';
+import { StripeProvider } from '../stripe/stripe.provider';
 import { SubscriptionPlansService } from '../subscriptions/subscription-plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { StripeProvider } from '../stripe/stripe.provider';
-import { OnboardingSetupsService } from '../onboarding-setups/onboarding-setups.service';
 
-const STRIPE_STATUS_MAP: Record<
-  Stripe.Subscription.Status,
-  SubscriptionStatus
-> = {
+// Maps Stripe's own subscription statuses onto ours. Stripe has a couple of
+// extra states (`unpaid`, `paused`) that we fold into PAST_DUE/CANCELED
+// rather than modelling separately.
+const STRIPE_STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
   trialing: SubscriptionStatus.TRIALING,
   active: SubscriptionStatus.ACTIVE,
   past_due: SubscriptionStatus.PAST_DUE,
@@ -32,9 +31,12 @@ export class BillingService {
     private readonly plansService: SubscriptionPlansService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly invoicesService: InvoicesService,
-    private readonly onboardingSetupsService: OnboardingSetupsService,
   ) {}
 
+  // First-time checkout only. An org that already has a subscription
+  // upgrades via upgradeSubscription() below instead — a second Checkout
+  // Session would create a second, separate Stripe subscription rather
+  // than modifying the existing one.
   async createCheckoutSession(
     organizationId: string,
     dto: CreateCheckoutSessionDto,
@@ -42,6 +44,15 @@ export class BillingService {
     if (dto.planType === PlanType.CUSTOM) {
       throw new BadRequestException(
         'The Customized plan is inquiry-only — submit a package inquiry instead',
+      );
+    }
+
+    const existing = await this.subscriptionsService
+      .getMine(organizationId)
+      .catch(() => null);
+    if (existing?.subscription.stripeSubscriptionId) {
+      throw new BadRequestException(
+        'This organization already has a subscription — use the upgrade endpoint instead of checking out again',
       );
     }
 
@@ -66,23 +77,89 @@ export class BillingService {
     return { checkoutUrl: session.url };
   }
 
-  async cancelSubscription(organizationId: string) {
+  // Self-service upgrade — "upgrade is easy, anytime" per your spec.
+  // Downgrade deliberately has no equivalent here; it always routes
+  // through SubscriptionsService.requestDowngrade (a sales lead) instead.
+  async upgradeSubscription(organizationId: string, targetPlanType: PlanType) {
+    if (targetPlanType === PlanType.CUSTOM) {
+      throw new BadRequestException(
+        'The Customized plan is inquiry-only — submit a package inquiry instead',
+      );
+    }
+
+    const { subscription, plan: currentPlan } =
+      await this.subscriptionsService.getMine(organizationId);
+    if (!subscription.stripeSubscriptionId) {
+      throw new BadRequestException('No active Stripe subscription found');
+    }
+
+    const targetPlan = await this.plansService.findByPlanType(targetPlanType);
+    if (!targetPlan.stripePriceId) {
+      throw new BadRequestException(
+        'This plan is not yet linked to a Stripe price',
+      );
+    }
+
+    const currentPriceUsd = currentPlan.priceUsd ?? 0;
+    const targetPriceUsd = targetPlan.priceUsd ?? 0;
+    if (targetPriceUsd <= currentPriceUsd) {
+      throw new BadRequestException(
+        'That is not an upgrade — for a lower-cost plan, submit a downgrade request instead',
+      );
+    }
+
+    await this.stripeProvider.upgradeSubscriptionPrice(
+      subscription.stripeSubscriptionId,
+      targetPlan.stripePriceId,
+    );
+    // Optimistic local update — the resulting customer.subscription.updated
+    // webhook will confirm status/period, but it has no way to know our
+    // internal planId, so we set that here rather than waiting on it.
+    await this.subscriptionsService.updatePlanAfterUpgrade(
+      organizationId,
+      targetPlan,
+    );
+
+    return { message: `Upgraded to ${targetPlan.name}` };
+  }
+
+  // Screen 3.
+  async pauseSubscription(organizationId: string, days: 30 | 60 | 90) {
     const { subscription } =
       await this.subscriptionsService.getMine(organizationId);
     if (!subscription.stripeSubscriptionId) {
       throw new BadRequestException('No active Stripe subscription found');
     }
 
-    await this.stripeProvider.cancelSubscription(
+    const resumesAt = new Date();
+    resumesAt.setUTCDate(resumesAt.getUTCDate() + days);
+
+    await this.stripeProvider.pauseSubscription(
+      subscription.stripeSubscriptionId,
+      resumesAt,
+    );
+    await this.subscriptionsService.setPause(organizationId, resumesAt);
+
+    return {
+      message: `Subscription paused until ${resumesAt.toDateString()}`,
+      resumesAt,
+    };
+  }
+
+  // "Resume anytime with one click."
+  async resumeSubscription(organizationId: string) {
+    const { subscription } =
+      await this.subscriptionsService.getMine(organizationId);
+    if (!subscription.stripeSubscriptionId) {
+      throw new BadRequestException('No active Stripe subscription found');
+    }
+
+    await this.stripeProvider.resumeSubscription(
       subscription.stripeSubscriptionId,
     );
-    await this.subscriptionsService.syncSubscriptionStatus({
-      stripeSubscriptionId: subscription.stripeSubscriptionId,
-      status: subscription.status,
-      cancelAtPeriodEnd: true,
-    });
+    await this.subscriptionsService.setPause(organizationId, null);
 
-    return { message: 'Subscription will cancel at the end of the period' };
+    return { message: 'Subscription resumed' };
   }
 
   async handleStripeEvent(event: Stripe.Event) {
@@ -118,20 +195,6 @@ export class BillingService {
   }
 
   private async onCheckoutCompleted(session: Stripe.Checkout.Session) {
-    const onboardingSetupId = session.metadata?.onboardingSetupId;
-    if (onboardingSetupId) {
-      if (session.payment_status !== 'paid') return;
-      await this.onboardingSetupsService.confirmStripePayment({
-        setupId: onboardingSetupId,
-        checkoutSessionId: session.id,
-        paymentIntentId:
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : undefined,
-      });
-      return;
-    }
-
     const organizationId = session.metadata?.organizationId;
     const planId = session.metadata?.planId;
     const stripeSubscriptionId = session.subscription;
@@ -158,11 +221,19 @@ export class BillingService {
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(),
     });
+    // Billing interval isn't known from the checkout session alone (it's
+    // not expanded here) — the customer.subscription.created/updated event
+    // Stripe fires right after checkout fills it in via onSubscriptionUpdated.
   }
 
   private async onSubscriptionUpdated(subscription: Stripe.Subscription) {
+    // As of the current Stripe API version, billing-period fields live on
+    // each subscription item rather than the subscription itself.
     const firstItem = subscription.items.data[0];
     const billingInterval = firstItem?.price?.recurring?.interval;
+    const pausedUntil = subscription.pause_collection?.resumes_at
+      ? new Date(subscription.pause_collection.resumes_at * 1000)
+      : null;
 
     await this.subscriptionsService.syncSubscriptionStatus({
       stripeSubscriptionId: subscription.id,
@@ -175,10 +246,14 @@ export class BillingService {
         : undefined,
       billingInterval,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      pausedUntil,
     });
   }
 
   private async onInvoicePaymentFailed(invoice: Stripe.Invoice) {
+    // The subscription reference on an invoice now lives under
+    // parent.subscription_details rather than a top-level `subscription`
+    // field.
     const subscriptionRef = invoice.parent?.subscription_details?.subscription;
     const stripeSubscriptionId =
       typeof subscriptionRef === 'string'
