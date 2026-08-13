@@ -35,9 +35,12 @@ export class StripeProvider {
     });
   }
 
+  // One-time payment (not a subscription) — used by onboarding-setups for
+  // the Enterprise setup fee. Uses ad-hoc price_data since this amount
+  // isn't backed by a pre-created Stripe Price the way plan checkout is.
   createOneTimeCheckoutSession(params: {
     amount: number;
-    currency: string;
+    currency?: string;
     productName: string;
     customerEmail?: string;
     successUrl: string;
@@ -49,9 +52,9 @@ export class StripeProvider {
       line_items: [
         {
           price_data: {
-            currency: params.currency.toLowerCase(),
-            product_data: { name: params.productName },
+            currency: (params.currency || 'usd').toLowerCase(),
             unit_amount: Math.round(params.amount * 100),
+            product_data: { name: params.productName },
           },
           quantity: 1,
         },
@@ -66,6 +69,46 @@ export class StripeProvider {
   cancelSubscription(stripeSubscriptionId: string) {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
+    });
+  }
+
+  // Screen 3 — no charges while paused; Stripe resumes billing on its own
+  // at resumesAt (behavior 'void' means no invoices are generated at all
+  // during the pause, as opposed to generating and marking them uncollectible).
+  pauseSubscription(stripeSubscriptionId: string, resumesAt: Date) {
+    return this.client.subscriptions.update(stripeSubscriptionId, {
+      pause_collection: {
+        behavior: 'void',
+        resumes_at: Math.floor(resumesAt.getTime() / 1000),
+      },
+    });
+  }
+
+  // "Resume anytime with one click" — clears the pause early.
+  resumeSubscription(stripeSubscriptionId: string) {
+    return this.client.subscriptions.update(stripeSubscriptionId, {
+      pause_collection: '',
+    });
+  }
+
+  // Self-service upgrade — swaps the Price on the existing subscription
+  // item with proration, rather than creating a second subscription the
+  // way a fresh Checkout Session would.
+  async upgradeSubscriptionPrice(
+    stripeSubscriptionId: string,
+    newPriceId: string,
+  ) {
+    const subscription =
+      await this.client.subscriptions.retrieve(stripeSubscriptionId);
+    const itemId = subscription.items.data[0]?.id;
+    if (!itemId) {
+      throw new Error(
+        `Stripe subscription ${stripeSubscriptionId} has no items to update`,
+      );
+    }
+    return this.client.subscriptions.update(stripeSubscriptionId, {
+      items: [{ id: itemId, price: newPriceId }],
+      proration_behavior: 'create_prorations',
     });
   }
 
