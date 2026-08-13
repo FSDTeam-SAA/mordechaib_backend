@@ -13,6 +13,11 @@ export class PackageInquiry {
   })
   packageType!: PackageType;
 
+  // Set only when this inquiry came from an authenticated org action
+  // (downgrade/specialist requests) — absent for public site submissions.
+  @Prop({ index: true })
+  organizationId?: string;
+
   @Prop({ required: true, trim: true })
   fullName!: string;
 

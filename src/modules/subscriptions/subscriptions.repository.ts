@@ -14,6 +14,7 @@ type UpsertSubscriptionInput = {
   currentPeriodEnd?: Date;
   billingInterval?: string;
   cancelAtPeriodEnd?: boolean;
+  pausedUntil?: Date | null;
   snapshotLimits?: OrganizationSubscription['snapshotLimits'];
 };
 
@@ -69,6 +70,34 @@ export class SubscriptionsRepository {
       .findOneAndUpdate(
         { stripeSubscriptionId },
         { $set: input },
+        { new: true },
+      )
+      .exec();
+  }
+
+  setPause(organizationId: string, pausedUntil: Date | null) {
+    return this.subscriptionModel
+      .findOneAndUpdate(
+        { organizationId },
+        { $set: { pausedUntil } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  // Used by BillingService.upgradeSubscription — an optimistic local
+  // update right after the Stripe call succeeds, rather than waiting on
+  // the customer.subscription.updated webhook (which syncs status/period
+  // but has no way to know our internal planId).
+  updatePlan(
+    organizationId: string,
+    planId: string,
+    snapshotLimits: OrganizationSubscription['snapshotLimits'],
+  ) {
+    return this.subscriptionModel
+      .findOneAndUpdate(
+        { organizationId },
+        { $set: { planId, snapshotLimits } },
         { new: true },
       )
       .exec();

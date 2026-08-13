@@ -7,7 +7,7 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoicesRepository } from './invoices.repository';
 
-const STRIPE_INVOICE_STATUS_MAP: Record<string, InvoiceStatus> = {
+const STRIPE_INVOICE_STATUS_MAP: Record<NonNullable<Stripe.Invoice.Status>, InvoiceStatus> = {
   draft: InvoiceStatus.DRAFT,
   open: InvoiceStatus.OPEN,
   paid: InvoiceStatus.PAID,

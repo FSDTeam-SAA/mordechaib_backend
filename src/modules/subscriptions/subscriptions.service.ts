@@ -1,10 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PackageType } from '../../common/enums/package-type.enum';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { PackageInquiriesService } from '../package-inquiries/package-inquiries.service';
+import { DowngradeRequestDto } from './dto/downgrade-request.dto';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
+import { SpecialistRequestDto } from './dto/specialist-request.dto';
+import { SubscriptionPlan } from '../../database/schemas/subscription-plan.schema';
 import { SubscriptionPlansService } from './subscription-plans.service';
 import { SubscriptionsRepository } from './subscriptions.repository';
+
+type Requester = { fullName: string; email: string };
 
 type ActivateSubscriptionInput = {
   organizationId: string;
@@ -24,6 +31,7 @@ type SyncSubscriptionStatusInput = {
   currentPeriodEnd?: Date;
   billingInterval?: string;
   cancelAtPeriodEnd?: boolean;
+  pausedUntil?: Date | null;
 };
 
 @Injectable()
@@ -32,6 +40,7 @@ export class SubscriptionsService {
     private readonly repository: SubscriptionsRepository,
     private readonly plansService: SubscriptionPlansService,
     private readonly organizationsService: OrganizationsService,
+    private readonly packageInquiriesService: PackageInquiriesService,
   ) {}
 
   async getMine(organizationId: string) {
@@ -50,6 +59,7 @@ export class SubscriptionsService {
     return this.repository.findByStripeSubscriptionId(stripeSubscriptionId);
   }
 
+  // Called by BillingService when Stripe reports checkout.session.completed.
   async activateSubscription(input: ActivateSubscriptionInput) {
     const plan = await this.plansService.findById(input.planId);
     return this.repository.upsertForOrganization({
@@ -62,19 +72,12 @@ export class SubscriptionsService {
       currentPeriodEnd: input.currentPeriodEnd,
       billingInterval: input.billingInterval,
       cancelAtPeriodEnd: false,
-      snapshotLimits: {
-        priceUsd: plan.priceUsd,
-        aiActionsPerMonth: plan.aiActionsPerMonth,
-        crmContactsLimit: plan.crmContactsLimit,
-        callMinutesPerMonth: plan.callMinutesPerMonth,
-        usersIncluded: plan.usersIncluded,
-        aiAgentsIncluded: plan.aiAgentsIncluded,
-        extraAiActionPriceUsd: plan.extraAiActionPriceUsd,
-        extraCallMinutePriceUsd: plan.extraCallMinutePriceUsd,
-      },
+      snapshotLimits: this.buildSnapshot(plan),
     });
   }
 
+  // Called by BillingService for customer.subscription.updated/deleted and
+  // invoice.payment_failed — keeps status/period in sync with Stripe.
   syncSubscriptionStatus(input: SyncSubscriptionStatusInput) {
     return this.repository.updateByStripeSubscriptionId(
       input.stripeSubscriptionId,
@@ -84,8 +87,92 @@ export class SubscriptionsService {
         currentPeriodEnd: input.currentPeriodEnd,
         billingInterval: input.billingInterval,
         cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+        pausedUntil: input.pausedUntil,
       },
     );
+  }
+
+  // Screen 3 — called by BillingService.pauseSubscription/resumeSubscription
+  // after the Stripe call succeeds.
+  setPause(organizationId: string, pausedUntil: Date | null) {
+    return this.repository.setPause(organizationId, pausedUntil);
+  }
+
+  // Called by BillingService.upgradeSubscription right after Stripe
+  // confirms the price swap — an optimistic local update rather than
+  // waiting on the webhook, which has no way to know our internal planId.
+  updatePlanAfterUpgrade(organizationId: string, plan: SubscriptionPlan) {
+    return this.repository.updatePlan(
+      organizationId,
+      String((plan as unknown as { _id: unknown })._id),
+      this.buildSnapshot(plan),
+    );
+  }
+
+  private buildSnapshot(plan: SubscriptionPlan) {
+    return {
+      priceUsd: plan.priceUsd,
+      aiActionsPerMonth: plan.aiActionsPerMonth,
+      crmContactsLimit: plan.crmContactsLimit,
+      callMinutesPerMonth: plan.callMinutesPerMonth,
+      usersIncluded: plan.usersIncluded,
+      aiAgentsIncluded: plan.aiAgentsIncluded,
+      extraAiActionPriceUsd: plan.extraAiActionPriceUsd,
+      extraCallMinutePriceUsd: plan.extraCallMinutePriceUsd,
+    };
+  }
+
+  // Screen 4 — downgrade is never self-service. This just files a
+  // sales-team lead using the requester's own account details.
+  async requestDowngrade(
+    organizationId: string,
+    requester: Requester,
+    dto: DowngradeRequestDto,
+  ) {
+    const organization =
+      await this.organizationsService.findCurrent(organizationId);
+
+    await this.packageInquiriesService.create({
+      packageType: PackageType.DOWNGRADE_REQUEST,
+      organizationId,
+      fullName: requester.fullName,
+      email: requester.email,
+      message: [
+        `Organization "${organization.name}" requested a downgrade to "${dto.requestedPlanName}".`,
+        dto.note ? `Note: ${dto.note}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      acceptContactConsent: true,
+    });
+
+    return { message: 'Our sales team will reach out shortly' };
+  }
+
+  // Screen 5 — "Talk to a Specialist".
+  async requestSpecialistCall(
+    organizationId: string,
+    requester: Requester,
+    dto: SpecialistRequestDto,
+  ) {
+    const organization =
+      await this.organizationsService.findCurrent(organizationId);
+
+    await this.packageInquiriesService.create({
+      packageType: PackageType.SPECIALIST_CALL_REQUEST,
+      organizationId,
+      fullName: requester.fullName,
+      email: requester.email,
+      message: [
+        `Organization "${organization.name}" requested a 15-minute specialist call.`,
+        dto.note ? `Note: ${dto.note}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      acceptContactConsent: true,
+    });
+
+    return { message: 'A specialist will reach out to schedule your call' };
   }
 
   // Backs the admin "Subscriptions" table: search by org name, filter by
@@ -129,7 +216,9 @@ export class SubscriptionsService {
       orgIds.length ? this.organizationsService.findByIds(orgIds) : [],
       planIds.length ? this.plansService.findByIds(planIds) : [],
     ]);
-    const orgNameById = new Map(orgs.map((org) => [String(org._id), org.name]));
+    const orgNameById = new Map(
+      orgs.map((org) => [String(org._id), org.name]),
+    );
     const planById = new Map(plans.map((plan) => [String(plan._id), plan]));
 
     return {
@@ -146,6 +235,7 @@ export class SubscriptionsService {
           billingInterval: item.billingInterval ?? null,
           nextRenewal: item.currentPeriodEnd ?? null,
           status: item.status,
+          pausedUntil: item.pausedUntil ?? null,
         };
       }),
       page,

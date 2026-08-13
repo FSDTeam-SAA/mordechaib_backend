@@ -6,5 +6,7 @@ import { PackageInquiriesService } from './package-inquiries.service';
 @Module({
   controllers: [PackageInquiriesController],
   providers: [PackageInquiriesService, PackageInquiriesRepository],
+  exports: [PackageInquiriesService],
 })
+
 export class PackageInquiriesModule {}

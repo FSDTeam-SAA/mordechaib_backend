@@ -8,4 +8,8 @@ export class UsersService {
   findByOrganization(organizationId: string) {
     return this.repository.findByOrganization(organizationId);
   }
+
+  findById(id: string) {
+    return this.repository.findById(id);
+  }
 }

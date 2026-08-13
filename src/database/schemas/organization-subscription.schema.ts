@@ -41,6 +41,13 @@ export class OrganizationSubscription {
   @Prop({ default: false })
   cancelAtPeriodEnd!: boolean;
 
+  // Set while paused (Screen 3 — 30/60/90 days). Stripe's own
+  // pause_collection.resumes_at drives the actual billing pause; this is
+  // a local mirror for display/filtering and for excluding paused orgs
+  // from MRR (see subscription-analytics.repository.ts).
+  @Prop()
+  pausedUntil?: Date;
+
   // Snapshot of the plan's limits/pricing at the moment this org subscribed
   // (or last renewed). Read this for enforcement/usage checks AND revenue
   // reporting — not the live SubscriptionPlan document, since that can
