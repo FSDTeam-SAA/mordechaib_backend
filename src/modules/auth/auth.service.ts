@@ -271,6 +271,12 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+  const user = await this.repository.findByIdWithPassword(userId);
+  if (!user) return false;
+  return bcrypt.compare(password, user.passwordHash);
+}
+
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.repository.findByIdWithPassword(userId);
     if (

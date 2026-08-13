@@ -5,10 +5,7 @@ import { OrganizationSubscription } from '../../database/schemas/organization-su
 import { RevenueSnapshot } from '../../database/schemas/revenue-snapshot.schema';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 
-const LIVE_STATUSES = [
-  SubscriptionStatus.ACTIVE,
-  SubscriptionStatus.TRIALING,
-];
+const LIVE_STATUSES = [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING];
 
 @Injectable()
 export class SubscriptionAnalyticsRepository {
@@ -20,7 +17,9 @@ export class SubscriptionAnalyticsRepository {
   ) {}
 
   // Live totals — always accurate for "right now", unlike historical
-  // months which depend on snapshots (see below).
+  // months which depend on snapshots (see below). A paused subscription
+  // still counts as an active/retained org, but contributes $0 to MRR
+  // since Stripe isn't actually billing it during the pause window.
   async getLiveTotals() {
     const [result] = await this.subscriptionModel.aggregate<{
       activeSubscriptions: number;
@@ -31,7 +30,15 @@ export class SubscriptionAnalyticsRepository {
         $group: {
           _id: null,
           activeSubscriptions: { $sum: 1 },
-          mrrUsd: { $sum: { $ifNull: ['$snapshotLimits.priceUsd', 0] } },
+          mrrUsd: {
+            $sum: {
+              $cond: [
+                { $gt: ['$pausedUntil', new Date()] },
+                0,
+                { $ifNull: ['$snapshotLimits.priceUsd', 0] },
+              ],
+            },
+          },
         },
       },
     ]);
@@ -52,7 +59,15 @@ export class SubscriptionAnalyticsRepository {
         $group: {
           _id: '$planId',
           count: { $sum: 1 },
-          mrrUsd: { $sum: { $ifNull: ['$snapshotLimits.priceUsd', 0] } },
+          mrrUsd: {
+            $sum: {
+              $cond: [
+                { $gt: ['$pausedUntil', new Date()] },
+                0,
+                { $ifNull: ['$snapshotLimits.priceUsd', 0] },
+              ],
+            },
+          },
         },
       },
     ]);
