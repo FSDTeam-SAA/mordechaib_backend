@@ -43,6 +43,10 @@ import {
   RevenueSnapshotSchema,
 } from '../schemas/revenue-snapshot.schema';
 import { Invoice, InvoiceSchema } from '../schemas/invoice.schema';
+import {
+  CancellationRequest,
+  CancellationRequestSchema,
+} from '../schemas/cancellation-request.schema';
 
 @Global()
 @Module({
@@ -72,6 +76,7 @@ import { Invoice, InvoiceSchema } from '../schemas/invoice.schema';
       { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
       { name: Invoice.name, schema: InvoiceSchema },
+      { name: CancellationRequest.name, schema: CancellationRequestSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,
