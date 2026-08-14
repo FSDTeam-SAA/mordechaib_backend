@@ -1,11 +1,15 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
-import { encryptText } from '../../common/helpers/crypto.helper';
+import {
+  decryptText,
+  encryptText,
+} from '../../common/helpers/crypto.helper';
 import { IntegrationProvider } from '../../database/schemas/integration.schema';
 import { MetaRepository } from './meta.repository';
 import { MetaProvider } from './providers/meta.provider';
@@ -15,6 +19,20 @@ type MetaOAuthState = {
   userId: string;
   issuedAt: number;
   nonce: string;
+};
+
+type StoredMetaPage = {
+  id?: string;
+  name?: string;
+  accessToken?: string;
+  instagramBusinessAccount?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+type MetaIntegrationMetadata = {
+  connectedByUserId?: string;
+  pages?: StoredMetaPage[];
+  [key: string]: unknown;
 };
 
 @Injectable()
@@ -78,8 +96,7 @@ export class MetaService {
     const integration =
       await this.repository.findByOrganization(organizationId);
     if (!integration) return { connected: false };
-    const metadata = integration.metadata as
-      Record<string, unknown> | undefined;
+    const metadata = integration.metadata as MetaIntegrationMetadata | undefined;
     const pages = Array.isArray(metadata?.pages)
       ? metadata.pages.map((page) => {
           if (!page || typeof page !== 'object') return page;
@@ -94,6 +111,92 @@ export class MetaService {
       status: integration.status,
       expiresAt: integration.expiresAt,
       metadata: { ...metadata, pages },
+    };
+  }
+
+  async getPagePosts(
+    organizationId: string,
+    pageId: string,
+    limit = 25,
+  ) {
+    const page = await this.resolveStoredPage(organizationId, pageId);
+    return this.provider.getPagePosts(page.id, page.accessToken, limit);
+  }
+
+  async getPostComments(
+    organizationId: string,
+    pageId: string,
+    postId: string,
+    limit = 25,
+  ) {
+    const page = await this.resolveStoredPage(organizationId, pageId);
+    return this.provider.getPostComments(postId, page.accessToken, limit);
+  }
+
+  async getPageMessages(
+    organizationId: string,
+    pageId: string,
+    limit = 25,
+  ) {
+    const page = await this.resolveStoredPage(organizationId, pageId);
+    return this.provider.getPageMessages(page.id, page.accessToken, limit);
+  }
+
+  async getPageInsights(
+    organizationId: string,
+    pageId: string,
+    metrics?: string,
+    period?: string,
+  ) {
+    const page = await this.resolveStoredPage(organizationId, pageId);
+    const metricList = metrics
+      ? metrics
+          .split(',')
+          .map((metric) => metric.trim())
+          .filter(Boolean)
+      : undefined;
+    return this.provider.getPageInsights(
+      page.id,
+      page.accessToken,
+      metricList,
+      period,
+    );
+  }
+
+  async getPageOverview(
+    organizationId: string,
+    pageId: string,
+    limit = 25,
+    metrics?: string,
+    period?: string,
+  ) {
+    const page = await this.resolveStoredPage(organizationId, pageId);
+    const metricList = metrics
+      ? metrics
+          .split(',')
+          .map((metric) => metric.trim())
+          .filter(Boolean)
+      : undefined;
+    const [posts, messages, insights] = await Promise.all([
+      this.provider.getPagePosts(page.id, page.accessToken, limit),
+      this.provider.getPageMessages(page.id, page.accessToken, limit),
+      this.provider.getPageInsights(
+        page.id,
+        page.accessToken,
+        metricList,
+        period,
+      ),
+    ]);
+
+    return {
+      page: {
+        id: page.id,
+        name: page.name,
+        instagramBusinessAccount: page.instagramBusinessAccount,
+      },
+      posts,
+      messages,
+      insights,
     };
   }
 
@@ -154,5 +257,28 @@ export class MetaService {
         'INTEGRATION_ENCRYPTION_KEY must contain at least 32 characters',
       );
     return key;
+  }
+
+  private async resolveStoredPage(organizationId: string, pageId: string) {
+    const integration = await this.repository.findByOrganization(organizationId);
+    if (!integration) {
+      throw new NotFoundException('Meta integration is not connected');
+    }
+    const metadata = integration.metadata as MetaIntegrationMetadata | undefined;
+    const pages = Array.isArray(metadata?.pages) ? metadata.pages : [];
+    const storedPage = pages.find((page) => page?.id === pageId);
+    if (!storedPage) {
+      throw new NotFoundException('Meta page not found');
+    }
+    if (!storedPage.accessToken || typeof storedPage.accessToken !== 'string') {
+      throw new BadRequestException('Stored page access token is missing');
+    }
+    return {
+      id: storedPage.id as string,
+      name: storedPage.name as string | undefined,
+      accessToken: decryptText(storedPage.accessToken, this.encryptionKey),
+      instagramBusinessAccount:
+        storedPage.instagramBusinessAccount as Record<string, unknown> | undefined,
+    };
   }
 }

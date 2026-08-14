@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Param,
   Query,
+  DefaultValuePipe,
+  ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -48,5 +51,75 @@ export class MetaController {
   @UseGuards(OrganizationGuard)
   connection(@CurrentOrg() organization: RequestOrganization) {
     return this.service.getConnection(organization.id);
+  }
+
+  @Get('pages/:pageId/posts')
+  @UseGuards(OrganizationGuard)
+  posts(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('pageId') pageId: string,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+  ) {
+    return this.service.getPagePosts(organization.id, pageId, limit);
+  }
+
+  @Get('pages/:pageId/posts/:postId/comments')
+  @UseGuards(OrganizationGuard)
+  comments(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('pageId') pageId: string,
+    @Param('postId') postId: string,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+  ) {
+    return this.service.getPostComments(
+      organization.id,
+      pageId,
+      postId,
+      limit,
+    );
+  }
+
+  @Get('pages/:pageId/messages')
+  @UseGuards(OrganizationGuard)
+  messages(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('pageId') pageId: string,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+  ) {
+    return this.service.getPageMessages(organization.id, pageId, limit);
+  }
+
+  @Get('pages/:pageId/insights')
+  @UseGuards(OrganizationGuard)
+  insights(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('pageId') pageId: string,
+    @Query('metrics') metrics?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.service.getPageInsights(
+      organization.id,
+      pageId,
+      metrics,
+      period,
+    );
+  }
+
+  @Get('pages/:pageId/overview')
+  @UseGuards(OrganizationGuard)
+  overview(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('pageId') pageId: string,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+    @Query('metrics') metrics?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.service.getPageOverview(
+      organization.id,
+      pageId,
+      limit,
+      metrics,
+      period,
+    );
   }
 }
