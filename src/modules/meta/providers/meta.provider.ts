@@ -7,6 +7,59 @@ type MetaTokenResponse = {
   expires_in?: number;
 };
 
+type MetaListResponse<T> = {
+  data: T[];
+  paging?: {
+    cursors?: {
+      before?: string;
+      after?: string;
+    };
+    next?: string;
+    previous?: string;
+  };
+};
+
+export type MetaPagePost = {
+  id: string;
+  message?: string;
+  story?: string;
+  created_time?: string;
+  updated_time?: string;
+  permalink_url?: string;
+  attachments?: Record<string, unknown>;
+  comments?: MetaListResponse<Record<string, unknown>>;
+};
+
+export type MetaPageComment = {
+  id: string;
+  message?: string;
+  created_time?: string;
+  like_count?: number;
+  from?: Record<string, unknown>;
+  parent?: Record<string, unknown>;
+};
+
+export type MetaPageConversation = {
+  id: string;
+  updated_time?: string;
+  unread_count?: number;
+  can_reply?: boolean;
+  message_count?: number;
+  participants?: MetaListResponse<Record<string, unknown>>;
+  messages?: MetaListResponse<Record<string, unknown>>;
+};
+
+export type MetaPageInsight = {
+  name: string;
+  period?: string;
+  values?: Array<{
+    value?: number | Record<string, unknown>;
+    end_time?: string;
+  }>;
+  title?: string;
+  description?: string;
+};
+
 @Injectable()
 export class MetaProvider {
   private readonly appId: string | undefined;
@@ -27,7 +80,16 @@ export class MetaProvider {
       redirect_uri: this.config.getOrThrow<string>('meta.oauthRedirectUri'),
       state,
       response_type: 'code',
-      scope: 'public_profile,pages_show_list,business_management',
+      scope: [
+        'public_profile',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_read_user_content',
+        'pages_manage_metadata',
+        'pages_messaging',
+        'read_insights',
+        'business_management',
+      ].join(','),
     });
     return `https://www.facebook.com/${this.config.get<string>('meta.graphApiVersion', 'v23.0')}/dialog/oauth?${params}`;
   }
@@ -66,13 +128,70 @@ export class MetaProvider {
     );
   }
 
+  getPagePosts(pageId: string, token: string, limit = 25) {
+    return this.request<MetaListResponse<MetaPagePost>>(
+      `/${encodeURIComponent(pageId)}/posts`,
+      {
+        fields:
+          'id,message,story,created_time,updated_time,permalink_url,attachments{media_type,url,title,description,subattachments},comments.limit(25){id,message,created_time,from,like_count}',
+        limit,
+        access_token: token,
+      },
+    );
+  }
+
+  getPostComments(postId: string, token: string, limit = 25) {
+    return this.request<MetaListResponse<MetaPageComment>>(
+      `/${encodeURIComponent(postId)}/comments`,
+      {
+        fields: 'id,message,created_time,like_count,from,parent',
+        limit,
+        access_token: token,
+      },
+    );
+  }
+
+  getPageMessages(pageId: string, token: string, limit = 25) {
+    return this.request<MetaListResponse<MetaPageConversation>>(
+      `/${encodeURIComponent(pageId)}/conversations`,
+      {
+        fields:
+          'id,updated_time,unread_count,can_reply,message_count,participants.limit(50){id,name,username},messages.limit(25){id,message,created_time,from,attachments}',
+        limit,
+        access_token: token,
+      },
+    );
+  }
+
+  getPageInsights(
+    pageId: string,
+    token: string,
+    metrics: string[] = [
+      'page_impressions',
+      'page_impressions_unique',
+      'page_post_engagements',
+      'page_fans',
+      'page_messages_total_count',
+    ],
+    period = 'day',
+  ) {
+    return this.request<MetaListResponse<MetaPageInsight>>(
+      `/${encodeURIComponent(pageId)}/insights`,
+      {
+        metric: metrics.join(','),
+        period,
+        access_token: token,
+      },
+    );
+  }
+
   private async request<T>(
     path: string,
-    params: Record<string, string | undefined>,
+    params: Record<string, string | number | undefined>,
   ): Promise<T> {
     const query = new URLSearchParams();
     Object.entries(params).forEach(
-      ([key, value]) => value && query.set(key, value),
+      ([key, value]) => value !== undefined && query.set(key, String(value)),
     );
     const response = await fetch(`${this.graphBaseUrl}${path}?${query}`);
     const body = (await response.json()) as T & {
