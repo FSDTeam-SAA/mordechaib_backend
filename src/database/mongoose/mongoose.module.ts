@@ -47,6 +47,19 @@ import {
   CancellationRequest,
   CancellationRequestSchema,
 } from '../schemas/cancellation-request.schema';
+import { ZoomMeeting, ZoomMeetingSchema } from '../schemas/zoom-meeting.schema';
+import {
+  ZoomMeetingTranscript,
+  ZoomMeetingTranscriptSchema,
+} from '../schemas/zoom-meeting-transcript.schema';
+import {
+  RecallZoomConnection,
+  RecallZoomConnectionSchema,
+} from '../schemas/recall-zoom-connection.schema';
+import {
+  RecallWebhookEvent,
+  RecallWebhookEventSchema,
+} from '../schemas/recall-webhook-event.schema';
 
 @Global()
 @Module({
@@ -77,6 +90,16 @@ import {
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
       { name: Invoice.name, schema: InvoiceSchema },
       { name: CancellationRequest.name, schema: CancellationRequestSchema },
+      { name: ZoomMeeting.name, schema: ZoomMeetingSchema },
+      {
+        name: ZoomMeetingTranscript.name,
+        schema: ZoomMeetingTranscriptSchema,
+      },
+      {
+        name: RecallZoomConnection.name,
+        schema: RecallZoomConnectionSchema,
+      },
+      { name: RecallWebhookEvent.name, schema: RecallWebhookEventSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,
