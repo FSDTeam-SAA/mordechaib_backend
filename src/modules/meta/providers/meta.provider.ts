@@ -84,10 +84,10 @@ export class MetaProvider {
         'public_profile',
         'pages_show_list',
         'pages_read_engagement',
-        'pages_read_user_content',
+        // 'pages_read_user_content',
         'pages_manage_metadata',
-        'pages_messaging',
-        'read_insights',
+        // 'pages_messaging',
+        // 'read_insights',
         'business_management',
       ].join(','),
     });

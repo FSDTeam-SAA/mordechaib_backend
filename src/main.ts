@@ -15,6 +15,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+  app.enableShutdownHooks();
   const config = app.get(ConfigService);
 
   app.use(helmet());
@@ -54,7 +55,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = config.get<number>('PORT', 5001);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`Noltra API running on http://localhost:${port}`);
 }
 

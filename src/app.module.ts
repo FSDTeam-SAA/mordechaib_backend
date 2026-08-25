@@ -24,6 +24,7 @@ import { PackageInquiriesModule } from './modules/package-inquiries/package-inqu
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { MetaModule } from './modules/meta/meta.module';
+import { ZoomMeetingsModule } from './modules/zoom-meetings/zoom-meetings.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { MetaModule } from './modules/meta/meta.module';
     PackageInquiriesModule,
     OnboardingSetupsModule,
     MetaModule,
+    ZoomMeetingsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -15,6 +15,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
     const request = ctx.getRequest();
+    const requestPath =
+      typeof request.path === 'string'
+        ? request.path
+        : String(request.url).split('?')[0];
 
     const status =
       exception instanceof HttpException
@@ -39,7 +43,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // is actually debuggable instead of a dead end.
     if (!(exception instanceof HttpException)) {
       this.logger.error(
-        `Unhandled exception at ${request.method} ${request.url}`,
+        `Unhandled exception at ${request.method} ${requestPath}`,
         exception instanceof Error ? exception.stack : exception,
       );
     }
@@ -48,7 +52,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       success: false,
       statusCode: status,
       message,
-      path: request.url,
+      path: requestPath,
       timestamp: new Date().toISOString(),
     });
   }
