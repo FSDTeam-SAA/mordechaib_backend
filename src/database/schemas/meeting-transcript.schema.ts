@@ -1,13 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 
-export type ZoomMeetingTranscriptDocument =
-  HydratedDocument<ZoomMeetingTranscript>;
+export type MeetingTranscriptDocument = HydratedDocument<MeetingTranscript>;
 
-@Schema({ timestamps: true, collection: 'zoom_meeting_transcripts' })
-export class ZoomMeetingTranscript {
+@Schema({ timestamps: true, collection: 'meeting_transcripts' })
+export class MeetingTranscript {
   @Prop({ required: true, unique: true, index: true })
   meetingId!: string;
+
+  @Prop({ required: true, enum: Object.values(MeetingPlatform), index: true })
+  platform!: MeetingPlatform;
 
   @Prop({ required: true, index: true })
   organizationId!: string;
@@ -34,7 +37,10 @@ export class ZoomMeetingTranscript {
   wordCount!: number;
 }
 
-export const ZoomMeetingTranscriptSchema = SchemaFactory.createForClass(
-  ZoomMeetingTranscript,
-);
-ZoomMeetingTranscriptSchema.index({ organizationId: 1, createdAt: -1 });
+export const MeetingTranscriptSchema =
+  SchemaFactory.createForClass(MeetingTranscript);
+MeetingTranscriptSchema.index({
+  organizationId: 1,
+  platform: 1,
+  createdAt: -1,
+});

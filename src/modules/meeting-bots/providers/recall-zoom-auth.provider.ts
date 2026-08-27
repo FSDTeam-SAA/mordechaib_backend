@@ -1,0 +1,85 @@
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { RecallApiClient } from './recall-api.client';
+import { RecallApiError } from './recall.types';
+
+@Injectable()
+export class RecallZoomAuthProvider {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly client: RecallApiClient,
+  ) {}
+
+  getAuthorizationUrl(state: string) {
+    const clientId = this.config.get<string>('recall.zoom.clientId');
+    const redirectUri = this.config.get<string>('recall.zoom.redirectUri');
+    if (!clientId || !redirectUri) {
+      throw new ServiceUnavailableException(
+        'Zoom OAuth credentials are not configured',
+      );
+    }
+    const url = new URL('https://zoom.us/oauth/authorize');
+    url.search = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      state,
+    }).toString();
+    return url.toString();
+  }
+
+  createCredential(code: string) {
+    const oauthAppId = this.config.get<string>('recall.zoom.oauthAppId');
+    const redirectUri = this.config.get<string>('recall.zoom.redirectUri');
+    if (!oauthAppId || !redirectUri) {
+      throw new ServiceUnavailableException(
+        'Recall Zoom OAuth app is not configured',
+      );
+    }
+    return this.client.request<{ id: string; [key: string]: unknown }>(
+      '/api/v2/zoom-oauth-credentials/',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          oauth_app: oauthAppId,
+          authorization_code: { code, redirect_uri: redirectUri },
+        }),
+      },
+    );
+  }
+
+  private getAccessToken(credentialId: string) {
+    return this.client.request<{ access_token?: string; token?: string }>(
+      `/api/v2/zoom-oauth-credentials/${encodeURIComponent(credentialId)}/access-token/`,
+      {},
+      7_000,
+    );
+  }
+
+  async getZakToken(credentialId: string) {
+    const tokenResponse = await this.getAccessToken(credentialId);
+    const accessToken = tokenResponse.access_token ?? tokenResponse.token;
+    if (!accessToken) {
+      throw new RecallApiError(
+        'Recall Zoom credential did not return an access token',
+        502,
+      );
+    }
+
+    const response = await fetch('https://api.zoom.us/v2/users/me/zak', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(7_000),
+    });
+    const body = (await this.client.parseResponseBody(response)) as {
+      token?: string;
+      message?: string;
+    };
+    if (!response.ok || !body?.token) {
+      throw new RecallApiError(
+        body?.message || `Zoom ZAK request failed with HTTP ${response.status}`,
+        response.status,
+      );
+    }
+    return body.token;
+  }
+}

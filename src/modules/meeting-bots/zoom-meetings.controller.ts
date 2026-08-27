@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import {
@@ -21,15 +22,19 @@ import {
   RequestUser,
 } from '../../common/types/request-context.type';
 import { CreateZoomMeetingDto } from './dto/create-zoom-meeting.dto';
-import { ListZoomMeetingsQueryDto } from './dto/list-zoom-meetings-query.dto';
-import { UpdateZoomMeetingDto } from './dto/update-zoom-meeting.dto';
-import { ZoomMeetingsService } from './zoom-meetings.service';
+import { ListMeetingBotsQueryDto } from './dto/list-meeting-bots-query.dto';
+import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
+import { MeetingBotsService } from './meeting-bots.service';
+import { ZoomAuthService } from './zoom-auth.service';
 
 @ApiTags('Zoom Meetings')
 @ApiBearerAuth()
 @Controller('zoom-meetings')
 export class ZoomMeetingsController {
-  constructor(private readonly meetings: ZoomMeetingsService) {}
+  constructor(
+    private readonly meetings: MeetingBotsService,
+    private readonly zoomAuth: ZoomAuthService,
+  ) {}
 
   @Post()
   @UseGuards(OrganizationGuard)
@@ -38,22 +43,27 @@ export class ZoomMeetingsController {
     @CurrentUser() user: RequestUser,
     @Body() input: CreateZoomMeetingDto,
   ) {
-    return this.meetings.create(organization.id, user.id, input);
+    return this.meetings.create(
+      organization.id,
+      user.id,
+      MeetingPlatform.ZOOM,
+      input,
+    );
   }
 
   @Get()
   @UseGuards(OrganizationGuard)
   list(
     @CurrentOrg() organization: RequestOrganization,
-    @Query() query: ListZoomMeetingsQueryDto,
+    @Query() query: ListMeetingBotsQueryDto,
   ) {
-    return this.meetings.list(organization.id, query);
+    return this.meetings.list(organization.id, query, MeetingPlatform.ZOOM);
   }
 
   @Get('oauth/connect')
   @UseGuards(PlatformAdminGuard)
   connectZoom(@CurrentUser() user: RequestUser) {
-    return this.meetings.createZoomAuthorizationUrl(user.id);
+    return this.zoomAuth.createAuthorizationUrl(user.id);
   }
 
   @Public()
@@ -67,13 +77,13 @@ export class ZoomMeetingsController {
     if (!code || !state) {
       throw new BadRequestException('Zoom OAuth code and state are required');
     }
-    return this.meetings.completeZoomAuthorization(code, state);
+    return this.zoomAuth.completeAuthorization(code, state);
   }
 
   @Get('oauth/connection')
   @UseGuards(PlatformAdminGuard)
   getZoomConnection() {
-    return this.meetings.getZoomConnection();
+    return this.zoomAuth.getConnection();
   }
 
   @Get(':id')
@@ -82,7 +92,7 @@ export class ZoomMeetingsController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
   ) {
-    return this.meetings.get(organization.id, id);
+    return this.meetings.get(organization.id, id, MeetingPlatform.ZOOM);
   }
 
   @Get(':id/transcript')
@@ -91,7 +101,11 @@ export class ZoomMeetingsController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
   ) {
-    return this.meetings.getTranscript(organization.id, id);
+    return this.meetings.getTranscript(
+      organization.id,
+      id,
+      MeetingPlatform.ZOOM,
+    );
   }
 
   @Get(':id/audio')
@@ -100,7 +114,7 @@ export class ZoomMeetingsController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
   ) {
-    return this.meetings.getAudio(organization.id, id);
+    return this.meetings.getAudio(organization.id, id, MeetingPlatform.ZOOM);
   }
 
   @Patch(':id')
@@ -108,9 +122,14 @@ export class ZoomMeetingsController {
   updateScheduled(
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
-    @Body() input: UpdateZoomMeetingDto,
+    @Body() input: UpdateMeetingBotDto,
   ) {
-    return this.meetings.updateScheduled(organization.id, id, input);
+    return this.meetings.updateScheduled(
+      organization.id,
+      id,
+      input,
+      MeetingPlatform.ZOOM,
+    );
   }
 
   @Delete(':id')
@@ -119,7 +138,7 @@ export class ZoomMeetingsController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
   ) {
-    return this.meetings.cancel(organization.id, id);
+    return this.meetings.cancel(organization.id, id, MeetingPlatform.ZOOM);
   }
 
   @Post(':id/leave')
@@ -128,6 +147,6 @@ export class ZoomMeetingsController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
   ) {
-    return this.meetings.leave(organization.id, id);
+    return this.meetings.leave(organization.id, id, MeetingPlatform.ZOOM);
   }
 }

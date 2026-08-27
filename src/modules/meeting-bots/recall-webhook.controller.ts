@@ -13,9 +13,9 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { RecallSignatureGuard } from './guards/recall-signature.guard';
-import { RecallWebhookPayload } from './providers/recall-zoom.provider';
-import { ZoomMeetingsQueue } from './zoom-meetings.queue';
-import { ZoomMeetingsService } from './zoom-meetings.service';
+import { MeetingBotsQueue } from './meeting-bots.queue';
+import { RecallWebhookPayload } from './providers/recall.types';
+import { ZoomAuthService } from './zoom-auth.service';
 
 type VerifiedRecallRequest = { recallMessageId: string };
 
@@ -25,8 +25,8 @@ type VerifiedRecallRequest = { recallMessageId: string };
 @UseGuards(RecallSignatureGuard)
 export class RecallWebhookController {
   constructor(
-    private readonly queue: ZoomMeetingsQueue,
-    private readonly meetings: ZoomMeetingsService,
+    private readonly queue: MeetingBotsQueue,
+    private readonly zoomAuth: ZoomAuthService,
   ) {}
 
   @Post()
@@ -41,7 +41,7 @@ export class RecallWebhookController {
 
   @Get('zoom-zak')
   async zoomZak(@Res() response: Response) {
-    const token = await this.meetings.getZakToken();
+    const token = await this.zoomAuth.getZakToken();
     response.status(HttpStatus.OK).type('text/plain').send(token);
   }
 }

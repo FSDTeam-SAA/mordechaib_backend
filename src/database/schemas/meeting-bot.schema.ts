@@ -1,11 +1,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import { ZoomMeetingStatus } from '../../common/enums/zoom-meeting-status.enum';
+import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 
-export type ZoomMeetingDocument = HydratedDocument<ZoomMeeting>;
+export type MeetingBotDocument = HydratedDocument<MeetingBot>;
 
-@Schema({ timestamps: true, collection: 'zoom_meetings' })
-export class ZoomMeeting {
+@Schema({ timestamps: true, collection: 'meeting_bots' })
+export class MeetingBot {
+  @Prop({ required: true, enum: Object.values(MeetingPlatform), index: true })
+  platform!: MeetingPlatform;
+
   @Prop({ required: true, index: true })
   organizationId!: string;
 
@@ -41,11 +45,11 @@ export class ZoomMeeting {
 
   @Prop({
     required: true,
-    enum: Object.values(ZoomMeetingStatus),
-    default: ZoomMeetingStatus.PENDING,
+    enum: Object.values(MeetingBotStatus),
+    default: MeetingBotStatus.PENDING,
     index: true,
   })
-  status!: ZoomMeetingStatus;
+  status!: MeetingBotStatus;
 
   @Prop()
   recallStatusCode?: string;
@@ -54,10 +58,16 @@ export class ZoomMeeting {
   recallSubCode?: string;
 
   @Prop()
+  failureCode?: string;
+
+  @Prop()
   failureMessage?: string;
 
+  @Prop({ required: true, default: 'RECALL' })
+  audioStorageProvider!: string;
+
   @Prop({ select: false })
-  audioDownloadUrl?: string;
+  audioStorageReference?: string;
 
   @Prop()
   mediaExpiresAt?: Date;
@@ -72,7 +82,12 @@ export class ZoomMeeting {
   metadata?: Record<string, unknown>;
 }
 
-export const ZoomMeetingSchema = SchemaFactory.createForClass(ZoomMeeting);
-ZoomMeetingSchema.index({ organizationId: 1, createdAt: -1 });
-ZoomMeetingSchema.index({ organizationId: 1, status: 1, joinAt: 1 });
-ZoomMeetingSchema.index({ organizationId: 1, meetingUrlHash: 1, status: 1 });
+export const MeetingBotSchema = SchemaFactory.createForClass(MeetingBot);
+MeetingBotSchema.index({ organizationId: 1, platform: 1, createdAt: -1 });
+MeetingBotSchema.index({
+  organizationId: 1,
+  platform: 1,
+  status: 1,
+  joinAt: 1,
+});
+MeetingBotSchema.index({ organizationId: 1, meetingUrlHash: 1, status: 1 });

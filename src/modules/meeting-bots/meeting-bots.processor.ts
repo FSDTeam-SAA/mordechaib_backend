@@ -1,36 +1,38 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job, UnrecoverableError } from 'bullmq';
-import { RecallApiError } from './providers/recall-zoom.provider';
 import {
-  CREATE_ZOOM_BOT_JOB,
-  CreateZoomBotJob,
+  CREATE_MEETING_BOT_JOB,
+  CreateMeetingBotJob,
   PROCESS_RECALL_WEBHOOK_JOB,
   ProcessRecallWebhookJob,
-  RECALL_ZOOM_QUEUE,
-} from './zoom-meetings.queue';
-import { ZoomMeetingsService } from './zoom-meetings.service';
+  RECALL_MEETINGS_QUEUE,
+} from './meeting-bots.queue';
+import { MeetingBotsService } from './meeting-bots.service';
+import { RecallApiError } from './providers/recall.types';
 
-@Processor(RECALL_ZOOM_QUEUE, { concurrency: 10 })
-export class ZoomMeetingsProcessor extends WorkerHost {
-  private readonly logger = new Logger(ZoomMeetingsProcessor.name);
+@Processor(RECALL_MEETINGS_QUEUE, { concurrency: 10 })
+export class MeetingBotsProcessor extends WorkerHost {
+  private readonly logger = new Logger(MeetingBotsProcessor.name);
 
-  constructor(private readonly meetings: ZoomMeetingsService) {
+  constructor(private readonly meetings: MeetingBotsService) {
     super();
   }
 
   async process(job: Job) {
     switch (job.name) {
-      case CREATE_ZOOM_BOT_JOB:
-        return this.createBot(job as Job<CreateZoomBotJob>);
+      case CREATE_MEETING_BOT_JOB:
+        return this.createBot(job as Job<CreateMeetingBotJob>);
       case PROCESS_RECALL_WEBHOOK_JOB:
         return this.processWebhook(job as Job<ProcessRecallWebhookJob>);
       default:
-        throw new UnrecoverableError(`Unsupported Zoom queue job: ${job.name}`);
+        throw new UnrecoverableError(
+          `Unsupported meeting bot queue job: ${job.name}`,
+        );
     }
   }
 
-  private async createBot(job: Job<CreateZoomBotJob>) {
+  private async createBot(job: Job<CreateMeetingBotJob>) {
     try {
       await this.meetings.processBotCreation(job.data.meetingId);
     } catch (error) {
@@ -42,12 +44,14 @@ export class ZoomMeetingsProcessor extends WorkerHost {
         await this.meetings.markBotCreationFailed(job.data.meetingId, error);
       }
       this.logger.error(
-        `Zoom bot creation failed for meeting ${job.data.meetingId} on attempt ${job.attemptsMade + 1}`,
+        `Meeting bot creation failed for ${job.data.meetingId} on attempt ${job.attemptsMade + 1}`,
         error instanceof Error ? error.stack : undefined,
       );
       if (!retryable) {
         throw new UnrecoverableError(
-          error instanceof Error ? error.message : 'Zoom bot creation failed',
+          error instanceof Error
+            ? error.message
+            : 'Meeting bot creation failed',
         );
       }
       throw error;

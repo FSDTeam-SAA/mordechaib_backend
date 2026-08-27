@@ -2,15 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import {
-  ACTIVE_ZOOM_MEETING_STATUSES,
-  ZoomMeetingStatus,
-} from '../../common/enums/zoom-meeting-status.enum';
+  ACTIVE_MEETING_BOT_STATUSES,
+  MeetingBotStatus,
+} from '../../common/enums/meeting-bot-status.enum';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
+import { MeetingBot } from '../../database/schemas/meeting-bot.schema';
+import { MeetingTranscript } from '../../database/schemas/meeting-transcript.schema';
 import { RecallWebhookEvent } from '../../database/schemas/recall-webhook-event.schema';
-import { RecallZoomConnection } from '../../database/schemas/recall-zoom-connection.schema';
-import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-transcript.schema';
-import { ZoomMeeting } from '../../database/schemas/zoom-meeting.schema';
 
-export type CreateStoredZoomMeeting = {
+export type CreateStoredMeetingBot = {
+  platform: MeetingPlatform;
   organizationId: string;
   createdByUserId: string;
   deduplicationKey: string;
@@ -23,19 +24,17 @@ export type CreateStoredZoomMeeting = {
 };
 
 @Injectable()
-export class ZoomMeetingsRepository {
+export class MeetingBotsRepository {
   constructor(
-    @InjectModel(ZoomMeeting.name)
-    private readonly meetingModel: Model<ZoomMeeting>,
-    @InjectModel(ZoomMeetingTranscript.name)
-    private readonly transcriptModel: Model<ZoomMeetingTranscript>,
-    @InjectModel(RecallZoomConnection.name)
-    private readonly connectionModel: Model<RecallZoomConnection>,
+    @InjectModel(MeetingBot.name)
+    private readonly meetingModel: Model<MeetingBot>,
+    @InjectModel(MeetingTranscript.name)
+    private readonly transcriptModel: Model<MeetingTranscript>,
     @InjectModel(RecallWebhookEvent.name)
     private readonly webhookEventModel: Model<RecallWebhookEvent>,
   ) {}
 
-  async createOrFind(input: CreateStoredZoomMeeting) {
+  async createOrFind(input: CreateStoredMeetingBot) {
     const id = new Types.ObjectId();
     try {
       const meeting = await this.meetingModel
@@ -45,7 +44,8 @@ export class ZoomMeetingsRepository {
             $setOnInsert: {
               _id: id,
               ...input,
-              status: ZoomMeetingStatus.PENDING,
+              status: MeetingBotStatus.PENDING,
+              audioStorageProvider: 'RECALL',
             },
           },
           { new: true, upsert: true, runValidators: true },
@@ -72,7 +72,7 @@ export class ZoomMeetingsRepository {
   findInternalById(id: string) {
     return this.meetingModel
       .findById(id)
-      .select('+meetingUrlEncrypted')
+      .select('+meetingUrlEncrypted +audioStorageReference')
       .lean()
       .exec();
   }
@@ -80,23 +80,29 @@ export class ZoomMeetingsRepository {
   async claimBotCreation(id: string) {
     const claimed = await this.meetingModel
       .findOneAndUpdate(
-        { _id: id, status: ZoomMeetingStatus.PENDING },
-        { $set: { status: ZoomMeetingStatus.CREATING } },
+        { _id: id, status: MeetingBotStatus.PENDING },
+        { $set: { status: MeetingBotStatus.CREATING } },
         { new: true, runValidators: true },
       )
       .select('+meetingUrlEncrypted')
       .lean()
       .exec();
     if (claimed) return claimed;
-
     const existing = await this.findInternalById(id);
-    return existing?.status === ZoomMeetingStatus.CREATING
+    return existing?.status === MeetingBotStatus.CREATING
       ? existing
       : undefined;
   }
 
-  findByIdForOrganization(id: string, organizationId: string) {
-    return this.meetingModel.findOne({ _id: id, organizationId }).lean().exec();
+  findByIdForOrganization(
+    id: string,
+    organizationId: string,
+    platform?: MeetingPlatform,
+  ) {
+    return this.meetingModel
+      .findOne({ _id: id, organizationId, ...(platform ? { platform } : {}) })
+      .lean()
+      .exec();
   }
 
   findByRecallBotId(recallBotId: string) {
@@ -109,9 +115,7 @@ export class ZoomMeetingsRepository {
 
   findDuplicate(deduplicationKey: string, activeMeetingKey: string) {
     return this.meetingModel
-      .findOne({
-        $or: [{ deduplicationKey }, { activeMeetingKey }],
-      })
+      .findOne({ $or: [{ deduplicationKey }, { activeMeetingKey }] })
       .lean()
       .exec();
   }
@@ -124,10 +128,14 @@ export class ZoomMeetingsRepository {
     organizationId: string,
     page: number,
     limit: number,
-    status?: ZoomMeetingStatus,
+    status?: MeetingBotStatus,
+    platform?: MeetingPlatform,
   ) {
-    const filter: FilterQuery<ZoomMeeting> = { organizationId };
-    if (status) filter.status = status;
+    const filter: FilterQuery<MeetingBot> = {
+      organizationId,
+      ...(status ? { status } : {}),
+      ...(platform ? { platform } : {}),
+    };
     const [items, total] = await Promise.all([
       this.meetingModel
         .find(filter)
@@ -146,9 +154,9 @@ export class ZoomMeetingsRepository {
       .countDocuments({
         ...(organizationId ? { organizationId } : {}),
         $or: [
-          { status: { $in: [...ACTIVE_ZOOM_MEETING_STATUSES] } },
+          { status: { $in: [...ACTIVE_MEETING_BOT_STATUSES] } },
           {
-            status: ZoomMeetingStatus.PENDING,
+            status: MeetingBotStatus.PENDING,
             $or: [
               { joinAt: { $exists: false } },
               { joinAt: { $lte: new Date(Date.now() + 10 * 60 * 1000) } },
@@ -159,7 +167,7 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  updateById(id: string, input: Partial<ZoomMeeting>) {
+  updateById(id: string, input: Partial<MeetingBot>) {
     return this.meetingModel
       .findByIdAndUpdate(id, this.meetingUpdate(input), {
         new: true,
@@ -169,7 +177,7 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  updateByRecallBotId(recallBotId: string, input: Partial<ZoomMeeting>) {
+  updateByRecallBotId(recallBotId: string, input: Partial<MeetingBot>) {
     return this.meetingModel
       .findOneAndUpdate({ recallBotId }, this.meetingUpdate(input), {
         new: true,
@@ -182,11 +190,11 @@ export class ZoomMeetingsRepository {
   attachBotIfPending(
     id: string,
     recallBotId: string,
-    status: ZoomMeetingStatus,
+    status: MeetingBotStatus,
   ) {
     return this.meetingModel
       .findOneAndUpdate(
-        { _id: id, status: ZoomMeetingStatus.CREATING },
+        { _id: id, status: MeetingBotStatus.CREATING },
         { $set: { recallBotId, status } },
         { new: true, runValidators: true },
       )
@@ -194,18 +202,23 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  markBotCreationFailedIfPending(id: string, failureMessage: string) {
+  markBotCreationFailedIfPending(
+    id: string,
+    failureCode: string,
+    failureMessage: string,
+  ) {
     return this.meetingModel
       .findOneAndUpdate(
         {
           _id: id,
           status: {
-            $in: [ZoomMeetingStatus.PENDING, ZoomMeetingStatus.CREATING],
+            $in: [MeetingBotStatus.PENDING, MeetingBotStatus.CREATING],
           },
         },
         {
           $set: {
-            status: ZoomMeetingStatus.FAILED,
+            status: MeetingBotStatus.FAILED,
+            failureCode,
             failureMessage,
           },
           $unset: { activeMeetingKey: 1 },
@@ -216,7 +229,7 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  async claimTranscription(recordingId: string, recallBotId?: string) {
+  claimTranscription(recordingId: string, recallBotId?: string) {
     return this.meetingModel
       .findOneAndUpdate(
         {
@@ -227,7 +240,7 @@ export class ZoomMeetingsRepository {
           $set: {
             recordingId,
             transcriptionRequestedAt: new Date(),
-            status: ZoomMeetingStatus.PROCESSING,
+            status: MeetingBotStatus.PROCESSING,
           },
         },
         { new: true },
@@ -244,6 +257,7 @@ export class ZoomMeetingsRepository {
 
   upsertTranscript(input: {
     meetingId: string;
+    platform: MeetingPlatform;
     organizationId: string;
     recordingId: string;
     transcriptId: string;
@@ -270,35 +284,6 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  getConnection() {
-    return this.connectionModel
-      .findOne({ key: 'SIGNED_IN_ZOOM_BOT', status: 'CONNECTED' })
-      .lean()
-      .exec();
-  }
-
-  upsertConnection(input: {
-    recallOAuthAppId: string;
-    recallCredentialId: string;
-    connectedByUserId: string;
-    metadata?: Record<string, unknown>;
-  }) {
-    return this.connectionModel
-      .findOneAndUpdate(
-        { key: 'SIGNED_IN_ZOOM_BOT' },
-        {
-          $set: {
-            ...input,
-            key: 'SIGNED_IN_ZOOM_BOT',
-            status: 'CONNECTED',
-          },
-        },
-        { new: true, upsert: true, runValidators: true },
-      )
-      .lean()
-      .exec();
-  }
-
   async claimWebhookEvent(eventId: string, eventType: string) {
     const existing = await this.webhookEventModel.findOne({ eventId }).exec();
     if (existing?.status === 'PROCESSED') {
@@ -318,12 +303,7 @@ export class ZoomMeetingsRepository {
       });
       return { claimed: true, event: event.toObject() };
     } catch (error) {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === 11000
-      ) {
+      if (this.isDuplicateKeyError(error)) {
         return { claimed: false, event: undefined };
       }
       throw error;
@@ -355,13 +335,13 @@ export class ZoomMeetingsRepository {
       .exec();
   }
 
-  private meetingUpdate(input: Partial<ZoomMeeting>) {
+  private meetingUpdate(input: Partial<MeetingBot>) {
     const terminal =
       input.status !== undefined &&
       [
-        ZoomMeetingStatus.COMPLETED,
-        ZoomMeetingStatus.FAILED,
-        ZoomMeetingStatus.CANCELLED,
+        MeetingBotStatus.COMPLETED,
+        MeetingBotStatus.FAILED,
+        MeetingBotStatus.CANCELLED,
       ].includes(input.status);
     return {
       $set: input,

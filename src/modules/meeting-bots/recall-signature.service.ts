@@ -19,7 +19,6 @@ export class RecallSignatureService {
         'Recall webhook verification is not configured',
       );
     }
-
     const messageId = this.header(headers, 'webhook-id', 'svix-id');
     const timestamp = this.header(
       headers,
@@ -34,7 +33,6 @@ export class RecallSignatureService {
     if (!messageId || !timestamp || !signature) {
       throw new UnauthorizedException('Missing Recall webhook signature');
     }
-
     const timestampSeconds = Number(timestamp);
     if (
       !Number.isFinite(timestampSeconds) ||
@@ -42,14 +40,12 @@ export class RecallSignatureService {
     ) {
       throw new UnauthorizedException('Recall webhook timestamp is invalid');
     }
-
     const key = Buffer.from(secret.slice('whsec_'.length), 'base64');
     const signedContent = `${messageId}.${timestamp}.${rawPayload?.toString('utf8') ?? ''}`;
     const expected = crypto
       .createHmac('sha256', key)
       .update(signedContent)
       .digest();
-
     const valid = signature.split(' ').some((item) => {
       const [version, encoded] = item.split(',');
       if (version !== 'v1' || !encoded) return false;

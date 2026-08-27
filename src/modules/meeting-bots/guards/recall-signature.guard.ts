@@ -2,9 +2,9 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { RecallSignatureService } from '../recall-signature.service';
 
 type RecallRequest = {
+  headers: Record<string, string | string[] | undefined>;
   method: string;
   rawBody?: Buffer;
-  headers: Record<string, string | string[] | undefined>;
   recallMessageId?: string;
 };
 

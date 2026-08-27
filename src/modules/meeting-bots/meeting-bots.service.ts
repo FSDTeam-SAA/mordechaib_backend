@@ -4,76 +4,86 @@ import {
   ConflictException,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
-import { ZoomMeetingStatus } from '../../common/enums/zoom-meeting-status.enum';
+import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { decryptText, encryptText } from '../../common/helpers/crypto.helper';
-import { CreateZoomMeetingDto } from './dto/create-zoom-meeting.dto';
-import { ListZoomMeetingsQueryDto } from './dto/list-zoom-meetings-query.dto';
-import { UpdateZoomMeetingDto } from './dto/update-zoom-meeting.dto';
+import { CreatePlatformMeetingDto } from './dto/create-platform-meeting.dto';
+import { ListMeetingBotsQueryDto } from './dto/list-meeting-bots-query.dto';
+import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
+import {
+  normalizeMeetingUrl,
+  parseMeetingUrl,
+} from './helpers/meeting-url.helper';
+import {
+  mapRecallBotStatus,
+  recallFailure,
+} from './helpers/recall-status.mapper';
+import { MeetingBotsQueue } from './meeting-bots.queue';
+import { MeetingBotsRepository } from './meeting-bots.repository';
+import { RecallMeetingProvider } from './providers/recall-meeting.provider';
 import {
   RecallApiError,
   RecallRecording,
   RecallWebhookPayload,
-  RecallZoomProvider,
-} from './providers/recall-zoom.provider';
-import { ZoomMeetingsQueue } from './zoom-meetings.queue';
-import { ZoomMeetingsRepository } from './zoom-meetings.repository';
-
-type ZoomOAuthState = {
-  userId: string;
-  issuedAt: number;
-  nonce: string;
-};
+} from './providers/recall.types';
+import {
+  MEETING_AUDIO_STORAGE,
+  MeetingAudioStorage,
+} from './storage/meeting-audio-storage.interface';
+import { ZoomAuthService } from './zoom-auth.service';
 
 @Injectable()
-export class ZoomMeetingsService {
+export class MeetingBotsService {
   constructor(
-    private readonly repository: ZoomMeetingsRepository,
-    private readonly provider: RecallZoomProvider,
-    private readonly queue: ZoomMeetingsQueue,
+    private readonly repository: MeetingBotsRepository,
+    private readonly provider: RecallMeetingProvider,
+    private readonly queue: MeetingBotsQueue,
+    private readonly zoomAuth: ZoomAuthService,
     private readonly config: ConfigService,
+    @Inject(MEETING_AUDIO_STORAGE)
+    private readonly audioStorage: MeetingAudioStorage,
   ) {}
 
   async create(
     organizationId: string,
     userId: string,
-    input: CreateZoomMeetingDto,
+    platform: MeetingPlatform,
+    input: CreatePlatformMeetingDto,
   ) {
     this.assertRecallConfigured();
+    parseMeetingUrl(input.meetingUrl, platform);
     const joinAt = input.joinAt ? new Date(input.joinAt) : undefined;
     if (joinAt && joinAt.getTime() <= Date.now()) {
       throw new BadRequestException('joinAt must be in the future');
     }
-    if (this.signedInZoom && !(await this.repository.getConnection())) {
-      throw new ServiceUnavailableException(
-        'The signed-in Zoom service account is not connected',
-      );
+    if (platform === MeetingPlatform.ZOOM) {
+      await this.zoomAuth.assertConnected();
     }
 
-    const normalizedUrl = this.normalizeMeetingUrl(input.meetingUrl);
-    const meetingUrlHash = this.hash(normalizedUrl);
+    const meetingUrlHash = this.hash(
+      normalizeMeetingUrl(input.meetingUrl, platform),
+    );
     const activeMeetingKey = this.hash(
-      `${organizationId}|${meetingUrlHash}|${joinAt?.toISOString() || 'AD_HOC'}`,
+      `${platform}|${organizationId}|${meetingUrlHash}|${joinAt?.toISOString() || 'AD_HOC'}`,
     );
     const deduplicationKey = this.hash(
       input.idempotencyKey
-        ? `${organizationId}|client|${input.idempotencyKey}`
+        ? `${platform}|${organizationId}|client|${input.idempotencyKey}`
         : `${activeMeetingKey}|request|${crypto.randomUUID()}`,
     );
     const duplicate = await this.repository.findDuplicate(
       deduplicationKey,
       activeMeetingKey,
     );
-    if (duplicate) {
-      return { ...this.toPublicMeeting(duplicate), duplicate: true };
-    }
+    if (duplicate) return { ...duplicate, duplicate: true };
 
     const [globalActive, organizationActive] = await Promise.all([
       this.repository.countActive(),
@@ -81,18 +91,19 @@ export class ZoomMeetingsService {
     ]);
     if (globalActive >= this.maxConcurrentMeetings) {
       throw new HttpException(
-        'The global concurrent Zoom meeting limit has been reached',
+        'The global concurrent meeting bot limit has been reached',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
     if (organizationActive >= this.maxConcurrentMeetingsPerOrganization) {
       throw new HttpException(
-        'The organization concurrent Zoom meeting limit has been reached',
+        'The organization concurrent meeting bot limit has been reached',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
     const result = await this.repository.createOrFind({
+      platform,
       organizationId,
       createdByUserId: userId,
       deduplicationKey,
@@ -109,104 +120,126 @@ export class ZoomMeetingsService {
         await this.queue.enqueueBotCreation(String(result.meeting._id));
       } catch {
         await this.repository.updateById(String(result.meeting._id), {
-          status: ZoomMeetingStatus.FAILED,
-          failureMessage: 'The Zoom meeting job could not be queued',
+          status: MeetingBotStatus.FAILED,
+          failureCode: 'QUEUE_UNAVAILABLE',
+          failureMessage: 'The meeting bot job could not be queued',
         });
         throw new ServiceUnavailableException(
-          'The Zoom meeting could not be queued',
+          'The meeting bot could not be queued',
         );
       }
     }
-    return {
-      ...this.toPublicMeeting(result.meeting),
-      duplicate: !result.created,
-    };
+    return { ...result.meeting, duplicate: !result.created };
   }
 
-  list(organizationId: string, query: ListZoomMeetingsQueryDto) {
+  list(
+    organizationId: string,
+    query: ListMeetingBotsQueryDto,
+    requiredPlatform?: MeetingPlatform,
+  ) {
     return this.repository.list(
       organizationId,
       query.page,
       query.limit,
       query.status,
+      requiredPlatform || query.platform,
     );
   }
 
-  async get(organizationId: string, id: string) {
+  async get(
+    organizationId: string,
+    id: string,
+    requiredPlatform?: MeetingPlatform,
+  ) {
     this.assertObjectId(id);
     const meeting = await this.repository.findByIdForOrganization(
       id,
       organizationId,
+      requiredPlatform,
     );
-    if (!meeting) throw new NotFoundException('Zoom meeting not found');
+    if (!meeting) throw new NotFoundException('Meeting bot not found');
     return meeting;
   }
 
-  async getTranscript(organizationId: string, id: string) {
-    await this.get(organizationId, id);
+  async getTranscript(
+    organizationId: string,
+    id: string,
+    requiredPlatform?: MeetingPlatform,
+  ) {
+    await this.get(organizationId, id, requiredPlatform);
     const transcript = await this.repository.findTranscript(id, organizationId);
     if (!transcript) {
-      throw new NotFoundException('Zoom meeting transcript is not ready');
+      throw new NotFoundException('Meeting transcript is not ready');
     }
     return transcript;
   }
 
-  async getAudio(organizationId: string, id: string) {
-    const meeting = await this.get(organizationId, id);
-    if (!meeting.recordingId) {
-      throw new NotFoundException('Zoom meeting audio is not ready');
+  async getAudio(
+    organizationId: string,
+    id: string,
+    requiredPlatform?: MeetingPlatform,
+  ) {
+    this.assertObjectId(id);
+    const meeting = await this.repository.findInternalById(id);
+    if (
+      !meeting ||
+      meeting.organizationId !== organizationId ||
+      (requiredPlatform && meeting.platform !== requiredPlatform)
+    ) {
+      throw new NotFoundException('Meeting bot not found');
     }
-    let recording: RecallRecording;
+    const reference = meeting.audioStorageReference || meeting.recordingId;
+    if (!reference) throw new NotFoundException('Meeting audio is not ready');
+
     try {
-      recording = await this.provider.retrieveRecording(meeting.recordingId);
+      const audio = await this.audioStorage.getDownload(reference);
+      if (audio.expiresAt) {
+        await this.repository.updateById(id, {
+          mediaExpiresAt: audio.expiresAt,
+        });
+      }
+      return audio;
     } catch (error) {
       if (
         error instanceof RecallApiError &&
         [404, 410].includes(error.status)
       ) {
         throw new NotFoundException(
-          'Zoom meeting audio is unavailable or has expired',
+          'Meeting audio is unavailable or has expired',
         );
       }
       throw error;
     }
-    const downloadUrl =
-      recording.media_shortcuts?.audio_mixed?.data?.download_url;
-    if (!downloadUrl) {
-      throw new NotFoundException(
-        'Zoom meeting audio is unavailable or has expired',
-      );
-    }
-    await this.storeRecordingMedia(id, recording);
-    return {
-      downloadUrl,
-      expiresAt: recording.expires_at || meeting.mediaExpiresAt,
-      storageProvider: 'RECALL',
-    };
   }
 
   async updateScheduled(
     organizationId: string,
     id: string,
-    input: UpdateZoomMeetingDto,
+    input: UpdateMeetingBotDto,
+    requiredPlatform?: MeetingPlatform,
   ) {
     if (!input.meetingUrl && !input.joinAt && !input.botName) {
       throw new BadRequestException('At least one update field is required');
     }
     this.assertObjectId(id);
     const meeting = await this.repository.findInternalById(id);
-    if (!meeting || meeting.organizationId !== organizationId) {
-      throw new NotFoundException('Zoom meeting not found');
+    if (
+      !meeting ||
+      meeting.organizationId !== organizationId ||
+      (requiredPlatform && meeting.platform !== requiredPlatform)
+    ) {
+      throw new NotFoundException('Meeting bot not found');
     }
     if (
-      ![ZoomMeetingStatus.PENDING, ZoomMeetingStatus.SCHEDULED].includes(
+      ![MeetingBotStatus.PENDING, MeetingBotStatus.SCHEDULED].includes(
         meeting.status,
       )
     ) {
       throw new ConflictException(
-        'Only pending or scheduled meetings can be updated',
+        'Only pending or scheduled meeting bots can be updated',
       );
     }
+
     const joinAt = input.joinAt ? new Date(input.joinAt) : meeting.joinAt;
     if (joinAt && joinAt.getTime() <= Date.now() + 10 * 60 * 1000) {
       throw new BadRequestException(
@@ -216,15 +249,18 @@ export class ZoomMeetingsService {
     const meetingUrl =
       input.meetingUrl ||
       decryptText(meeting.meetingUrlEncrypted, this.encryptionKey);
-    const meetingUrlHash = this.hash(this.normalizeMeetingUrl(meetingUrl));
+    parseMeetingUrl(meetingUrl, meeting.platform);
+    const meetingUrlHash = this.hash(
+      normalizeMeetingUrl(meetingUrl, meeting.platform),
+    );
     const activeMeetingKey = this.hash(
-      `${organizationId}|${meetingUrlHash}|${joinAt?.toISOString() || 'AD_HOC'}`,
+      `${meeting.platform}|${organizationId}|${meetingUrlHash}|${joinAt?.toISOString() || 'AD_HOC'}`,
     );
     const duplicate =
       await this.repository.findByActiveMeetingKey(activeMeetingKey);
     if (duplicate && String(duplicate._id) !== id) {
       throw new ConflictException(
-        'A bot already exists for this Zoom meeting occurrence',
+        'A bot already exists for this meeting occurrence',
       );
     }
 
@@ -248,24 +284,28 @@ export class ZoomMeetingsService {
     });
   }
 
-  async cancel(organizationId: string, id: string) {
-    const meeting = await this.get(organizationId, id);
+  async cancel(
+    organizationId: string,
+    id: string,
+    requiredPlatform?: MeetingPlatform,
+  ) {
+    const meeting = await this.get(organizationId, id, requiredPlatform);
     if (
       ![
-        ZoomMeetingStatus.PENDING,
-        ZoomMeetingStatus.CREATING,
-        ZoomMeetingStatus.SCHEDULED,
-        ZoomMeetingStatus.JOINING,
-        ZoomMeetingStatus.WAITING_ROOM,
+        MeetingBotStatus.PENDING,
+        MeetingBotStatus.CREATING,
+        MeetingBotStatus.SCHEDULED,
+        MeetingBotStatus.JOINING,
+        MeetingBotStatus.WAITING_ROOM,
       ].includes(meeting.status)
     ) {
       throw new ConflictException(
-        'This Zoom meeting can no longer be cancelled',
+        'This meeting bot can no longer be cancelled',
       );
     }
     if (meeting.recallBotId) {
       if (
-        [ZoomMeetingStatus.JOINING, ZoomMeetingStatus.WAITING_ROOM].includes(
+        [MeetingBotStatus.JOINING, MeetingBotStatus.WAITING_ROOM].includes(
           meeting.status,
         )
       ) {
@@ -275,73 +315,31 @@ export class ZoomMeetingsService {
       }
     }
     return this.repository.updateById(id, {
-      status: ZoomMeetingStatus.CANCELLED,
+      status: MeetingBotStatus.CANCELLED,
     });
   }
 
-  async leave(organizationId: string, id: string) {
-    const meeting = await this.get(organizationId, id);
+  async leave(
+    organizationId: string,
+    id: string,
+    requiredPlatform?: MeetingPlatform,
+  ) {
+    const meeting = await this.get(organizationId, id, requiredPlatform);
     if (!meeting.recallBotId) {
       throw new ConflictException('The Recall bot has not been created');
     }
     if (
       ![
-        ZoomMeetingStatus.JOINING,
-        ZoomMeetingStatus.WAITING_ROOM,
-        ZoomMeetingStatus.IN_CALL,
-        ZoomMeetingStatus.RECORDING,
+        MeetingBotStatus.JOINING,
+        MeetingBotStatus.WAITING_ROOM,
+        MeetingBotStatus.IN_CALL,
+        MeetingBotStatus.RECORDING,
       ].includes(meeting.status)
     ) {
       throw new ConflictException('The Recall bot is not in the meeting');
     }
     await this.provider.removeBotFromCall(meeting.recallBotId);
     return { leaving: true, recallBotId: meeting.recallBotId };
-  }
-
-  createZoomAuthorizationUrl(userId: string) {
-    return {
-      authorizationUrl: this.provider.getZoomAuthorizationUrl(
-        this.createOAuthState(userId),
-      ),
-    };
-  }
-
-  async completeZoomAuthorization(code: string, state: string) {
-    const context = this.verifyOAuthState(state);
-    const credential = await this.provider.createZoomOAuthCredential(code);
-    const connection = await this.repository.upsertConnection({
-      recallOAuthAppId: this.config.getOrThrow<string>(
-        'recall.zoom.oauthAppId',
-      ),
-      recallCredentialId: credential.id,
-      connectedByUserId: context.userId,
-    });
-    return {
-      connected: true,
-      status: connection?.status,
-    };
-  }
-
-  async getZoomConnection() {
-    const connection = await this.repository.getConnection();
-    return connection
-      ? {
-          connected: true,
-          status: connection.status,
-          recallOAuthAppId: connection.recallOAuthAppId,
-          connectedByUserId: connection.connectedByUserId,
-        }
-      : { connected: false };
-  }
-
-  async getZakToken() {
-    const connection = await this.repository.getConnection();
-    if (!connection) {
-      throw new ServiceUnavailableException(
-        'The signed-in Zoom service account is not connected',
-      );
-    }
-    return this.provider.getZakToken(connection.recallCredentialId);
   }
 
   async processBotCreation(meetingId: string) {
@@ -352,25 +350,39 @@ export class ZoomMeetingsService {
       this.encryptionKey,
     );
     const meetingIdValue = String(meeting._id);
-    const existingBot = await this.provider.findBotByMetadata(
-      'zoom_meeting_id',
+    let existingBot = await this.provider.findBotByMetadata(
+      'meeting_bot_id',
       meetingIdValue,
     );
+    if (!existingBot && meeting.platform === MeetingPlatform.ZOOM) {
+      existingBot = await this.provider.findBotByMetadata(
+        'zoom_meeting_id',
+        meetingIdValue,
+      );
+    }
     const bot =
       existingBot ||
       (await this.provider.createBot({
+        platform: meeting.platform,
         meetingUrl,
         joinAt: meeting.joinAt,
         botName: meeting.botName,
         retentionHours: this.retentionHours,
         consentMessage: this.consentMessage,
-        zakUrl: this.signedInZoom
-          ? `${this.publicBaseUrl}/api/v1/webhooks/recall/zoom-zak`
-          : undefined,
+        zoomZakUrl:
+          meeting.platform === MeetingPlatform.ZOOM &&
+          this.zoomAuth.signedInEnabled
+            ? this.zoomAuth.zakCallbackUrl
+            : undefined,
+        googleMeetLoginGroupId:
+          meeting.platform === MeetingPlatform.GOOGLE_MEET
+            ? this.googleMeetLoginGroupId
+            : undefined,
         metadata: {
+          meeting_bot_id: meetingIdValue,
+          platform: meeting.platform,
           organization_id: meeting.organizationId,
           user_id: meeting.createdByUserId,
-          zoom_meeting_id: meetingIdValue,
         },
       }));
     const scheduled =
@@ -379,25 +391,28 @@ export class ZoomMeetingsService {
     const attached = await this.repository.attachBotIfPending(
       meetingId,
       bot.id,
-      scheduled ? ZoomMeetingStatus.SCHEDULED : ZoomMeetingStatus.JOINING,
+      scheduled ? MeetingBotStatus.SCHEDULED : MeetingBotStatus.JOINING,
     );
     if (!attached) {
-      // The request was cancelled while Recall was creating the bot.
       if (scheduled) await this.provider.deleteScheduledBot(bot.id);
       else await this.provider.removeBotFromCall(bot.id);
     }
   }
 
-  async markBotCreationFailed(meetingId: string, error: unknown) {
+  markBotCreationFailed(meetingId: string, error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Recall bot creation failed';
     return this.repository.markBotCreationFailedIfPending(
       meetingId,
+      'BOT_CREATION_FAILED',
       message.slice(0, 1000),
     );
   }
 
   async processWebhook(eventId: string, payload: RecallWebhookPayload) {
+    if (!payload.event || typeof payload.event !== 'string') {
+      throw new BadRequestException('Recall webhook event is required');
+    }
     const claim = await this.repository.claimWebhookEvent(
       eventId,
       payload.event,
@@ -429,20 +444,20 @@ export class ZoomMeetingsService {
       if (
         meeting &&
         [
-          ZoomMeetingStatus.COMPLETED,
-          ZoomMeetingStatus.CANCELLED,
-          ZoomMeetingStatus.FAILED,
+          MeetingBotStatus.COMPLETED,
+          MeetingBotStatus.CANCELLED,
+          MeetingBotStatus.FAILED,
         ].includes(meeting.status)
       ) {
         return;
       }
+      const failure =
+        event === 'bot.fatal' ? recallFailure(subCode, message) : undefined;
       await this.repository.updateByRecallBotId(botId, {
-        status: this.mapBotStatus(event),
+        status: mapRecallBotStatus(event),
         recallStatusCode: code,
         recallSubCode: subCode,
-        ...(event === 'bot.fatal'
-          ? { failureMessage: message || subCode || 'Recall bot failed' }
-          : {}),
+        ...(failure || {}),
       });
       return;
     }
@@ -465,11 +480,16 @@ export class ZoomMeetingsService {
     }
 
     if (event === 'recording.failed' && botId) {
+      const failure = recallFailure(
+        subCode,
+        message,
+        'Recall recording failed',
+      );
       await this.repository.updateByRecallBotId(botId, {
-        status: ZoomMeetingStatus.FAILED,
-        recordingId,
+        status: MeetingBotStatus.FAILED,
+        ...(recordingId ? { recordingId } : {}),
         recallSubCode: subCode,
-        failureMessage: message || subCode || 'Recall recording failed',
+        ...failure,
       });
       return;
     }
@@ -482,10 +502,15 @@ export class ZoomMeetingsService {
     if (event === 'transcript.failed' && recordingId) {
       const meeting = await this.repository.findByRecordingId(recordingId);
       if (meeting) {
+        const failure = recallFailure(
+          subCode,
+          message,
+          'Recall transcription failed',
+        );
         await this.repository.updateById(String(meeting._id), {
-          status: ZoomMeetingStatus.FAILED,
+          status: MeetingBotStatus.FAILED,
           recallSubCode: subCode,
-          failureMessage: message || subCode || 'Recall transcription failed',
+          ...failure,
         });
       }
     }
@@ -495,14 +520,20 @@ export class ZoomMeetingsService {
     meetingId: string,
     recording: RecallRecording,
   ) {
-    const audioUrl = recording.media_shortcuts?.audio_mixed?.data?.download_url;
+    const expiresAt = recording.expires_at
+      ? new Date(recording.expires_at)
+      : undefined;
+    const stored = await this.audioStorage.save({
+      recordingId: recording.id,
+      downloadUrl: recording.media_shortcuts?.audio_mixed?.data?.download_url,
+      expiresAt,
+    });
     await this.repository.updateById(meetingId, {
       recordingId: recording.id,
-      ...(audioUrl ? { audioDownloadUrl: audioUrl } : {}),
-      ...(recording.expires_at
-        ? { mediaExpiresAt: new Date(recording.expires_at) }
-        : {}),
-      status: ZoomMeetingStatus.PROCESSING,
+      audioStorageProvider: stored.provider,
+      audioStorageReference: stored.reference,
+      ...(stored.expiresAt ? { mediaExpiresAt: stored.expiresAt } : {}),
+      status: MeetingBotStatus.PROCESSING,
     });
   }
 
@@ -510,7 +541,7 @@ export class ZoomMeetingsService {
     const meeting = await this.repository.findByRecordingId(recordingId);
     if (!meeting) {
       throw new NotFoundException(
-        `No Zoom meeting is mapped to Recall recording ${recordingId}`,
+        `No meeting bot is mapped to Recall recording ${recordingId}`,
       );
     }
     const transcript = await this.provider.retrieveTranscript(transcriptId);
@@ -524,6 +555,7 @@ export class ZoomMeetingsService {
     const formatted = this.formatTranscript(downloaded);
     await this.repository.upsertTranscript({
       meetingId: String(meeting._id),
+      platform: meeting.platform,
       organizationId: meeting.organizationId,
       recordingId,
       transcriptId,
@@ -536,7 +568,7 @@ export class ZoomMeetingsService {
     await this.repository.updateById(String(meeting._id), {
       transcriptId,
       transcriptCompletedAt: new Date(),
-      status: ZoomMeetingStatus.COMPLETED,
+      status: MeetingBotStatus.COMPLETED,
     });
   }
 
@@ -584,75 +616,9 @@ export class ZoomMeetingsService {
     return { segments, text: lines.join('\n'), wordCount };
   }
 
-  private mapBotStatus(event: string) {
-    const statuses: Record<string, ZoomMeetingStatus> = {
-      'bot.joining_call': ZoomMeetingStatus.JOINING,
-      'bot.in_waiting_room': ZoomMeetingStatus.WAITING_ROOM,
-      'bot.in_call_not_recording': ZoomMeetingStatus.IN_CALL,
-      'bot.recording_permission_allowed': ZoomMeetingStatus.IN_CALL,
-      'bot.recording_permission_denied': ZoomMeetingStatus.IN_CALL,
-      'bot.in_call_recording': ZoomMeetingStatus.RECORDING,
-      'bot.call_ended': ZoomMeetingStatus.PROCESSING,
-      'bot.done': ZoomMeetingStatus.PROCESSING,
-      'bot.fatal': ZoomMeetingStatus.FAILED,
-    };
-    return statuses[event] || ZoomMeetingStatus.PROCESSING;
-  }
-
-  private createOAuthState(userId: string) {
-    const payload: ZoomOAuthState = {
-      userId,
-      issuedAt: Date.now(),
-      nonce: crypto.randomBytes(16).toString('hex'),
-    };
-    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    return `${encoded}.${this.signState(encoded)}`;
-  }
-
-  private verifyOAuthState(value: string) {
-    const [encoded, signature] = value.split('.');
-    const expected = this.signState(encoded || '');
-    if (
-      !encoded ||
-      !signature ||
-      signature.length !== expected.length ||
-      !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-    ) {
-      throw new UnauthorizedException('Invalid Zoom OAuth state');
-    }
-    let payload: ZoomOAuthState;
-    try {
-      payload = JSON.parse(
-        Buffer.from(encoded, 'base64url').toString('utf8'),
-      ) as ZoomOAuthState;
-    } catch {
-      throw new UnauthorizedException('Invalid Zoom OAuth state');
-    }
-    if (Date.now() - payload.issuedAt > 10 * 60 * 1000) {
-      throw new UnauthorizedException('Zoom OAuth state has expired');
-    }
-    return payload;
-  }
-
-  private signState(value: string) {
-    return crypto
-      .createHmac('sha256', this.oauthStateSecret)
-      .update(value)
-      .digest('base64url');
-  }
-
-  private normalizeMeetingUrl(value: string) {
-    const url = new URL(value);
-    return `${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, '')}`;
-  }
-
-  private hash(value: string) {
-    return crypto.createHash('sha256').update(value).digest('hex');
-  }
-
   private assertObjectId(id: string) {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid Zoom meeting id');
+      throw new BadRequestException('Invalid meeting bot id');
     }
   }
 
@@ -665,8 +631,8 @@ export class ZoomMeetingsService {
     }
   }
 
-  private toPublicMeeting<T>(meeting: T) {
-    return meeting;
+  private hash(value: string) {
+    return crypto.createHash('sha256').update(value).digest('hex');
   }
 
   private get defaultBotName() {
@@ -684,8 +650,8 @@ export class ZoomMeetingsService {
     return this.config.get<number>('recall.retentionHours', 168);
   }
 
-  private get signedInZoom() {
-    return this.config.get<boolean>('recall.zoom.signedIn', true);
+  private get googleMeetLoginGroupId() {
+    return this.config.get<string>('recall.googleMeet.loginGroupId');
   }
 
   private get maxConcurrentMeetings() {
@@ -707,16 +673,5 @@ export class ZoomMeetingsService {
       );
     }
     return key;
-  }
-
-  private get oauthStateSecret() {
-    return this.config.getOrThrow<string>('recall.oauthStateSecret');
-  }
-
-  private get publicBaseUrl() {
-    return this.config
-      .getOrThrow<string>('APP_BASE_URL')
-      .trim()
-      .replace(/\/+$/, '');
   }
 }

@@ -1,4 +1,4 @@
-export enum ZoomMeetingStatus {
+export enum MeetingBotStatus {
   PENDING = 'PENDING',
   CREATING = 'CREATING',
   SCHEDULED = 'SCHEDULED',
@@ -12,10 +12,10 @@ export enum ZoomMeetingStatus {
   CANCELLED = 'CANCELLED',
 }
 
-export const ACTIVE_ZOOM_MEETING_STATUSES = [
-  ZoomMeetingStatus.CREATING,
-  ZoomMeetingStatus.JOINING,
-  ZoomMeetingStatus.WAITING_ROOM,
-  ZoomMeetingStatus.IN_CALL,
-  ZoomMeetingStatus.RECORDING,
+export const ACTIVE_MEETING_BOT_STATUSES = [
+  MeetingBotStatus.CREATING,
+  MeetingBotStatus.JOINING,
+  MeetingBotStatus.WAITING_ROOM,
+  MeetingBotStatus.IN_CALL,
+  MeetingBotStatus.RECORDING,
 ] as const;
