@@ -81,12 +81,12 @@ export default () => {
 
   if (recallApiKey && transcriptionMode !== 'POST_MEETING') {
     throw new Error(
-      'This Zoom integration currently supports RECALLAI_TRANSCRIPTION_MODE=POST_MEETING',
+      'The meeting bot integration currently supports RECALLAI_TRANSCRIPTION_MODE=POST_MEETING',
     );
   }
   if (recallApiKey && recordingOutput !== 'TRANSCRIPT_AND_AUDIO') {
     throw new Error(
-      'This Zoom integration currently supports RECALLAI_RECORDING_OUTPUT=TRANSCRIPT_AND_AUDIO',
+      'The meeting bot integration currently supports RECALLAI_RECORDING_OUTPUT=TRANSCRIPT_AND_AUDIO',
     );
   }
   if (recallApiKey && audioStorageProvider !== 'RECALL') {
@@ -283,6 +283,9 @@ export default () => {
         clientId: process.env.ZOOM_OAUTH_CLIENT_ID,
         oauthAppId: process.env.RECALLAI_ZOOM_OAUTH_APP_ID,
         redirectUri: zoomOAuthRedirectUri,
+      },
+      googleMeet: {
+        loginGroupId: process.env.RECALLAI_GOOGLE_MEET_LOGIN_GROUP_ID?.trim(),
       },
       audioStorageProvider,
       transcriptStorage,
