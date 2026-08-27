@@ -2,9 +2,7 @@ allowBuilds:
   '@scarf/scarf': false
   bcrypt: true
   msgpackr-extract: false
-<<<<<<< HEAD
   unrs-resolver: false
-=======
->>>>>>> d72931716fd6ba867479d36bc9d925d92ac7cc69
+
 overrides:
   '@nestjs/swagger>js-yaml': 5.2.2
