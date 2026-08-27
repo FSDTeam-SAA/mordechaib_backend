@@ -24,11 +24,7 @@ import { PackageInquiriesModule } from './modules/package-inquiries/package-inqu
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { MetaModule } from './modules/meta/meta.module';
-<<<<<<< HEAD
 import { MeetingBotsModule } from './modules/meeting-bots/meeting-bots.module';
-=======
-import { ZoomMeetingsModule } from './modules/zoom-meetings/zoom-meetings.module';
->>>>>>> d72931716fd6ba867479d36bc9d925d92ac7cc69
 
 @Module({
   imports: [
@@ -55,11 +51,7 @@ import { ZoomMeetingsModule } from './modules/zoom-meetings/zoom-meetings.module
     PackageInquiriesModule,
     OnboardingSetupsModule,
     MetaModule,
-<<<<<<< HEAD
     MeetingBotsModule,
-=======
-    ZoomMeetingsModule,
->>>>>>> d72931716fd6ba867479d36bc9d925d92ac7cc69
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
