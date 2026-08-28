@@ -28,7 +28,7 @@ or Google account.
 | Service             | Why it is needed                                                   | Who should own it   |
 | ------------------- | ------------------------------------------------------------------ | ------------------- |
 | Recall.ai           | Sends the bot, records the meeting, and produces media             | Client company      |
-| Zoom                | Provides the dedicated identity used by the Zoom bot               | Client company      |
+| Zoom                | Lets an organizer create and host meetings from the dashboard      | Client company      |
 | Google Meet         | Allows guest entry, or provides a dedicated signed-in bot identity | Client company      |
 | Application backend | Receives secure status notifications and stores transcripts        | Implementation team |
 
@@ -38,6 +38,7 @@ The implementation team will provide these two URLs before setup:
 Production backend URL: [PROVIDED BY IMPLEMENTATION TEAM]
 Recall webhook URL:     [BACKEND URL]/api/v1/webhooks/recall
 Zoom redirect URL:      [BACKEND URL]/api/v1/zoom-meetings/oauth/callback
+Google redirect URL:    [BACKEND URL]/api/v1/google-meetings/oauth/callback
 ```
 
 The backend URL must be a permanent HTTPS address. Do not use a temporary ngrok
@@ -136,18 +137,19 @@ and [recording events](https://docs.recall.ai/docs/recording-webhooks).
 
 ---
 
-## Part 2 — Prepare the Zoom bot profile
+## Part 2 — Prepare the organizer Zoom connection
 
-### Step 1. Create a dedicated Zoom user
+### Step 1. Choose the organizer Zoom account
 
-Create a company-owned Zoom user only for the notetaker. A suggested profile is:
+Choose a company-owned Zoom user who will own meetings created from the
+dashboard. The Recall bot uses short-lived authorization from this same meeting
+owner when it joins; do not create a separate bot user for this Phase 1 flow.
+A suggested organizer profile is:
 
 ```text
-First name: Noltra
-Last name: AI Notetaker
-Display name: Noltra AI Notetaker
-Email: meeting-bot@[client-company-domain]
-Profile photo: Client-approved bot logo
+First name: Meeting organizer's real first name
+Last name: Meeting organizer's real last name
+Email: organizer@[client-company-domain]
 ```
 
 Use an appropriate paid Zoom license for production. Free accounts and a single
@@ -155,10 +157,11 @@ account may have simultaneous meeting limitations.
 
 - [ ] The Zoom account belongs to the company.
 - [ ] The account can sign in successfully.
-- [ ] Its name and profile image are approved for meeting participants to see.
+- [ ] It is the account that should own meetings created by this organization.
 - [ ] Recovery and multi-factor authentication are controlled by the company.
 
-Do not send the Zoom password or MFA code to the implementation team.
+Do not send the organizer's Zoom password or MFA code to the implementation
+team. The organizer authorizes access through Zoom's own consent screen.
 
 ### Step 2. Create the Zoom OAuth application
 
@@ -176,16 +179,19 @@ Do not send the Zoom password or MFA code to the implementation team.
    ```
 
 7. Add the same URL to Zoom's OAuth allow list if that field is shown.
-8. Add the following Zoom scope:
+8. Add the following Zoom scopes (Zoom may show newer granular names):
 
    ```text
+   user_info:read
    user:read:zak
+   meeting:read
+   meeting:write
    ```
 
 9. Save or activate the app for use by the dedicated company account.
 
 - [ ] The redirect URL exactly matches the URL supplied by the implementation team.
-- [ ] The `user:read:zak` scope is present.
+- [ ] Profile, ZAK, meeting-read, and meeting-write permissions are present.
 - [ ] The Zoom OAuth Client ID was copied into the handoff form.
 - [ ] The Zoom Client Secret remains in the secure vault and was not pasted here.
 
@@ -220,15 +226,15 @@ that show the client secret.
 After the implementation team has configured the Client ID and Recall Zoom
 OAuth App ID:
 
-1. The implementation team will send you a one-time Zoom authorization link.
+1. Sign in to the organizer dashboard and click **Connect Zoom**.
 2. Open it promptly; the link expires after approximately 10 minutes.
-3. Sign in as the dedicated Zoom bot user.
+3. Sign in as the company organizer who should own the created meetings.
 4. Review and approve the requested permission.
 5. Wait for the success page before closing the browser.
 6. Ask the implementation team to confirm that the connection shows
    `connected: true`.
 
-- [ ] The dedicated bot user completed authorization.
+- [ ] The organizer completed authorization.
 - [ ] The implementation team confirmed the connection.
 - [ ] A short Zoom test meeting was completed.
 
@@ -243,8 +249,9 @@ Choose one of the following options with the implementation team.
 
 ### Option A — Guest Google Meet bot
 
-This is the simplest option and does not require a Google account, Google OAuth,
-or Google Calendar access.
+This is the simplest bot identity and does not require a dedicated Google bot
+account. The organizer still connects their own Google account to the
+application so it can create the Calendar event and Google Meet link.
 
 The meeting host or an eligible participant normally needs to admit the bot.
 Some organizations block guests or disable knocking; the bot will not be able
@@ -254,7 +261,36 @@ to join those meetings.
 - [ ] We do not require a custom Google profile image for the bot.
 - [ ] We selected **Guest mode** in the handoff form.
 
-If Guest mode is selected, skip the rest of Part 3.
+If Guest mode is selected, complete the organizer Google connection below and
+then skip only the signed-in bot setup in Option B.
+
+### Organizer Google connection (required for creating Meet links)
+
+The company must create one Google Cloud OAuth application. Individual
+organizers then click **Connect Google** in the dashboard; nobody sends their
+Google password to the implementation team.
+
+1. Create or select a company-owned project in Google Cloud Console.
+2. Enable the **Google Calendar API**.
+3. Configure the OAuth consent screen with the company name and support email.
+4. Create a **Web application** OAuth client.
+5. Add this exact authorized redirect URI:
+
+   ```text
+   [BACKEND URL]/api/v1/google-meetings/oauth/callback
+   ```
+
+6. Share the Client ID normally and the Client Secret only through the approved
+   secure channel.
+7. If the app remains in Testing mode, add each organizer as a test user.
+8. After deployment, an owner or administrator clicks **Connect Google** and
+   approves permission to create and manage Calendar events.
+
+- [ ] Google Calendar API is enabled.
+- [ ] OAuth consent screen is configured.
+- [ ] The redirect URI exactly matches the backend callback.
+- [ ] Client ID and Client Secret were delivered through the correct channels.
+- [ ] An owner or administrator completed the dashboard connection.
 
 ### Option B — Signed-in Google Meet bot
 
@@ -423,20 +459,25 @@ Test webhook sent:                             Yes / No
 ### Zoom
 
 ```text
-Dedicated Zoom bot email:                      [email only, no password]
+Connected Zoom organizer email:                [email only, no password]
 Zoom app name:
 Zoom OAuth Client ID:
-user:read:zak scope added:                      Yes / No
+Required profile/ZAK/meeting scopes added:      Yes / No
 Redirect URL added exactly:                    Yes / No
 Recall Zoom OAuth App ID:
 Zoom secret entered directly in Recall:        Yes / No
-One-time bot account authorization complete:   Yes / No
+Organizer dashboard authorization complete:    Yes / No
 ```
 
 ### Google Meet
 
 ```text
 Selected mode:                                 Guest / Signed-in
+Google Cloud project name:
+Google OAuth Client ID:
+Google OAuth Client Secret shared securely:    Yes / No
+Google redirect URL added exactly:              Yes / No
+Organizer dashboard connection complete:       Yes / No
 
 If Signed-in:
 Dedicated Workspace primary domain:
@@ -485,7 +526,7 @@ Complete one short meeting on each enabled platform.
 
 ### Zoom
 
-- [ ] The dedicated Zoom authorization was connected.
+- [ ] The Zoom organizer authorization was connected.
 - [ ] The bot appeared in the meeting or waiting room.
 - [ ] Participants saw the recording consent message.
 - [ ] The meeting was recorded for at least one minute with clear speech.

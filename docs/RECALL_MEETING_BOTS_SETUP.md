@@ -86,3 +86,12 @@ and renames:
 The generic `POST /api/v1/meeting-bots` endpoint is also available and requires
 `platform` in the body. Existing `/api/v1/zoom-meetings` endpoints remain
 compatible.
+
+## Organizer-connected meeting creation
+
+The manual URL endpoints above remain supported. Phase 1 also provides
+organization-scoped Zoom and Google OAuth connections and a common
+`POST /api/v1/meetings` endpoint that creates the provider meeting before
+queuing its Recall bot. See
+[`ORGANIZER_CONNECTED_MEETINGS_PHASE_1.md`](./ORGANIZER_CONNECTED_MEETINGS_PHASE_1.md)
+for configuration, roles, OAuth routes, scopes, and complete Swagger payloads.

@@ -60,6 +60,14 @@ import {
   RecallWebhookEvent,
   RecallWebhookEventSchema,
 } from '../schemas/recall-webhook-event.schema';
+import {
+  MeetingOAuthState,
+  MeetingOAuthStateSchema,
+} from '../schemas/meeting-oauth-state.schema';
+import {
+  PlatformMeeting,
+  PlatformMeetingSchema,
+} from '../schemas/platform-meeting.schema';
 
 @Global()
 @Module({
@@ -97,6 +105,8 @@ import {
         schema: RecallZoomConnectionSchema,
       },
       { name: RecallWebhookEvent.name, schema: RecallWebhookEventSchema },
+      { name: MeetingOAuthState.name, schema: MeetingOAuthStateSchema },
+      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,

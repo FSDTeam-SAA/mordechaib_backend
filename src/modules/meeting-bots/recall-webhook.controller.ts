@@ -5,6 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Param,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -41,7 +43,18 @@ export class RecallWebhookController {
 
   @Get('zoom-zak')
   async zoomZak(@Res() response: Response) {
-    const token = await this.zoomAuth.getZakToken();
+    const token = await this.zoomAuth.getLegacyZakToken();
+    response.status(HttpStatus.OK).type('text/plain').send(token);
+  }
+
+  @Get('zoom-zak/:organizationId')
+  async organizationZoomZak(
+    @Param('organizationId') organizationId: string,
+    @Query('token') callbackToken: string,
+    @Res() response: Response,
+  ) {
+    this.zoomAuth.verifyZakCallback(organizationId, callbackToken);
+    const token = await this.zoomAuth.getZakToken(organizationId);
     response.status(HttpStatus.OK).type('text/plain').send(token);
   }
 }

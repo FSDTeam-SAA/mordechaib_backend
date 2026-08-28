@@ -5,20 +5,22 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
+import { MeetingOAuthStateService } from './meeting-oauth-state.service';
+import {
+  MeetingConnectionMetadata,
+  MeetingPlatformConnectionsRepository,
+} from './meeting-platform-connections.repository';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomConnectionsRepository } from './zoom-connections.repository';
-
-type ZoomOAuthState = {
-  userId: string;
-  issuedAt: number;
-  nonce: string;
-};
 
 @Injectable()
 export class ZoomAuthService {
   constructor(
-    private readonly repository: ZoomConnectionsRepository,
+    private readonly repository: MeetingPlatformConnectionsRepository,
+    private readonly legacyRepository: ZoomConnectionsRepository,
     private readonly provider: RecallZoomAuthProvider,
+    private readonly oauthState: MeetingOAuthStateService,
     private readonly config: ConfigService,
   ) {}
 
@@ -26,105 +28,175 @@ export class ZoomAuthService {
     return this.config.get<boolean>('recall.zoom.signedIn', true);
   }
 
-  async assertConnected() {
-    if (this.signedInEnabled && !(await this.repository.getConnected())) {
+  async assertConnected(organizationId: string) {
+    if (
+      this.signedInEnabled &&
+      !(await this.repository.findConnected(
+        organizationId,
+        MeetingPlatform.ZOOM,
+      ))
+    ) {
       throw new ServiceUnavailableException(
-        'The signed-in Zoom service account is not connected',
+        'The organization Zoom account is not connected',
       );
     }
   }
 
-  createAuthorizationUrl(userId: string) {
-    return {
-      authorizationUrl: this.provider.getAuthorizationUrl(
-        this.createOAuthState(userId),
-      ),
-    };
+  async createAuthorizationUrl(organizationId: string, userId: string) {
+    const state = await this.oauthState.create(
+      MeetingPlatform.ZOOM,
+      organizationId,
+      userId,
+    );
+    return { authorizationUrl: this.provider.getAuthorizationUrl(state) };
   }
 
   async completeAuthorization(code: string, state: string) {
-    const context = this.verifyOAuthState(state);
+    const context = await this.oauthState.consume(state, MeetingPlatform.ZOOM);
     const credential = await this.provider.createCredential(code);
-    const connection = await this.repository.upsert({
-      recallOAuthAppId: this.config.getOrThrow<string>(
-        'recall.zoom.oauthAppId',
-      ),
-      recallCredentialId: credential.id,
-      connectedByUserId: context.userId,
-    });
-    return { connected: true, status: connection?.status };
+    const accessToken = await this.provider.getAccessToken(credential.id);
+    const profile = await this.provider.getCurrentUser(accessToken);
+    const existing = await this.repository.find(
+      context.organizationId,
+      MeetingPlatform.ZOOM,
+    );
+    const previousMetadata = existing?.metadata as
+      | MeetingConnectionMetadata
+      | undefined;
+    await this.repository.upsert(
+      context.organizationId,
+      MeetingPlatform.ZOOM,
+      {
+        status: 'CONNECTED',
+        metadata: {
+          connectedByUserId: context.userId,
+          providerAccountId: profile.id,
+          providerEmail: profile.email,
+          providerName:
+            profile.display_name ||
+            [profile.first_name, profile.last_name].filter(Boolean).join(' '),
+          recallCredentialId: credential.id,
+          recallOAuthAppId: this.config.getOrThrow<string>(
+            'recall.zoom.oauthAppId',
+          ),
+        } satisfies MeetingConnectionMetadata,
+      },
+    );
+    if (
+      previousMetadata?.recallCredentialId &&
+      previousMetadata.recallCredentialId !== credential.id
+    ) {
+      await this.provider
+        .deleteCredential(previousMetadata.recallCredentialId)
+        .catch(() => undefined);
+    }
+    return { connected: true, organizationId: context.organizationId };
   }
 
-  async getConnection() {
-    const connection = await this.repository.getConnected();
-    return connection
-      ? {
-          connected: true,
-          status: connection.status,
-          recallOAuthAppId: connection.recallOAuthAppId,
-          connectedByUserId: connection.connectedByUserId,
-        }
-      : { connected: false };
+  async getConnection(organizationId: string) {
+    const connection = await this.repository.find(
+      organizationId,
+      MeetingPlatform.ZOOM,
+    );
+    if (!connection) return { connected: false };
+    const metadata = connection.metadata as
+      | MeetingConnectionMetadata
+      | undefined;
+    return {
+      connected: connection.status === 'CONNECTED',
+      status: connection.status,
+      provider: 'ZOOM',
+      account: {
+        id: metadata?.providerAccountId,
+        email: metadata?.providerEmail,
+        name: metadata?.providerName,
+      },
+      connectedByUserId: metadata?.connectedByUserId,
+    };
   }
 
-  async getZakToken() {
-    const connection = await this.repository.getConnected();
+  async disconnect(organizationId: string) {
+    const connection = await this.repository.find(
+      organizationId,
+      MeetingPlatform.ZOOM,
+    );
+    if (!connection) return { connected: false };
+    const metadata = connection.metadata as
+      | MeetingConnectionMetadata
+      | undefined;
+    if (metadata?.recallCredentialId) {
+      await this.provider
+        .deleteCredential(metadata.recallCredentialId)
+        .catch(() => undefined);
+    }
+    await this.repository.disconnect(organizationId, MeetingPlatform.ZOOM);
+    return { connected: false, disconnected: true };
+  }
+
+  async getAccessToken(organizationId: string) {
+    const metadata = await this.connectedMetadata(organizationId);
+    return this.provider.getAccessToken(metadata.recallCredentialId!);
+  }
+
+  async getZakToken(organizationId: string) {
+    const metadata = await this.connectedMetadata(organizationId);
+    return this.provider.getZakToken(metadata.recallCredentialId!);
+  }
+
+  async getLegacyZakToken() {
+    const connection = await this.legacyRepository.getConnected();
     if (!connection) {
       throw new ServiceUnavailableException(
-        'The signed-in Zoom service account is not connected',
+        'The legacy signed-in Zoom service account is not connected',
       );
     }
     return this.provider.getZakToken(connection.recallCredentialId);
   }
 
-  get zakCallbackUrl() {
-    return `${this.publicBaseUrl}/api/v1/webhooks/recall/zoom-zak`;
-  }
-
-  private createOAuthState(userId: string) {
-    const payload: ZoomOAuthState = {
-      userId,
-      issuedAt: Date.now(),
-      nonce: crypto.randomBytes(16).toString('hex'),
-    };
-    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    return `${encoded}.${this.signState(encoded)}`;
-  }
-
-  private verifyOAuthState(value: string) {
-    const [encoded, signature] = value.split('.');
-    const expected = this.signState(encoded || '');
-    if (
-      !encoded ||
-      !signature ||
-      signature.length !== expected.length ||
-      !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-    ) {
-      throw new UnauthorizedException('Invalid Zoom OAuth state');
-    }
-    let payload: ZoomOAuthState;
-    try {
-      payload = JSON.parse(
-        Buffer.from(encoded, 'base64url').toString('utf8'),
-      ) as ZoomOAuthState;
-    } catch {
-      throw new UnauthorizedException('Invalid Zoom OAuth state');
-    }
-    if (Date.now() - payload.issuedAt > 10 * 60 * 1000) {
-      throw new UnauthorizedException('Zoom OAuth state has expired');
-    }
-    return payload;
-  }
-
-  private signState(value: string) {
-    return crypto
-      .createHmac('sha256', this.oauthStateSecret)
-      .update(value)
+  createZakCallbackUrl(organizationId: string) {
+    const token = crypto
+      .createHmac('sha256', this.callbackSecret)
+      .update(organizationId)
       .digest('base64url');
+    return `${this.publicBaseUrl}/api/v1/webhooks/recall/zoom-zak/${encodeURIComponent(organizationId)}?token=${encodeURIComponent(token)}`;
   }
 
-  private get oauthStateSecret() {
-    return this.config.getOrThrow<string>('recall.oauthStateSecret');
+  verifyZakCallback(organizationId: string, token: string) {
+    const expected = crypto
+      .createHmac('sha256', this.callbackSecret)
+      .update(organizationId)
+      .digest('base64url');
+    if (
+      !token ||
+      token.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))
+    ) {
+      throw new UnauthorizedException('Invalid Zoom ZAK callback token');
+    }
+  }
+
+  callbackUrl(connected: boolean, error?: string) {
+    return this.oauthState.callbackUrl(MeetingPlatform.ZOOM, connected, error);
+  }
+
+  private async connectedMetadata(organizationId: string) {
+    const connection = await this.repository.findConnected(
+      organizationId,
+      MeetingPlatform.ZOOM,
+    );
+    const metadata = connection?.metadata as
+      | MeetingConnectionMetadata
+      | undefined;
+    if (!metadata?.recallCredentialId) {
+      throw new ServiceUnavailableException(
+        'The organization Zoom account is not connected',
+      );
+    }
+    return metadata;
+  }
+
+  private get callbackSecret() {
+    return this.config.getOrThrow<string>('meetingPlatforms.oauthStateSecret');
   }
 
   private get publicBaseUrl() {

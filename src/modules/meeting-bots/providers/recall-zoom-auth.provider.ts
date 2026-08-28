@@ -1,7 +1,15 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RecallApiClient } from './recall-api.client';
 import { RecallApiError } from './recall.types';
+import {
+  CreatedProviderMeeting,
+  CreateProviderMeetingInput,
+} from './platform-meeting-provider.types';
 
 @Injectable()
 export class RecallZoomAuthProvider {
@@ -48,23 +56,34 @@ export class RecallZoomAuthProvider {
     );
   }
 
-  private getAccessToken(credentialId: string) {
-    return this.client.request<{ access_token?: string; token?: string }>(
+  async getAccessToken(credentialId: string) {
+    const response = await this.client.request<{
+      access_token?: string;
+      token?: string;
+    }>(
       `/api/v2/zoom-oauth-credentials/${encodeURIComponent(credentialId)}/access-token/`,
       {},
       7_000,
     );
-  }
-
-  async getZakToken(credentialId: string) {
-    const tokenResponse = await this.getAccessToken(credentialId);
-    const accessToken = tokenResponse.access_token ?? tokenResponse.token;
+    const accessToken = response.access_token ?? response.token;
     if (!accessToken) {
       throw new RecallApiError(
         'Recall Zoom credential did not return an access token',
         502,
       );
     }
+    return accessToken;
+  }
+
+  deleteCredential(credentialId: string) {
+    return this.client.request<void>(
+      `/api/v2/zoom-oauth-credentials/${encodeURIComponent(credentialId)}/`,
+      { method: 'DELETE' },
+    );
+  }
+
+  async getZakToken(credentialId: string) {
+    const accessToken = await this.getAccessToken(credentialId);
 
     const response = await fetch('https://api.zoom.us/v2/users/me/zak', {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -81,5 +100,111 @@ export class RecallZoomAuthProvider {
       );
     }
     return body.token;
+  }
+
+  getCurrentUser(accessToken: string) {
+    return this.zoomRequest<{
+      id: string;
+      email: string;
+      first_name?: string;
+      last_name?: string;
+      display_name?: string;
+    }>('/users/me', accessToken);
+  }
+
+  async createMeeting(
+    accessToken: string,
+    input: CreateProviderMeetingInput,
+  ): Promise<CreatedProviderMeeting> {
+    const meeting = await this.zoomRequest<{
+      id?: string | number;
+      uuid?: string;
+      join_url?: string;
+      start_url?: string;
+      password?: string;
+    }>('/users/me/meetings', accessToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        topic: input.title,
+        type: input.immediate ? 1 : 2,
+        ...(!input.immediate
+          ? {
+              start_time: input.startsAt.toISOString(),
+              duration: input.durationMinutes,
+              timezone: input.timezone,
+            }
+          : {}),
+        ...(input.agenda ? { agenda: input.agenda } : {}),
+        ...(input.invitees.length
+          ? {
+              settings: {
+                meeting_invitees: input.invitees.map((email) => ({ email })),
+              },
+            }
+          : {}),
+      }),
+    });
+    if (!meeting.id || !meeting.join_url) {
+      throw new BadGatewayException(
+        'Zoom created the meeting without a join URL',
+      );
+    }
+    return {
+      providerMeetingId: String(meeting.id),
+      joinUrl: meeting.join_url,
+      startUrl: meeting.start_url,
+      metadata: { uuid: meeting.uuid },
+    };
+  }
+
+  deleteMeeting(accessToken: string, meetingId: string) {
+    return this.zoomRequest<void>(
+      `/meetings/${encodeURIComponent(meetingId)}`,
+      accessToken,
+      { method: 'DELETE' },
+    );
+  }
+
+  getMeeting(accessToken: string, meetingId: string) {
+    return this.zoomRequest<{
+      id: string | number;
+      join_url?: string;
+      start_url?: string;
+    }>(`/meetings/${encodeURIComponent(meetingId)}`, accessToken);
+  }
+
+  private async zoomRequest<T>(
+    path: string,
+    accessToken: string,
+    init: RequestInit = {},
+  ): Promise<T> {
+    let response: Response;
+    try {
+      response = await fetch(`https://api.zoom.us/v2${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+          ...init.headers,
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch {
+      throw new ServiceUnavailableException('Zoom API is unavailable');
+    }
+    if (response.status === 204) return undefined as T;
+    const body = (await this.client.parseResponseBody(response)) as {
+      message?: string;
+      reason?: string;
+    };
+    if (!response.ok) {
+      throw new BadGatewayException(
+        body?.message ||
+          body?.reason ||
+          `Zoom API failed with HTTP ${response.status}`,
+      );
+    }
+    return body as T;
   }
 }

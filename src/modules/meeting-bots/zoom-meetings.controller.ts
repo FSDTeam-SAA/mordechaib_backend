@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,15 +7,18 @@ import {
   Patch,
   Post,
   Query,
+  Redirect,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
-import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   RequestOrganization,
   RequestUser,
@@ -61,29 +63,57 @@ export class ZoomMeetingsController {
   }
 
   @Get('oauth/connect')
-  @UseGuards(PlatformAdminGuard)
-  connectZoom(@CurrentUser() user: RequestUser) {
-    return this.zoomAuth.createAuthorizationUrl(user.id);
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  connectZoom(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.zoomAuth.createAuthorizationUrl(organization.id, user.id);
   }
 
   @Public()
   @Get('oauth/callback')
-  completeZoomConnection(
+  @Redirect()
+  async completeZoomConnection(
     @Query('code') code: string,
     @Query('state') state: string,
     @Query('error') error?: string,
   ) {
-    if (error) throw new BadRequestException(`Zoom OAuth failed: ${error}`);
-    if (!code || !state) {
-      throw new BadRequestException('Zoom OAuth code and state are required');
+    if (error) {
+      return {
+        url: this.zoomAuth.callbackUrl(false, error),
+        statusCode: 302,
+      };
     }
-    return this.zoomAuth.completeAuthorization(code, state);
+    if (!code || !state) {
+      return {
+        url: this.zoomAuth.callbackUrl(false, 'missing_code_or_state'),
+        statusCode: 302,
+      };
+    }
+    try {
+      await this.zoomAuth.completeAuthorization(code, state);
+      return { url: this.zoomAuth.callbackUrl(true), statusCode: 302 };
+    } catch {
+      return {
+        url: this.zoomAuth.callbackUrl(false, 'oauth_failed'),
+        statusCode: 302,
+      };
+    }
   }
 
   @Get('oauth/connection')
-  @UseGuards(PlatformAdminGuard)
-  getZoomConnection() {
-    return this.zoomAuth.getConnection();
+  @UseGuards(OrganizationGuard)
+  getZoomConnection(@CurrentOrg() organization: RequestOrganization) {
+    return this.zoomAuth.getConnection(organization.id);
+  }
+
+  @Delete('oauth/connection')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  disconnectZoom(@CurrentOrg() organization: RequestOrganization) {
+    return this.zoomAuth.disconnect(organization.id);
   }
 
   @Get(':id')
