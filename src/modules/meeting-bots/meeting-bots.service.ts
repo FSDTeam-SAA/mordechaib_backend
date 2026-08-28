@@ -65,7 +65,7 @@ export class MeetingBotsService {
       throw new BadRequestException('joinAt must be in the future');
     }
     if (platform === MeetingPlatform.ZOOM) {
-      await this.zoomAuth.assertConnected();
+      await this.zoomAuth.assertConnected(organizationId);
     }
 
     const meetingUrlHash = this.hash(
@@ -372,7 +372,7 @@ export class MeetingBotsService {
         zoomZakUrl:
           meeting.platform === MeetingPlatform.ZOOM &&
           this.zoomAuth.signedInEnabled
-            ? this.zoomAuth.zakCallbackUrl
+            ? this.zoomAuth.createZakCallbackUrl(meeting.organizationId)
             : undefined,
         googleMeetLoginGroupId:
           meeting.platform === MeetingPlatform.GOOGLE_MEET
