@@ -4,6 +4,7 @@ import { HydratedDocument } from 'mongoose';
 export type IntegrationDocument = HydratedDocument<Integration>;
 
 export enum IntegrationProvider {
+  ZOOM = 'ZOOM',
   TWILIO = 'TWILIO',
   HUBSPOT = 'HUBSPOT',
   SALESFORCE = 'SALESFORCE',
@@ -31,10 +32,10 @@ export class Integration {
   })
   status!: string;
 
-  @Prop()
+  @Prop({ select: false })
   accessToken?: string;
 
-  @Prop()
+  @Prop({ select: false })
   refreshToken?: string;
 
   @Prop()

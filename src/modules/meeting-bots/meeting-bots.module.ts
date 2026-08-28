@@ -2,12 +2,20 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GoogleMeetingsController } from './google-meetings.controller';
+import { GoogleMeetAuthService } from './google-meet-auth.service';
 import { RecallSignatureGuard } from './guards/recall-signature.guard';
 import { MeetingBotsController } from './meeting-bots.controller';
 import { MeetingBotsProcessor } from './meeting-bots.processor';
 import { RECALL_MEETINGS_QUEUE, MeetingBotsQueue } from './meeting-bots.queue';
 import { MeetingBotsRepository } from './meeting-bots.repository';
 import { MeetingBotsService } from './meeting-bots.service';
+import { MeetingOAuthStateRepository } from './meeting-oauth-state.repository';
+import { MeetingOAuthStateService } from './meeting-oauth-state.service';
+import { MeetingPlatformConnectionsRepository } from './meeting-platform-connections.repository';
+import { PlatformMeetingsController } from './platform-meetings.controller';
+import { PlatformMeetingsRepository } from './platform-meetings.repository';
+import { PlatformMeetingsService } from './platform-meetings.service';
+import { GoogleMeetProvider } from './providers/google-meet.provider';
 import { RecallApiClient } from './providers/recall-api.client';
 import { RecallMeetingProvider } from './providers/recall-meeting.provider';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
@@ -49,6 +57,7 @@ function redisConnection(urlValue: string) {
   ],
   controllers: [
     MeetingBotsController,
+    PlatformMeetingsController,
     GoogleMeetingsController,
     ZoomMeetingsController,
     RecallWebhookController,
@@ -56,11 +65,18 @@ function redisConnection(urlValue: string) {
   providers: [
     MeetingBotsService,
     MeetingBotsRepository,
+    PlatformMeetingsService,
+    PlatformMeetingsRepository,
+    MeetingPlatformConnectionsRepository,
+    MeetingOAuthStateRepository,
+    MeetingOAuthStateService,
     MeetingBotsQueue,
     MeetingBotsProcessor,
     RecallApiClient,
     RecallMeetingProvider,
     RecallZoomAuthProvider,
+    GoogleMeetProvider,
+    GoogleMeetAuthService,
     ZoomAuthService,
     ZoomConnectionsRepository,
     RecallSignatureService,

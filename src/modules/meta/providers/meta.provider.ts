@@ -19,6 +19,20 @@ type MetaListResponse<T> = {
   };
 };
 
+type MetaTimeRangeOptions = {
+  since?: number;
+  until?: number;
+};
+
+type MetaListOptions = MetaTimeRangeOptions & {
+  limit?: number;
+};
+
+type MetaInsightsOptions = MetaTimeRangeOptions & {
+  metrics?: string[];
+  period?: string;
+};
+
 export type MetaPagePost = {
   id: string;
   message?: string;
@@ -128,58 +142,106 @@ export class MetaProvider {
     );
   }
 
-  getPagePosts(pageId: string, token: string, limit = 25) {
+  getPagePosts(
+    pageId: string,
+    token: string,
+    options: MetaListOptions = {},
+  ) {
+    const { limit = 25, since, until } = options;
     return this.request<MetaListResponse<MetaPagePost>>(
       `/${encodeURIComponent(pageId)}/posts`,
       {
         fields:
           'id,message,story,created_time,updated_time,permalink_url,attachments{media_type,url,title,description,subattachments},comments.limit(25){id,message,created_time,from,like_count}',
         limit,
+        since,
+        until,
         access_token: token,
       },
     );
   }
 
-  getPostComments(postId: string, token: string, limit = 25) {
+  getPostComments(
+    postId: string,
+    token: string,
+    options: MetaListOptions = {},
+  ) {
+    const { limit = 25, since, until } = options;
     return this.request<MetaListResponse<MetaPageComment>>(
       `/${encodeURIComponent(postId)}/comments`,
       {
         fields: 'id,message,created_time,like_count,from,parent',
         limit,
+        since,
+        until,
         access_token: token,
       },
     );
   }
 
-  getPageMessages(pageId: string, token: string, limit = 25) {
+  getPageMessages(
+    pageId: string,
+    token: string,
+    options: MetaListOptions = {},
+  ) {
+    const { limit = 25, since, until } = options;
+    const messagesField = this.createTimeFilteredEdge(
+      'messages',
+      25,
+      since,
+      until,
+      'id,message,created_time,from,attachments',
+    );
     return this.request<MetaListResponse<MetaPageConversation>>(
       `/${encodeURIComponent(pageId)}/conversations`,
       {
-        fields:
-          'id,updated_time,unread_count,can_reply,message_count,participants.limit(50){id,name,username},messages.limit(25){id,message,created_time,from,attachments}',
+        fields: `id,updated_time,unread_count,can_reply,message_count,participants.limit(50){id,name,username},${messagesField}`,
         limit,
         access_token: token,
       },
     );
   }
 
+  private createTimeFilteredEdge(
+    edge: string,
+    limit: number,
+    since: number | undefined,
+    until: number | undefined,
+    fields: string,
+  ): string {
+    const modifiers = [
+      `limit(${limit})`,
+      since === undefined ? undefined : `since(${since})`,
+      until === undefined ? undefined : `until(${until})`,
+    ].filter((modifier): modifier is string => Boolean(modifier));
+
+    return `${edge}.${modifiers.join('.')}{${fields}}`;
+  }
+
   getPageInsights(
     pageId: string,
     token: string,
-    metrics: string[] = [
-      'page_impressions',
-      'page_impressions_unique',
-      'page_post_engagements',
-      'page_fans',
-      'page_messages_total_count',
-    ],
-    period = 'day',
+    options: MetaInsightsOptions = {},
   ) {
+    const {
+      metrics = [
+        'page_impressions',
+        'page_impressions_unique',
+        'page_post_engagements',
+        'page_fans',
+        'page_messages_total_count',
+      ],
+      period = 'day',
+      since,
+      until,
+    } = options;
     return this.request<MetaListResponse<MetaPageInsight>>(
       `/${encodeURIComponent(pageId)}/insights`,
       {
         metric: metrics.join(','),
         period,
+        since,
+        until,
         access_token: token,
       },
     );
