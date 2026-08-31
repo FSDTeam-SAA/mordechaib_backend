@@ -7,3 +7,5 @@ storage
 ngrok.log
 ngrok.yml
 config.bat
+
+.env
