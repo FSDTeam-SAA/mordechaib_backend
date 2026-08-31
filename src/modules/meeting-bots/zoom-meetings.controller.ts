@@ -10,7 +10,7 @@ import {
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -29,7 +29,7 @@ import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 import { ZoomAuthService } from './zoom-auth.service';
 
-@ApiTags('Zoom Meetings')
+@ApiTags('Zoom Connection & Manual Bots')
 @ApiBearerAuth()
 @Controller('zoom-meetings')
 export class ZoomMeetingsController {
@@ -40,6 +40,11 @@ export class ZoomMeetingsController {
 
   @Post()
   @UseGuards(OrganizationGuard)
+  @ApiOperation({
+    summary: 'Send a Recall bot to an existing Zoom meeting URL',
+    description:
+      'Legacy/manual flow. This endpoint requires meetingUrl. To create a new Zoom meeting from a connected organizer account, use POST /api/v1/meetings.',
+  })
   create(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
@@ -123,28 +128,6 @@ export class ZoomMeetingsController {
     @Param('id') id: string,
   ) {
     return this.meetings.get(organization.id, id, MeetingPlatform.ZOOM);
-  }
-
-  @Get(':id/transcript')
-  @UseGuards(OrganizationGuard)
-  getTranscript(
-    @CurrentOrg() organization: RequestOrganization,
-    @Param('id') id: string,
-  ) {
-    return this.meetings.getTranscript(
-      organization.id,
-      id,
-      MeetingPlatform.ZOOM,
-    );
-  }
-
-  @Get(':id/audio')
-  @UseGuards(OrganizationGuard)
-  getAudio(
-    @CurrentOrg() organization: RequestOrganization,
-    @Param('id') id: string,
-  ) {
-    return this.meetings.getAudio(organization.id, id, MeetingPlatform.ZOOM);
   }
 
   @Patch(':id')

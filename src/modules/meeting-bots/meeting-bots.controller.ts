@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
@@ -22,7 +22,7 @@ import { ListMeetingBotsQueryDto } from './dto/list-meeting-bots-query.dto';
 import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 
-@ApiTags('Meeting Bots')
+@ApiTags('Meeting Bots (Manual URL)')
 @ApiBearerAuth()
 @Controller('meeting-bots')
 @UseGuards(OrganizationGuard)
@@ -30,6 +30,11 @@ export class MeetingBotsController {
   constructor(private readonly meetings: MeetingBotsService) {}
 
   @Post()
+  @ApiOperation({
+    summary: 'Send a Recall bot to an existing meeting URL',
+    description:
+      'Manual bot-only flow and therefore requires meetingUrl. Use POST /api/v1/meetings when the connected provider should create the meeting URL.',
+  })
   create(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
@@ -60,6 +65,11 @@ export class MeetingBotsController {
   }
 
   @Get(':id/transcript')
+  @ApiOperation({
+    summary: 'Get a meeting bot transcript',
+    description:
+      'Use the meeting bot id returned as meetingBotId by the connected meeting flow.',
+  })
   getTranscript(
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
@@ -68,6 +78,11 @@ export class MeetingBotsController {
   }
 
   @Get(':id/audio')
+  @ApiOperation({
+    summary: 'Get a temporary meeting audio download URL',
+    description:
+      'Use the meeting bot id returned as meetingBotId by the connected meeting flow.',
+  })
   getAudio(
     @CurrentOrg() organization: RequestOrganization,
     @Param('id') id: string,
