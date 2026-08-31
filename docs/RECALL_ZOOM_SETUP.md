@@ -118,8 +118,8 @@ enforces one bot per organization per occurrence even when clients retry.
 After the meeting:
 
 - `GET /api/v1/zoom-meetings/{id}` returns lifecycle status.
-- `GET /api/v1/zoom-meetings/{id}/transcript` returns the MongoDB transcript.
-- `GET /api/v1/zoom-meetings/{id}/audio` returns a fresh Recall download URL
+- `GET /api/v1/meeting-bots/{botId}/transcript` returns the MongoDB transcript.
+- `GET /api/v1/meeting-bots/{botId}/audio` returns a fresh Recall download URL
   until its 168-hour retention expires.
 - `DELETE /api/v1/zoom-meetings/{id}` cancels a pending/scheduled bot.
 - `POST /api/v1/zoom-meetings/{id}/leave` removes a bot already joining/in call.
