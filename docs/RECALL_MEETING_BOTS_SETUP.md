@@ -80,8 +80,8 @@ and renames:
 4. Admit the guest bot into the meeting, speak briefly, and end the call.
 5. Check `GET /api/v1/google-meetings/{id}` until processing completes.
 6. Fetch the transcript from
-   `GET /api/v1/google-meetings/{id}/transcript` and the temporary Recall audio
-   URL from `GET /api/v1/google-meetings/{id}/audio`.
+   `GET /api/v1/meeting-bots/{botId}/transcript` and the temporary Recall audio
+   URL from `GET /api/v1/meeting-bots/{botId}/audio`.
 
 The generic `POST /api/v1/meeting-bots` endpoint is also available and requires
 `platform` in the body. Existing `/api/v1/zoom-meetings` endpoints remain

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiPropertyOptional,
   ApiTags,
@@ -34,7 +35,7 @@ class ProvisionMeetingBotDto {
   botName?: string;
 }
 
-@ApiTags('Meetings')
+@ApiTags('Connected Meetings')
 @ApiBearerAuth()
 @Controller('meetings')
 @UseGuards(OrganizationGuard)
@@ -45,6 +46,13 @@ export class PlatformMeetingsController {
   @ApiOperation({
     summary:
       'Create a Zoom or Google Meet using the connected organizer account',
+    description:
+      'The backend creates the provider meeting and obtains its join URL. Do not provide meetingUrl for this endpoint.',
+  })
+  @ApiBody({
+    type: CreateConnectedMeetingDto,
+    description:
+      'Provider meeting details. Only platform and title are required; omit startsAt for an instant meeting.',
   })
   create(
     @CurrentOrg() organization: RequestOrganization,
