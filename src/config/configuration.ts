@@ -69,6 +69,36 @@ export default () => {
   const recallApiBaseUrl = (
     process.env.RECALLAI_API_BASE_URL || `https://${recallRegion}.recall.ai`
   ).replace(/\/+$/, '');
+  const frontendUrl = (
+    process.env.FRONTEND_URL ||
+    (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',')[0]
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const googleOAuthRedirectUri =
+    process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+    `${appBaseUrl}/api/v1/google-meetings/oauth/callback`;
+  const googleOAuthClientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
+  const googleOAuthClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const meetingOAuthStateSecret =
+    process.env.MEETING_OAUTH_STATE_SECRET ||
+    process.env.RECALLAI_OAUTH_STATE_SECRET ||
+    accessSecret;
+
+  if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
+    throw new Error(
+      'GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together',
+    );
+  }
+  if (
+    googleOAuthClientId &&
+    googleOAuthRedirectUri !==
+      `${appBaseUrl}/api/v1/google-meetings/oauth/callback`
+  ) {
+    throw new Error(
+      'GOOGLE_OAUTH_REDIRECT_URI must match the callback under APP_BASE_URL',
+    );
+  }
 
   if (
     recallApiKey &&
@@ -81,12 +111,12 @@ export default () => {
 
   if (recallApiKey && transcriptionMode !== 'POST_MEETING') {
     throw new Error(
-      'This Zoom integration currently supports RECALLAI_TRANSCRIPTION_MODE=POST_MEETING',
+      'The meeting bot integration currently supports RECALLAI_TRANSCRIPTION_MODE=POST_MEETING',
     );
   }
   if (recallApiKey && recordingOutput !== 'TRANSCRIPT_AND_AUDIO') {
     throw new Error(
-      'This Zoom integration currently supports RECALLAI_RECORDING_OUTPUT=TRANSCRIPT_AND_AUDIO',
+      'The meeting bot integration currently supports RECALLAI_RECORDING_OUTPUT=TRANSCRIPT_AND_AUDIO',
     );
   }
   if (recallApiKey && audioStorageProvider !== 'RECALL') {
@@ -162,6 +192,12 @@ export default () => {
     }
   }
 
+  if (nodeEnv === 'production' && meetingOAuthStateSecret.length < 32) {
+    throw new Error(
+      'MEETING_OAUTH_STATE_SECRET must contain at least 32 characters',
+    );
+  }
+
   return {
     NODE_ENV: nodeEnv,
     PORT: Number(process.env.PORT || 5000),
@@ -216,7 +252,7 @@ export default () => {
         process.env.EMAIL_ADDRESS ||
         'Noltra AI <no-reply@noltra.ai>',
       supportEmail: process.env.SUPPORT_EMAIL,
-      frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+      frontendUrl,
     },
 
     twilio: {
@@ -243,6 +279,12 @@ export default () => {
         process.env.META_OAUTH_REDIRECT_URI ||
         `${process.env.APP_BASE_URL || 'http://localhost:5000'}/api/v1/meta/callback`,
       stateSecret: process.env.META_OAUTH_STATE_SECRET || accessSecret,
+      encryptionKey:
+        process.env.INTEGRATION_ENCRYPTION_KEY ||
+        'replace-with-at-least-32-random-characters',
+    },
+
+    integrations: {
       encryptionKey:
         process.env.INTEGRATION_ENCRYPTION_KEY ||
         'replace-with-at-least-32-random-characters',
@@ -284,8 +326,30 @@ export default () => {
         oauthAppId: process.env.RECALLAI_ZOOM_OAUTH_APP_ID,
         redirectUri: zoomOAuthRedirectUri,
       },
+      googleMeet: {
+        loginGroupId: process.env.RECALLAI_GOOGLE_MEET_LOGIN_GROUP_ID?.trim(),
+      },
       audioStorageProvider,
       transcriptStorage,
+    },
+
+    meetingPlatforms: {
+      frontendIntegrationsUrl:
+        process.env.MEETING_INTEGRATIONS_FRONTEND_URL ||
+        `${frontendUrl}/dashboard/integrations`,
+      oauthStateSecret: meetingOAuthStateSecret,
+      defaultTimezone:
+        process.env.MEETING_DEFAULT_TIMEZONE || 'Asia/Dhaka',
+      defaultDurationMinutes: positiveInteger(
+        process.env.MEETING_DEFAULT_DURATION_MINUTES,
+        30,
+        'MEETING_DEFAULT_DURATION_MINUTES',
+      ),
+      google: {
+        clientId: googleOAuthClientId,
+        clientSecret: googleOAuthClientSecret,
+        redirectUri: googleOAuthRedirectUri,
+      },
     },
 
     redis: {

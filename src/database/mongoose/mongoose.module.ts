@@ -47,11 +47,11 @@ import {
   CancellationRequest,
   CancellationRequestSchema,
 } from '../schemas/cancellation-request.schema';
-import { ZoomMeeting, ZoomMeetingSchema } from '../schemas/zoom-meeting.schema';
+import { MeetingBot, MeetingBotSchema } from '../schemas/meeting-bot.schema';
 import {
-  ZoomMeetingTranscript,
-  ZoomMeetingTranscriptSchema,
-} from '../schemas/zoom-meeting-transcript.schema';
+  MeetingTranscript,
+  MeetingTranscriptSchema,
+} from '../schemas/meeting-transcript.schema';
 import {
   RecallZoomConnection,
   RecallZoomConnectionSchema,
@@ -91,16 +91,15 @@ import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
       { name: Invoice.name, schema: InvoiceSchema },
       { name: CancellationRequest.name, schema: CancellationRequestSchema },
-      { name: ZoomMeeting.name, schema: ZoomMeetingSchema },
-      {
-        name: ZoomMeetingTranscript.name,
-        schema: ZoomMeetingTranscriptSchema,
-      },
+      { name: MeetingBot.name, schema: MeetingBotSchema },
+      { name: MeetingTranscript.name, schema: MeetingTranscriptSchema },
       {
         name: RecallZoomConnection.name,
         schema: RecallZoomConnectionSchema,
       },
       { name: RecallWebhookEvent.name, schema: RecallWebhookEventSchema },
+      { name: MeetingOAuthState.name, schema: MeetingOAuthStateSchema },
+      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,

@@ -11,8 +11,14 @@ import {
   encryptText,
 } from '../../common/helpers/crypto.helper';
 import { IntegrationProvider } from '../../database/schemas/integration.schema';
+import {
+  MetaInsightsQueryDto,
+  MetaListQueryDto,
+  MetaOverviewQueryDto,
+} from './dto/meta-query.dto';
 import { MetaRepository } from './meta.repository';
 import { MetaProvider } from './providers/meta.provider';
+import { resolveMetaTimeRange } from './utils/meta-date-filter.util';
 
 type MetaOAuthState = {
   organizationId: string;
@@ -117,75 +123,78 @@ export class MetaService {
   async getPagePosts(
     organizationId: string,
     pageId: string,
-    limit = 25,
+    query: MetaListQueryDto,
   ) {
+    const timeRange = resolveMetaTimeRange(query);
     const page = await this.resolveStoredPage(organizationId, pageId);
-    return this.provider.getPagePosts(page.id, page.accessToken, limit);
+    return this.provider.getPagePosts(page.id, page.accessToken, {
+      limit: query.limit,
+      ...timeRange,
+    });
   }
 
   async getPostComments(
     organizationId: string,
     pageId: string,
     postId: string,
-    limit = 25,
+    query: MetaListQueryDto,
   ) {
+    const timeRange = resolveMetaTimeRange(query);
     const page = await this.resolveStoredPage(organizationId, pageId);
-    return this.provider.getPostComments(postId, page.accessToken, limit);
+    return this.provider.getPostComments(postId, page.accessToken, {
+      limit: query.limit,
+      ...timeRange,
+    });
   }
 
   async getPageMessages(
     organizationId: string,
     pageId: string,
-    limit = 25,
+    query: MetaListQueryDto,
   ) {
+    const timeRange = resolveMetaTimeRange(query);
     const page = await this.resolveStoredPage(organizationId, pageId);
-    return this.provider.getPageMessages(page.id, page.accessToken, limit);
+    return this.provider.getPageMessages(page.id, page.accessToken, {
+      limit: query.limit,
+      ...timeRange,
+    });
   }
 
   async getPageInsights(
     organizationId: string,
     pageId: string,
-    metrics?: string,
-    period?: string,
+    query: MetaInsightsQueryDto,
   ) {
+    const timeRange = resolveMetaTimeRange(query);
     const page = await this.resolveStoredPage(organizationId, pageId);
-    const metricList = metrics
-      ? metrics
-          .split(',')
-          .map((metric) => metric.trim())
-          .filter(Boolean)
-      : undefined;
-    return this.provider.getPageInsights(
-      page.id,
-      page.accessToken,
-      metricList,
-      period,
-    );
+    return this.provider.getPageInsights(page.id, page.accessToken, {
+      metrics: this.parseMetrics(query.metrics),
+      period: query.period,
+      ...timeRange,
+    });
   }
 
   async getPageOverview(
     organizationId: string,
     pageId: string,
-    limit = 25,
-    metrics?: string,
-    period?: string,
+    query: MetaOverviewQueryDto,
   ) {
+    const timeRange = resolveMetaTimeRange(query);
     const page = await this.resolveStoredPage(organizationId, pageId);
-    const metricList = metrics
-      ? metrics
-          .split(',')
-          .map((metric) => metric.trim())
-          .filter(Boolean)
-      : undefined;
     const [posts, messages, insights] = await Promise.all([
-      this.provider.getPagePosts(page.id, page.accessToken, limit),
-      this.provider.getPageMessages(page.id, page.accessToken, limit),
-      this.provider.getPageInsights(
-        page.id,
-        page.accessToken,
-        metricList,
-        period,
-      ),
+      this.provider.getPagePosts(page.id, page.accessToken, {
+        limit: query.limit,
+        ...timeRange,
+      }),
+      this.provider.getPageMessages(page.id, page.accessToken, {
+        limit: query.limit,
+        ...timeRange,
+      }),
+      this.provider.getPageInsights(page.id, page.accessToken, {
+        metrics: this.parseMetrics(query.metrics),
+        period: query.period,
+        ...timeRange,
+      }),
     ]);
 
     return {
@@ -198,6 +207,17 @@ export class MetaService {
       messages,
       insights,
     };
+  }
+
+  private parseMetrics(metrics?: string): string[] | undefined {
+    if (!metrics) return undefined;
+
+    const metricList = metrics
+      .split(',')
+      .map((metric) => metric.trim())
+      .filter(Boolean);
+
+    return metricList.length ? metricList : undefined;
   }
 
   private createState(organizationId: string, userId: string) {

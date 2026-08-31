@@ -1,0 +1,21 @@
+export enum MeetingBotStatus {
+  PENDING = 'PENDING',
+  CREATING = 'CREATING',
+  SCHEDULED = 'SCHEDULED',
+  JOINING = 'JOINING',
+  WAITING_ROOM = 'WAITING_ROOM',
+  IN_CALL = 'IN_CALL',
+  RECORDING = 'RECORDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const ACTIVE_MEETING_BOT_STATUSES = [
+  MeetingBotStatus.CREATING,
+  MeetingBotStatus.JOINING,
+  MeetingBotStatus.WAITING_ROOM,
+  MeetingBotStatus.IN_CALL,
+  MeetingBotStatus.RECORDING,
+] as const;
