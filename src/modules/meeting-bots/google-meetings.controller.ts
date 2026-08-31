@@ -10,7 +10,7 @@ import {
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -29,7 +29,7 @@ import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 import { GoogleMeetAuthService } from './google-meet-auth.service';
 
-@ApiTags('Google Meetings')
+@ApiTags('Google Meet Connection & Manual Bots')
 @ApiBearerAuth()
 @Controller('google-meetings')
 export class GoogleMeetingsController {
@@ -94,6 +94,11 @@ export class GoogleMeetingsController {
 
   @Post()
   @UseGuards(OrganizationGuard)
+  @ApiOperation({
+    summary: 'Send a Recall bot to an existing Google Meet URL',
+    description:
+      'Legacy/manual flow. This endpoint requires meetingUrl. To create a new Google Meet from a connected organizer account, use POST /api/v1/meetings.',
+  })
   create(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
@@ -127,32 +132,6 @@ export class GoogleMeetingsController {
     @Param('id') id: string,
   ) {
     return this.meetings.get(organization.id, id, MeetingPlatform.GOOGLE_MEET);
-  }
-
-  @Get(':id/transcript')
-  @UseGuards(OrganizationGuard)
-  getTranscript(
-    @CurrentOrg() organization: RequestOrganization,
-    @Param('id') id: string,
-  ) {
-    return this.meetings.getTranscript(
-      organization.id,
-      id,
-      MeetingPlatform.GOOGLE_MEET,
-    );
-  }
-
-  @Get(':id/audio')
-  @UseGuards(OrganizationGuard)
-  getAudio(
-    @CurrentOrg() organization: RequestOrganization,
-    @Param('id') id: string,
-  ) {
-    return this.meetings.getAudio(
-      organization.id,
-      id,
-      MeetingPlatform.GOOGLE_MEET,
-    );
   }
 
   @Patch(':id')
