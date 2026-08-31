@@ -4,8 +4,6 @@ import {
   Get,
   Param,
   Query,
-  DefaultValuePipe,
-  ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -17,6 +15,11 @@ import {
   RequestOrganization,
   RequestUser,
 } from '../../common/types/request-context.type';
+import {
+  MetaInsightsQueryDto,
+  MetaListQueryDto,
+  MetaOverviewQueryDto,
+} from './dto/meta-query.dto';
 import { MetaService } from './meta.service';
 
 @ApiTags('Meta')
@@ -58,9 +61,9 @@ export class MetaController {
   posts(
     @CurrentOrg() organization: RequestOrganization,
     @Param('pageId') pageId: string,
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+    @Query() query: MetaListQueryDto,
   ) {
-    return this.service.getPagePosts(organization.id, pageId, limit);
+    return this.service.getPagePosts(organization.id, pageId, query);
   }
 
   @Get('pages/:pageId/posts/:postId/comments')
@@ -69,13 +72,13 @@ export class MetaController {
     @CurrentOrg() organization: RequestOrganization,
     @Param('pageId') pageId: string,
     @Param('postId') postId: string,
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+    @Query() query: MetaListQueryDto,
   ) {
     return this.service.getPostComments(
       organization.id,
       pageId,
       postId,
-      limit,
+      query,
     );
   }
 
@@ -84,9 +87,9 @@ export class MetaController {
   messages(
     @CurrentOrg() organization: RequestOrganization,
     @Param('pageId') pageId: string,
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+    @Query() query: MetaListQueryDto,
   ) {
-    return this.service.getPageMessages(organization.id, pageId, limit);
+    return this.service.getPageMessages(organization.id, pageId, query);
   }
 
   @Get('pages/:pageId/insights')
@@ -94,15 +97,9 @@ export class MetaController {
   insights(
     @CurrentOrg() organization: RequestOrganization,
     @Param('pageId') pageId: string,
-    @Query('metrics') metrics?: string,
-    @Query('period') period?: string,
+    @Query() query: MetaInsightsQueryDto,
   ) {
-    return this.service.getPageInsights(
-      organization.id,
-      pageId,
-      metrics,
-      period,
-    );
+    return this.service.getPageInsights(organization.id, pageId, query);
   }
 
   @Get('pages/:pageId/overview')
@@ -110,16 +107,8 @@ export class MetaController {
   overview(
     @CurrentOrg() organization: RequestOrganization,
     @Param('pageId') pageId: string,
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
-    @Query('metrics') metrics?: string,
-    @Query('period') period?: string,
+    @Query() query: MetaOverviewQueryDto,
   ) {
-    return this.service.getPageOverview(
-      organization.id,
-      pageId,
-      limit,
-      metrics,
-      period,
-    );
+    return this.service.getPageOverview(organization.id, pageId, query);
   }
 }

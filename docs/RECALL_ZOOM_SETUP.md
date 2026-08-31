@@ -1,5 +1,10 @@
 # Recall.ai Zoom Bot Setup
 
+> The runtime implementation now uses the shared meeting-bots domain. See
+> `docs/RECALL_MEETING_BOTS_SETUP.md` for the common architecture, MongoDB
+> migration, and Google Meet manual test flow. Existing Zoom endpoints remain
+> compatible.
+
 This module supports Zoom only. It creates immediate or scheduled Recall.ai
 bots, records mixed MP3 audio for 168 hours, creates a post-meeting transcript,
 and stores the complete transcript in MongoDB. Redis/BullMQ handles bot creation
