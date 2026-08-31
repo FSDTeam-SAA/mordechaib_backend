@@ -1,13 +1,9 @@
 allowBuilds:
+  '@parcel/watcher': true
   '@scarf/scarf': false
   bcrypt: true
   msgpackr-extract: false
   unrs-resolver: false
-
-overrides:
-  '@nestjs/swagger>js-yaml': 5.2.2
-allowBuilds:
-  '@scarf/scarf': false
-  bcrypt: true
+  
 overrides:
   '@nestjs/swagger>js-yaml': 5.2.2
