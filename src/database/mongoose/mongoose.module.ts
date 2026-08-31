@@ -60,6 +60,7 @@ import {
   RecallWebhookEvent,
   RecallWebhookEventSchema,
 } from '../schemas/recall-webhook-event.schema';
+import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
 
 @Global()
 @Module({
@@ -104,6 +105,7 @@ import {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,
       },
+      { name: TeamMember.name, schema: TeamMemberSchema },
     ]),
   ],
   exports: [MongooseModule],
