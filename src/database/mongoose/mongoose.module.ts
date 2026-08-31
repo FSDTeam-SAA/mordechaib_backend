@@ -61,6 +61,15 @@ import {
   RecallWebhookEventSchema,
 } from '../schemas/recall-webhook-event.schema';
 import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
+import {
+  ZoomMeeting,
+  ZoomMeetingSchema,
+} from '../schemas/zoom-meeting.schema';
+import {
+  ZoomMeetingTranscript,
+  ZoomMeetingTranscriptSchema,
+} from '../schemas/zoom-meeting-transcript.schema';
+
 
 @Global()
 @Module({
@@ -98,15 +107,16 @@ import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
         schema: RecallZoomConnectionSchema,
       },
       { name: RecallWebhookEvent.name, schema: RecallWebhookEventSchema },
-      { name: MeetingOAuthState.name, schema: MeetingOAuthStateSchema },
-      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
       {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,
       },
       { name: TeamMember.name, schema: TeamMemberSchema },
+      { name: ZoomMeeting.name, schema: ZoomMeetingSchema },
+      { name: ZoomMeetingTranscript.name, schema: ZoomMeetingTranscriptSchema },
     ]),
   ],
   exports: [MongooseModule],
 })
+
 export class DatabaseModule {}
