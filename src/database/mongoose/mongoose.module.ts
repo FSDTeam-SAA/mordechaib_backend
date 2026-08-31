@@ -60,14 +60,7 @@ import {
   RecallWebhookEvent,
   RecallWebhookEventSchema,
 } from '../schemas/recall-webhook-event.schema';
-import {
-  MeetingOAuthState,
-  MeetingOAuthStateSchema,
-} from '../schemas/meeting-oauth-state.schema';
-import {
-  PlatformMeeting,
-  PlatformMeetingSchema,
-} from '../schemas/platform-meeting.schema';
+import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
 
 @Global()
 @Module({
@@ -111,6 +104,7 @@ import {
         name: OrganizationSubscription.name,
         schema: OrganizationSubscriptionSchema,
       },
+      { name: TeamMember.name, schema: TeamMemberSchema },
     ]),
   ],
   exports: [MongooseModule],
