@@ -290,6 +290,7 @@ export class MeetingBotsService {
     requiredPlatform?: MeetingPlatform,
   ) {
     const meeting = await this.get(organizationId, id, requiredPlatform);
+    if (meeting.status === MeetingBotStatus.CANCELLED) return meeting;
     if (
       ![
         MeetingBotStatus.PENDING,

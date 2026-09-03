@@ -24,7 +24,7 @@ import { PackageInquiriesModule } from './modules/package-inquiries/package-inqu
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { MetaModule } from './modules/meta/meta.module';
-import { ZoomMeetingsModule } from './modules/zoom-meetings/zoom-meetings.module';
+import { MeetingBotsModule } from './modules/meeting-bots/meeting-bots.module';
 import { TeamModule } from './modules/team/team.module';
 
 @Module({
@@ -52,7 +52,7 @@ import { TeamModule } from './modules/team/team.module';
     PackageInquiriesModule,
     OnboardingSetupsModule,
     MetaModule,
-    ZoomMeetingsModule,
+    MeetingBotsModule,
     TeamModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

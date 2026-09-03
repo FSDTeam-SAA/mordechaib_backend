@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import {
   CreatedProviderMeeting,
   CreateProviderMeetingInput,
+  UpdateProviderMeetingInput,
 } from './platform-meeting-provider.types';
 
 type GoogleTokenResponse = {
@@ -57,6 +58,7 @@ export class GoogleMeetProvider {
         'email',
         'profile',
         'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/meetings.space.created',
       ].join(' '),
     }).toString();
     return url.toString();
@@ -113,6 +115,22 @@ export class GoogleMeetProvider {
                 attendees: input.invitees.map((email) => ({ email })),
               }
             : {}),
+          reminders: {
+            useDefault: false,
+            overrides:
+              input.reminderMinutesBeforeStart > 0
+                ? [
+                    {
+                      method: 'popup',
+                      minutes: input.reminderMinutesBeforeStart,
+                    },
+                    {
+                      method: 'email',
+                      minutes: input.reminderMinutesBeforeStart,
+                    },
+                  ]
+                : [],
+          },
           conferenceData: {
             createRequest: {
               requestId: crypto.randomUUID(),
@@ -139,8 +157,81 @@ export class GoogleMeetProvider {
       providerMeetingId: event.id,
       joinUrl,
       startUrl: joinUrl,
-      metadata: { calendarEventUrl: completedEvent.htmlLink || event.htmlLink },
+      metadata: {
+        googleMeetingMode: 'CALENDAR_EVENT',
+        calendarEventUrl: completedEvent.htmlLink || event.htmlLink,
+      },
     };
+  }
+
+  async createStandaloneMeeting(
+    accessToken: string,
+  ): Promise<CreatedProviderMeeting> {
+    const space = await this.request<{
+      name?: string;
+      meetingUri?: string;
+      meetingCode?: string;
+    }>('https://meet.googleapis.com/v2/spaces', accessToken, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!space.name || !space.meetingUri) {
+      throw new BadGatewayException(
+        'Google created the meeting space without a join URL',
+      );
+    }
+    return {
+      providerMeetingId: space.name,
+      joinUrl: space.meetingUri,
+      startUrl: space.meetingUri,
+      metadata: {
+        googleMeetingMode: 'STANDALONE_SPACE',
+        meetingCode: space.meetingCode,
+      },
+    };
+  }
+
+  async updateMeeting(
+    accessToken: string,
+    eventId: string,
+    input: UpdateProviderMeetingInput,
+  ) {
+    const endsAt = new Date(
+      input.startsAt.getTime() + input.durationMinutes * 60_000,
+    );
+    await this.request<GoogleCalendarEvent>(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+      accessToken,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          summary: input.title,
+          description: input.agenda || '',
+          start: {
+            dateTime: input.startsAt.toISOString(),
+            timeZone: input.timezone,
+          },
+          end: { dateTime: endsAt.toISOString(), timeZone: input.timezone },
+          attendees: input.invitees.map((email) => ({ email })),
+          reminders: {
+            useDefault: false,
+            overrides:
+              input.reminderMinutesBeforeStart > 0
+                ? [
+                    {
+                      method: 'popup',
+                      minutes: input.reminderMinutesBeforeStart,
+                    },
+                    {
+                      method: 'email',
+                      minutes: input.reminderMinutesBeforeStart,
+                    },
+                  ]
+                : [],
+          },
+        }),
+      },
+    );
   }
 
   async deleteMeeting(accessToken: string, eventId: string) {
@@ -148,6 +239,7 @@ export class GoogleMeetProvider {
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
       accessToken,
       { method: 'DELETE' },
+      [404, 410],
     );
   }
 
@@ -224,6 +316,7 @@ export class GoogleMeetProvider {
     url: string,
     accessToken: string,
     init: RequestInit = {},
+    acceptedStatuses: number[] = [],
   ): Promise<T> {
     let response: Response;
     try {
@@ -240,7 +333,9 @@ export class GoogleMeetProvider {
     } catch {
       throw new ServiceUnavailableException('Google API is unavailable');
     }
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204 || acceptedStatuses.includes(response.status)) {
+      return undefined as T;
+    }
     const body = (await response.json().catch(() => ({}))) as {
       error?: { message?: string };
     };

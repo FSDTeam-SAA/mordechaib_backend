@@ -231,6 +231,7 @@ export class OnboardingSetupsService {
       try {
         const event = (await this.calendarService.createEvent(
           user.organizationId,
+          user.id,
           {
             title: 'Noltra Onboarding & Setup Call',
             startTime: dto.startTime,

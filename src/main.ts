@@ -9,6 +9,14 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
+type SwaggerResponse = {
+  url?: string;
+  status?: number;
+  body?: unknown;
+  data?: unknown;
+  obj?: unknown;
+};
+
 async function bootstrap() {
   // rawBody is required by StripeSignatureGuard — Stripe signs the exact
   // request bytes, so the parsed/re-serialized JSON body can't be used.
@@ -52,7 +60,66 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      responseInterceptor: (response: SwaggerResponse) => {
+        const toRecord = (
+          value: unknown,
+        ): Record<string, unknown> | undefined => {
+          if (typeof value === 'string') {
+            try {
+              value = JSON.parse(value) as unknown;
+            } catch {
+              return undefined;
+            }
+          }
+
+          return value !== null && typeof value === 'object'
+            ? (value as Record<string, unknown>)
+            : undefined;
+        };
+        const swaggerUi = (
+          globalThis as unknown as {
+            ui?: {
+              preauthorizeApiKey: (scheme: string, token: string) => void;
+              authActions: { logout: (schemes: string[]) => void };
+            };
+          }
+        ).ui;
+        const status = response.status ?? 0;
+        const pathname = response.url
+          ? new URL(response.url, globalThis.location.origin).pathname
+          : '';
+
+        if (status >= 200 && status < 300) {
+          if (
+            pathname.endsWith('/auth/login') ||
+            pathname.endsWith('/auth/refresh')
+          ) {
+            const payload =
+              toRecord(response.obj) ??
+              toRecord(response.body) ??
+              toRecord(response.data);
+            const data = toRecord(payload?.data) ?? payload;
+            const accessToken = data?.accessToken;
+
+            if (typeof accessToken === 'string') {
+              swaggerUi?.preauthorizeApiKey('bearer', accessToken);
+            }
+          } else if (
+            pathname.endsWith('/auth/logout') ||
+            pathname.endsWith('/auth/logout-all')
+          ) {
+            swaggerUi?.authActions.logout(['bearer']);
+            globalThis.localStorage.removeItem('authorized');
+          }
+        }
+
+        return response;
+      },
+    },
+  });
 
   const port = config.get<number>('PORT', 5001);
   await app.listen(port, '0.0.0.0');

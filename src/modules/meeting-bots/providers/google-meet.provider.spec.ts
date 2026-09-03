@@ -30,6 +30,39 @@ describe('GoogleMeetProvider', () => {
     expect(url.searchParams.get('scope')).toContain(
       'https://www.googleapis.com/auth/calendar.events',
     );
+    expect(url.searchParams.get('scope')).toContain(
+      'https://www.googleapis.com/auth/meetings.space.created',
+    );
+  });
+
+  it('creates a standalone Meet space without a Google calendar event', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          name: 'spaces/abc-defg-hij',
+          meetingUri: 'https://meet.google.com/abc-defg-hij',
+          meetingCode: 'abc-defg-hij',
+        }),
+        { status: 200 },
+      ),
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const meeting = await provider.createStandaloneMeeting('access-token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://meet.googleapis.com/v2/spaces',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(meeting).toEqual(
+      expect.objectContaining({
+        providerMeetingId: 'spaces/abc-defg-hij',
+        joinUrl: 'https://meet.google.com/abc-defg-hij',
+        metadata: expect.objectContaining({
+          googleMeetingMode: 'STANDALONE_SPACE',
+        }),
+      }),
+    );
   });
 
   it('creates an event and waits for its asynchronous Meet link', async () => {
@@ -65,6 +98,7 @@ describe('GoogleMeetProvider', () => {
       timezone: 'Asia/Dhaka',
       invitees: ['guest@example.com'],
       immediate: false,
+      reminderMinutesBeforeStart: 15,
     });
 
     const [insertUrl, insertInit] = fetchMock.mock.calls[0] as [
@@ -91,6 +125,7 @@ describe('GoogleMeetProvider', () => {
       joinUrl: 'https://meet.google.com/abc-defg-hij',
       startUrl: 'https://meet.google.com/abc-defg-hij',
       metadata: {
+        googleMeetingMode: 'CALENDAR_EVENT',
         calendarEventUrl: 'https://calendar.google.com/event?eid=event-1',
       },
     });

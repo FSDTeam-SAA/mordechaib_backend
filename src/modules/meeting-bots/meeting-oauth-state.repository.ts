@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
-import { MeetingOAuthState } from '../../database/schemas/meeting-oauth-state.schema';
+import {
+  MeetingOAuthState,
+  OAuthConnectionProvider,
+} from '../../database/schemas/meeting-oauth-state.schema';
 
 @Injectable()
 export class MeetingOAuthStateRepository {
@@ -13,7 +15,7 @@ export class MeetingOAuthStateRepository {
 
   create(input: {
     nonceHash: string;
-    platform: MeetingPlatform;
+    platform: OAuthConnectionProvider;
     organizationId: string;
     userId: string;
     expiresAt: Date;
@@ -23,7 +25,7 @@ export class MeetingOAuthStateRepository {
 
   consume(input: {
     nonceHash: string;
-    platform: MeetingPlatform;
+    platform: OAuthConnectionProvider;
     organizationId: string;
     userId: string;
     now: Date;
