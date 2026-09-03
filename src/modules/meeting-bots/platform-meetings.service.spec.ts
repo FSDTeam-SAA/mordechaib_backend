@@ -9,6 +9,8 @@ import { PlatformMeetingsService } from './platform-meetings.service';
 import { GoogleMeetProvider } from './providers/google-meet.provider';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
+import { CalendarService } from '../calendar/calendar.service';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 
 describe('PlatformMeetingsService', () => {
   const meetingId = '66cc9bdfa847ea856c7b41d2';
@@ -17,6 +19,7 @@ describe('PlatformMeetingsService', () => {
   let meetingBots: Record<string, jest.Mock>;
   let googleAuth: Record<string, jest.Mock>;
   let googleProvider: Record<string, jest.Mock>;
+  let calendar: Record<string, jest.Mock>;
   let service: PlatformMeetingsService;
 
   beforeEach(() => {
@@ -49,6 +52,7 @@ describe('PlatformMeetingsService', () => {
     meetingBots = {
       create: jest.fn().mockResolvedValue({ _id: 'meeting-bot-1' }),
       cancel: jest.fn(),
+      updateScheduled: jest.fn(),
     };
     googleAuth = {
       getAccessToken: jest.fn().mockResolvedValue('google-token'),
@@ -59,7 +63,22 @@ describe('PlatformMeetingsService', () => {
         joinUrl: 'https://meet.google.com/abc-defg-hij',
         startUrl: 'https://meet.google.com/abc-defg-hij',
       }),
+      createStandaloneMeeting: jest.fn().mockResolvedValue({
+        providerMeetingId: 'spaces/abc-defg-hij',
+        joinUrl: 'https://meet.google.com/abc-defg-hij',
+        startUrl: 'https://meet.google.com/abc-defg-hij',
+        metadata: { googleMeetingMode: 'STANDALONE_SPACE' },
+      }),
+      updateMeeting: jest.fn(),
       deleteMeeting: jest.fn(),
+    };
+    calendar = {
+      getDefaultProvider: jest
+        .fn()
+        .mockResolvedValue(CalendarProviderType.GOOGLE_CALENDAR),
+      createMeetingEvent: jest.fn(),
+      updateMeetingEvent: jest.fn(),
+      cancelMeetingEvent: jest.fn(),
     };
     const config = {
       get: jest.fn((key: string, fallback?: unknown) => {
@@ -78,6 +97,7 @@ describe('PlatformMeetingsService', () => {
       googleAuth as unknown as GoogleMeetAuthService,
       {} as RecallZoomAuthProvider,
       googleProvider as unknown as GoogleMeetProvider,
+      calendar as unknown as CalendarService,
       config as unknown as ConfigService,
     );
   });
@@ -133,6 +153,42 @@ describe('PlatformMeetingsService', () => {
     );
   });
 
+  it('creates only an Outlook event when Outlook is default for Google Meet', async () => {
+    calendar.getDefaultProvider.mockResolvedValue(
+      CalendarProviderType.OUTLOOK_CALENDAR,
+    );
+    calendar.createMeetingEvent.mockResolvedValue({
+      id: 'outlook-event-1',
+      provider: CalendarProviderType.OUTLOOK_CALENDAR,
+      htmlUrl: 'https://outlook.office.com/calendar/item/1',
+    });
+
+    const result = await service.create('org-1', 'user-1', {
+      platform: MeetingPlatform.GOOGLE_MEET,
+      title: 'Project review',
+      startsAt: '2099-09-01T10:00:00.000Z',
+      sendBot: false,
+    });
+
+    expect(googleProvider.createStandaloneMeeting).toHaveBeenCalledWith(
+      'google-token',
+    );
+    expect(googleProvider.createMeeting).not.toHaveBeenCalled();
+    expect(calendar.createMeetingEvent).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      }),
+      CalendarProviderType.OUTLOOK_CALENDAR,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        calendarProvider: CalendarProviderType.OUTLOOK_CALENDAR,
+        calendarEventId: 'outlook-event-1',
+      }),
+    );
+  });
+
   it('hides host URLs and management from unrelated organization members', async () => {
     await service.create('org-1', 'user-1', {
       platform: MeetingPlatform.GOOGLE_MEET,
@@ -149,5 +205,45 @@ describe('PlatformMeetingsService', () => {
     await expect(
       service.provisionBot('org-1', otherMember, meetingId),
     ).rejects.toThrow('Only the meeting creator');
+  });
+
+  it('updates the native Google calendar meeting and Recall bot schedule together', async () => {
+    await service.create('org-1', 'user-1', {
+      platform: MeetingPlatform.GOOGLE_MEET,
+      title: 'Project review',
+      startsAt: '2099-09-01T10:00:00.000Z',
+    });
+    repository.findInternalById.mockImplementation(async () => stored);
+
+    const result = await service.update(
+      'org-1',
+      { id: 'user-1', role: UserRole.MEMBER },
+      meetingId,
+      {
+        title: 'Updated project review',
+        startsAt: '2099-09-01T11:00:00.000Z',
+      },
+    );
+
+    expect(googleProvider.updateMeeting).toHaveBeenCalledWith(
+      'google-token',
+      'event-1',
+      expect.objectContaining({
+        title: 'Updated project review',
+        startsAt: new Date('2099-09-01T11:00:00.000Z'),
+      }),
+    );
+    expect(meetingBots.updateScheduled).toHaveBeenCalledWith(
+      'org-1',
+      'meeting-bot-1',
+      { joinAt: '2099-09-01T11:00:00.000Z' },
+      MeetingPlatform.GOOGLE_MEET,
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        title: 'Updated project review',
+        startsAt: new Date('2099-09-01T11:00:00.000Z'),
+      }),
+    );
   });
 });

@@ -26,6 +26,9 @@ import { RecallAudioStorage } from './storage/recall-audio.storage';
 import { ZoomAuthService } from './zoom-auth.service';
 import { ZoomConnectionsRepository } from './zoom-connections.repository';
 import { ZoomMeetingsController } from './zoom-meetings.controller';
+import { CalendarModule } from '../calendar/calendar.module';
+import { OutlookCalendarController } from './outlook-calendar.controller';
+import { OutlookCalendarAuthService } from './outlook-calendar-auth.service';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -44,6 +47,7 @@ function redisConnection(urlValue: string) {
 @Module({
   imports: [
     ConfigModule,
+    CalendarModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -61,6 +65,7 @@ function redisConnection(urlValue: string) {
     GoogleMeetingsController,
     ZoomMeetingsController,
     RecallWebhookController,
+    OutlookCalendarController,
   ],
   providers: [
     MeetingBotsService,
@@ -79,6 +84,7 @@ function redisConnection(urlValue: string) {
     GoogleMeetAuthService,
     ZoomAuthService,
     ZoomConnectionsRepository,
+    OutlookCalendarAuthService,
     RecallSignatureService,
     RecallSignatureGuard,
     RecallAudioStorage,

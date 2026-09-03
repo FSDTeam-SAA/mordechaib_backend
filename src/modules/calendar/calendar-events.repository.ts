@@ -1,80 +1,76 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
-import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
-import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
-import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
+import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
 
-export type ReservePlatformMeeting = {
-  platform: MeetingPlatform;
+export type ReserveCalendarEvent = {
   organizationId: string;
   createdByUserId: string;
   idempotencyHash: string;
+  provider: CalendarProviderType;
   title: string;
-  agenda?: string;
+  description?: string;
   startsAt: Date;
   endsAt: Date;
-  durationMinutes: number;
   timezone: string;
-  invitees: string[];
-  botRequested: boolean;
+  attendees: string[];
   reminderMinutesBeforeStart: number;
-  calendarProvider?: CalendarProviderType;
-  metadata?: Record<string, unknown>;
+};
+
+export type CalendarEventListFilter = {
+  provider?: CalendarProviderType;
+  status?: CalendarEventStatus;
+  from?: Date;
+  to?: Date;
 };
 
 @Injectable()
-export class PlatformMeetingsRepository {
+export class CalendarEventsRepository {
   constructor(
-    @InjectModel(PlatformMeeting.name)
-    private readonly model: Model<PlatformMeeting>,
+    @InjectModel(ManagedCalendarEvent.name)
+    private readonly model: Model<ManagedCalendarEvent>,
   ) {}
 
-  async reserve(input: ReservePlatformMeeting) {
+  async reserve(input: ReserveCalendarEvent) {
     const id = new Types.ObjectId();
     try {
-      const meeting = await this.model
+      const event = await this.model
         .findOneAndUpdate(
           { idempotencyHash: input.idempotencyHash },
           {
             $setOnInsert: {
               _id: id,
               ...input,
-              status: PlatformMeetingStatus.CREATING,
+              status: CalendarEventStatus.CREATING,
             },
           },
           { new: true, upsert: true, runValidators: true },
         )
-        .select('+joinUrlEncrypted +startUrlEncrypted')
         .lean()
         .exec();
-      return { meeting, created: String(meeting?._id) === String(id) };
+      return { event, created: String(event?._id) === String(id) };
     } catch (error) {
       if (!this.isDuplicateKeyError(error)) throw error;
-      const meeting = await this.findInternalByHash(input.idempotencyHash);
-      if (!meeting) throw error;
-      return { meeting, created: false };
+      const event = await this.model
+        .findOne({ idempotencyHash: input.idempotencyHash })
+        .lean()
+        .exec();
+      if (!event) throw error;
+      return { event, created: false };
     }
   }
 
-  findInternalByHash(idempotencyHash: string) {
-    return this.model
-      .findOne({ idempotencyHash })
-      .select('+idempotencyHash +joinUrlEncrypted +startUrlEncrypted')
-      .lean()
-      .exec();
+  findById(id: string, organizationId: string) {
+    return this.model.findOne({ _id: id, organizationId }).lean().exec();
   }
 
-  findInternalById(id: string, organizationId: string) {
-    return this.model
-      .findOne({ _id: id, organizationId })
-      .select('+joinUrlEncrypted +startUrlEncrypted')
-      .lean()
-      .exec();
-  }
-
-  update(id: string, organizationId: string, input: Partial<PlatformMeeting>) {
+  update(
+    id: string,
+    organizationId: string,
+    input: Partial<ManagedCalendarEvent>,
+  ) {
     const setValues: Record<string, unknown> = {};
     const unsetValues: Record<string, 1> = {};
     for (const [key, value] of Object.entries(input)) {
@@ -90,7 +86,6 @@ export class PlatformMeetingsRepository {
         },
         { new: true, runValidators: true },
       )
-      .select('+joinUrlEncrypted +startUrlEncrypted')
       .lean()
       .exec();
   }
@@ -99,24 +94,30 @@ export class PlatformMeetingsRepository {
     organizationId: string,
     page: number,
     limit: number,
-    platform?: MeetingPlatform,
-    status?: PlatformMeetingStatus,
+    filter: CalendarEventListFilter,
   ) {
-    const filter: FilterQuery<PlatformMeeting> = {
+    const query: FilterQuery<ManagedCalendarEvent> = {
       organizationId,
-      ...(platform ? { platform } : {}),
-      ...(status ? { status } : {}),
+      ...(filter.provider ? { provider: filter.provider } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+      ...(filter.from || filter.to
+        ? {
+            startsAt: {
+              ...(filter.from ? { $gte: filter.from } : {}),
+              ...(filter.to ? { $lte: filter.to } : {}),
+            },
+          }
+        : {}),
     };
     const [items, total] = await Promise.all([
       this.model
-        .find(filter)
-        .select('+joinUrlEncrypted +startUrlEncrypted')
-        .sort({ startsAt: -1 })
+        .find(query)
+        .sort({ startsAt: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean()
         .exec(),
-      this.model.countDocuments(filter).exec(),
+      this.model.countDocuments(query).exec(),
     ]);
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }

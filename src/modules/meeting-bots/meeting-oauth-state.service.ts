@@ -2,10 +2,12 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
 import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { OAuthConnectionProvider } from '../../database/schemas/meeting-oauth-state.schema';
 import { MeetingOAuthStateRepository } from './meeting-oauth-state.repository';
 
 type OAuthStatePayload = {
-  platform: MeetingPlatform;
+  platform: OAuthConnectionProvider;
   organizationId: string;
   userId: string;
   issuedAt: number;
@@ -22,7 +24,7 @@ export class MeetingOAuthStateService {
   ) {}
 
   async create(
-    platform: MeetingPlatform,
+    platform: OAuthConnectionProvider,
     organizationId: string,
     userId: string,
   ) {
@@ -44,7 +46,7 @@ export class MeetingOAuthStateService {
     return `${encoded}.${this.sign(encoded)}`;
   }
 
-  async consume(value: string, expectedPlatform: MeetingPlatform) {
+  async consume(value: string, expectedPlatform: OAuthConnectionProvider) {
     const [encoded, signature] = value.split('.');
     const expected = this.sign(encoded || '');
     if (
@@ -90,7 +92,11 @@ export class MeetingOAuthStateService {
     return payload;
   }
 
-  callbackUrl(platform: MeetingPlatform, connected: boolean, error?: string) {
+  callbackUrl(
+    platform: OAuthConnectionProvider,
+    connected: boolean,
+    error?: string,
+  ) {
     const url = new URL(
       this.config.get<string>(
         'meetingPlatforms.frontendIntegrationsUrl',
@@ -99,7 +105,11 @@ export class MeetingOAuthStateService {
     );
     url.searchParams.set(
       'provider',
-      platform === MeetingPlatform.ZOOM ? 'zoom' : 'google-meet',
+      platform === MeetingPlatform.ZOOM
+        ? 'zoom'
+        : platform === CalendarProviderType.OUTLOOK_CALENDAR
+          ? 'outlook-calendar'
+          : 'google-meet',
     );
     url.searchParams.set('connection', connected ? 'success' : 'failed');
     if (error) url.searchParams.set('error', error.slice(0, 120));
