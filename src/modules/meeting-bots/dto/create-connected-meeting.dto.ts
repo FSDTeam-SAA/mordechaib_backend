@@ -84,6 +84,14 @@ export class CreateConnectedMeetingDto {
   @IsEmail({}, { each: true })
   invitees?: string[];
 
+  @ApiPropertyOptional({ default: 15, minimum: 0, maximum: 40320 })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(40320)
+  reminderMinutesBeforeStart?: number;
+
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()

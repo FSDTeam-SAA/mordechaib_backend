@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 
 export type PlatformMeetingDocument = HydratedDocument<PlatformMeeting>;
 
@@ -24,6 +25,15 @@ export class PlatformMeeting {
 
   @Prop({ index: true, sparse: true })
   meetingBotId?: string;
+
+  @Prop({ enum: Object.values(CalendarProviderType), index: true })
+  calendarProvider?: CalendarProviderType;
+
+  @Prop({ index: true, sparse: true })
+  calendarEventId?: string;
+
+  @Prop()
+  calendarEventUrl?: string;
 
   @Prop({ required: true, trim: true })
   title!: string;
@@ -68,6 +78,9 @@ export class PlatformMeeting {
 
   @Prop({ default: true })
   botRequested!: boolean;
+
+  @Prop({ default: 15, min: 0, max: 40320 })
+  reminderMinutesBeforeStart!: number;
 
   @Prop({ type: Object, default: {} })
   metadata?: Record<string, unknown>;

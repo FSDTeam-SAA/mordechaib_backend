@@ -1,0 +1,4 @@
+export enum CalendarProviderType {
+  GOOGLE_CALENDAR = 'GOOGLE_CALENDAR',
+  OUTLOOK_CALENDAR = 'OUTLOOK_CALENDAR',
+}

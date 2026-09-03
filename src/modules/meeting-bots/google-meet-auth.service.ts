@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,14 +13,19 @@ import {
   MeetingPlatformConnectionsRepository,
 } from './meeting-platform-connections.repository';
 import { GoogleMeetProvider } from './providers/google-meet.provider';
+import { CalendarRepository } from '../calendar/calendar.repository';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 
 @Injectable()
 export class GoogleMeetAuthService {
+  private readonly logger = new Logger(GoogleMeetAuthService.name);
+
   constructor(
     private readonly repository: MeetingPlatformConnectionsRepository,
     private readonly oauthState: MeetingOAuthStateService,
     private readonly provider: GoogleMeetProvider,
     private readonly config: ConfigService,
+    private readonly calendarRepository: CalendarRepository,
   ) {}
 
   async createAuthorizationUrl(organizationId: string, userId: string) {
@@ -41,10 +47,10 @@ export class GoogleMeetAuthService {
       MeetingPlatform.GOOGLE_MEET,
     );
     const tokens = await this.provider.exchangeCode(code);
-    const existingRefreshToken = existing?.refreshToken
-      ? decryptText(existing.refreshToken, this.encryptionKey)
-      : undefined;
-    const refreshToken = tokens.refresh_token || existingRefreshToken;
+    let refreshToken = tokens.refresh_token;
+    if (!refreshToken && existing?.refreshToken) {
+      refreshToken = decryptText(existing.refreshToken, this.encryptionKey);
+    }
     if (!refreshToken) {
       throw new BadRequestException(
         'Google did not return a refresh token; revoke the previous app grant and reconnect',
@@ -70,6 +76,7 @@ export class GoogleMeetAuthService {
         } satisfies MeetingConnectionMetadata,
       },
     );
+    await this.calendarRepository.ensureDefault(context.organizationId);
     return { connected: true, organizationId: context.organizationId };
   }
 
@@ -103,13 +110,22 @@ export class GoogleMeetAuthService {
     if (!connection) return { connected: false };
     const encryptedToken = connection.refreshToken || connection.accessToken;
     if (encryptedToken) {
-      await this.provider
-        .revokeToken(decryptText(encryptedToken, this.encryptionKey))
-        .catch(() => undefined);
+      try {
+        const token = decryptText(encryptedToken, this.encryptionKey);
+        await this.provider.revokeToken(token).catch(() => undefined);
+      } catch {
+        this.logger.warn(
+          `Stored Google token for organization ${organizationId} could not be decrypted; continuing local disconnect`,
+        );
+      }
     }
     await this.repository.disconnect(
       organizationId,
       MeetingPlatform.GOOGLE_MEET,
+    );
+    await this.calendarRepository.disconnect(
+      organizationId,
+      CalendarProviderType.GOOGLE_CALENDAR,
     );
     return { connected: false, disconnected: true };
   }

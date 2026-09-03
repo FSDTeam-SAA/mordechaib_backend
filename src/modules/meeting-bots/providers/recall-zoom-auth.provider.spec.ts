@@ -37,6 +37,7 @@ describe('RecallZoomAuthProvider meeting API', () => {
       timezone: 'Asia/Dhaka',
       invitees: ['guest@example.com'],
       immediate: false,
+      reminderMinutesBeforeStart: 15,
     });
 
     const fetchMock = global.fetch as jest.Mock;

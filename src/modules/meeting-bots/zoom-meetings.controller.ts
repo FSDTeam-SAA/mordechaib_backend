@@ -130,6 +130,30 @@ export class ZoomMeetingsController {
     return this.meetings.get(organization.id, id, MeetingPlatform.ZOOM);
   }
 
+  @Get(':id/transcript')
+  @UseGuards(OrganizationGuard)
+  @ApiOperation({ summary: 'Get a Zoom meeting bot transcript' })
+  getTranscript(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('id') id: string,
+  ) {
+    return this.meetings.getTranscript(
+      organization.id,
+      id,
+      MeetingPlatform.ZOOM,
+    );
+  }
+
+  @Get(':id/audio')
+  @UseGuards(OrganizationGuard)
+  @ApiOperation({ summary: 'Get a temporary Zoom meeting audio URL' })
+  getAudio(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('id') id: string,
+  ) {
+    return this.meetings.getAudio(organization.id, id, MeetingPlatform.ZOOM);
+  }
+
   @Patch(':id')
   @UseGuards(OrganizationGuard)
   updateScheduled(
