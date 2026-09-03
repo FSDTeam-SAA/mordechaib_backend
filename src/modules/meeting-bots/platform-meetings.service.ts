@@ -10,11 +10,13 @@ import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
 import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { decryptText, encryptText } from '../../common/helpers/crypto.helper';
 import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
 import { CreateConnectedMeetingDto } from './dto/create-connected-meeting.dto';
+import { UpdateConnectedMeetingDto } from './dto/update-connected-meeting.dto';
 import { ListPlatformMeetingsQueryDto } from './dto/list-platform-meetings-query.dto';
 import { GoogleMeetAuthService } from './google-meet-auth.service';
 import { MeetingBotsService } from './meeting-bots.service';
@@ -23,9 +25,11 @@ import { GoogleMeetProvider } from './providers/google-meet.provider';
 import {
   CreatedProviderMeeting,
   CreateProviderMeetingInput,
+  UpdateProviderMeetingInput,
 } from './providers/platform-meeting-provider.types';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
+import { CalendarService } from '../calendar/calendar.service';
 
 type StoredPlatformMeeting = PlatformMeeting & {
   _id: unknown;
@@ -42,6 +46,7 @@ export class PlatformMeetingsService {
     private readonly googleAuth: GoogleMeetAuthService,
     private readonly zoomProvider: RecallZoomAuthProvider,
     private readonly googleProvider: GoogleMeetProvider,
+    private readonly calendar: CalendarService,
     private readonly config: ConfigService,
   ) {}
 
@@ -60,6 +65,11 @@ export class PlatformMeetingsService {
     const durationMinutes =
       input.durationMinutes || this.defaultDurationMinutes;
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+    const reminderMinutesBeforeStart =
+      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes;
+    const calendarProvider = immediate
+      ? undefined
+      : await this.calendar.getDefaultProvider(organizationId);
     const idempotencyHash = this.hash(
       `${organizationId}|${input.platform}|${input.idempotencyKey || crypto.randomUUID()}`,
     );
@@ -76,6 +86,8 @@ export class PlatformMeetingsService {
       timezone,
       invitees: input.invitees || [],
       botRequested: input.sendBot !== false,
+      reminderMinutesBeforeStart,
+      calendarProvider,
       metadata: input.metadata,
     });
     if (!reservation.meeting) {
@@ -102,6 +114,7 @@ export class PlatformMeetingsService {
       timezone,
       invitees: input.invitees || [],
       immediate,
+      reminderMinutesBeforeStart,
     };
 
     let created: CreatedProviderMeeting;
@@ -110,6 +123,7 @@ export class PlatformMeetingsService {
         organizationId,
         input.platform,
         providerInput,
+        calendarProvider,
       );
     } catch (error) {
       await this.repository.update(meetingId, organizationId, {
@@ -118,6 +132,52 @@ export class PlatformMeetingsService {
         failureMessage: this.errorMessage(error),
       });
       throw error;
+    }
+
+    let calendarEvent:
+      | { id: string; provider: CalendarProviderType; htmlUrl?: string }
+      | undefined;
+    if (!immediate && calendarProvider) {
+      try {
+        const nativeGoogleCalendarMeeting =
+          input.platform === MeetingPlatform.GOOGLE_MEET &&
+          calendarProvider === CalendarProviderType.GOOGLE_CALENDAR;
+        calendarEvent = nativeGoogleCalendarMeeting
+          ? {
+              id: created.providerMeetingId,
+              provider: calendarProvider,
+              htmlUrl:
+                typeof created.metadata?.calendarEventUrl === 'string'
+                  ? created.metadata.calendarEventUrl
+                  : undefined,
+            }
+          : await this.calendar.createMeetingEvent(
+              organizationId,
+              {
+                title: input.title,
+                description: input.agenda,
+                startsAt,
+                endsAt,
+                timezone,
+                attendees: input.invitees || [],
+                meetingUrl: created.joinUrl,
+                reminderMinutesBeforeStart,
+              },
+              calendarProvider,
+            );
+      } catch (error) {
+        await this.rollbackCreatedMeeting(
+          organizationId,
+          input.platform,
+          created,
+        );
+        await this.repository.update(meetingId, organizationId, {
+          status: PlatformMeetingStatus.FAILED,
+          failureCode: 'CALENDAR_EVENT_CREATION_FAILED',
+          failureMessage: this.errorMessage(error),
+        });
+        throw error;
+      }
     }
 
     const status = immediate
@@ -137,17 +197,26 @@ export class PlatformMeetingsService {
             }
           : {}),
         status,
+        ...(calendarEvent
+          ? {
+              calendarProvider: calendarEvent.provider,
+              calendarEventId: calendarEvent.id,
+              calendarEventUrl: calendarEvent.htmlUrl,
+            }
+          : {}),
+        reminderMinutesBeforeStart,
         metadata: { ...input.metadata, ...created.metadata },
         failureCode: undefined,
         failureMessage: undefined,
       });
       if (!stored) throw new Error('The reserved meeting no longer exists');
     } catch {
-      await this.deleteWithProvider(
+      await this.rollbackCreatedMeeting(
         organizationId,
         input.platform,
-        created.providerMeetingId,
-      ).catch(() => undefined);
+        created,
+        calendarEvent,
+      );
       await this.repository
         .update(meetingId, organizationId, {
           status: PlatformMeetingStatus.FAILED,
@@ -249,6 +318,181 @@ export class PlatformMeetingsService {
     return this.toResponse(meeting, canManage);
   }
 
+  async update(
+    organizationId: string,
+    actor: { id: string; role: UserRole },
+    id: string,
+    input: UpdateConnectedMeetingDto,
+  ) {
+    if (!Object.values(input).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one update field is required');
+    }
+    const meeting = await this.getInternal(organizationId, id);
+    this.assertCanManage(meeting, actor.id, actor.role);
+    if (meeting.status !== PlatformMeetingStatus.SCHEDULED) {
+      throw new ConflictException('Only scheduled meetings can be updated');
+    }
+    if (!meeting.providerMeetingId) {
+      throw new ConflictException('The provider meeting id is unavailable');
+    }
+
+    const startsAt = input.startsAt
+      ? new Date(input.startsAt)
+      : meeting.startsAt;
+    if (startsAt.getTime() <= Date.now()) {
+      throw new BadRequestException('startsAt must be in the future');
+    }
+    const timezone = input.timezone ?? meeting.timezone;
+    this.assertTimezone(timezone);
+    const durationMinutes = input.durationMinutes ?? meeting.durationMinutes;
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+    const reminderMinutesBeforeStart =
+      input.reminderMinutesBeforeStart ??
+      meeting.reminderMinutesBeforeStart ??
+      this.defaultReminderMinutes;
+    const next: UpdateProviderMeetingInput = {
+      title: input.title ?? meeting.title,
+      agenda: input.agenda ?? meeting.agenda,
+      startsAt,
+      durationMinutes,
+      timezone,
+      invitees: input.invitees ?? meeting.invitees,
+      reminderMinutesBeforeStart,
+    };
+    const previous: UpdateProviderMeetingInput = {
+      title: meeting.title,
+      agenda: meeting.agenda,
+      startsAt: meeting.startsAt,
+      durationMinutes: meeting.durationMinutes,
+      timezone: meeting.timezone,
+      invitees: meeting.invitees,
+      reminderMinutesBeforeStart:
+        meeting.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
+    };
+    const joinUrl = meeting.joinUrlEncrypted
+      ? decryptText(meeting.joinUrlEncrypted, this.encryptionKey)
+      : undefined;
+    const nativeGoogleCalendarMeeting =
+      this.isNativeGoogleCalendarMeeting(meeting);
+    let providerUpdated = false;
+    let calendarUpdated = false;
+    let botUpdated = false;
+
+    try {
+      if (
+        meeting.platform === MeetingPlatform.ZOOM ||
+        nativeGoogleCalendarMeeting
+      ) {
+        await this.updateWithProvider(
+          organizationId,
+          meeting.platform,
+          meeting.providerMeetingId,
+          next,
+        );
+        providerUpdated = true;
+      }
+      if (
+        meeting.calendarProvider &&
+        meeting.calendarEventId &&
+        !nativeGoogleCalendarMeeting
+      ) {
+        await this.calendar.updateMeetingEvent(
+          organizationId,
+          meeting.calendarProvider,
+          meeting.calendarEventId,
+          {
+            title: next.title,
+            description: next.agenda,
+            startsAt: next.startsAt,
+            endsAt,
+            timezone: next.timezone,
+            attendees: next.invitees,
+            meetingUrl: joinUrl,
+            reminderMinutesBeforeStart,
+          },
+        );
+        calendarUpdated = true;
+      }
+      if (meeting.meetingBotId && input.startsAt) {
+        await this.meetingBots.updateScheduled(
+          organizationId,
+          meeting.meetingBotId,
+          { joinAt: startsAt.toISOString() },
+          meeting.platform,
+        );
+        botUpdated = true;
+      }
+
+      const updated = await this.repository.update(id, organizationId, {
+        title: next.title,
+        agenda: next.agenda,
+        startsAt,
+        endsAt,
+        durationMinutes,
+        timezone,
+        invitees: next.invitees,
+        reminderMinutesBeforeStart,
+        failureCode: undefined,
+        failureMessage: undefined,
+      });
+      if (!updated) {
+        throw new ServiceUnavailableException(
+          'The updated meeting could not be saved',
+        );
+      }
+      return this.toResponse(updated, true);
+    } catch (error) {
+      if (botUpdated && meeting.meetingBotId) {
+        await this.meetingBots
+          .updateScheduled(
+            organizationId,
+            meeting.meetingBotId,
+            { joinAt: meeting.startsAt.toISOString() },
+            meeting.platform,
+          )
+          .catch(() => undefined);
+      }
+      if (
+        calendarUpdated &&
+        meeting.calendarProvider &&
+        meeting.calendarEventId
+      ) {
+        await this.calendar
+          .updateMeetingEvent(
+            organizationId,
+            meeting.calendarProvider,
+            meeting.calendarEventId,
+            {
+              title: previous.title,
+              description: previous.agenda,
+              startsAt: previous.startsAt,
+              endsAt: meeting.endsAt,
+              timezone: previous.timezone,
+              attendees: previous.invitees,
+              meetingUrl: joinUrl,
+              reminderMinutesBeforeStart: previous.reminderMinutesBeforeStart,
+            },
+          )
+          .catch(() => undefined);
+      }
+      if (providerUpdated) {
+        await this.updateWithProvider(
+          organizationId,
+          meeting.platform,
+          meeting.providerMeetingId,
+          previous,
+        ).catch(() => undefined);
+      }
+      await this.repository
+        .update(id, organizationId, {
+          failureCode: 'MEETING_UPDATE_FAILED',
+          failureMessage: this.errorMessage(error),
+        })
+        .catch(() => undefined);
+      throw error;
+    }
+  }
+
   async provisionBot(
     organizationId: string,
     actor: { id: string; role: UserRole },
@@ -288,18 +532,53 @@ export class PlatformMeetingsService {
     if (!meeting.providerMeetingId) {
       throw new ConflictException('The provider meeting id is unavailable');
     }
-    await this.deleteWithProvider(
-      organizationId,
-      meeting.platform,
-      meeting.providerMeetingId,
-    );
     if (meeting.meetingBotId) {
-      await this.meetingBots
-        .cancel(organizationId, meeting.meetingBotId, meeting.platform)
-        .catch(() => undefined);
+      await this.meetingBots.cancel(
+        organizationId,
+        meeting.meetingBotId,
+        meeting.platform,
+      );
+    }
+
+    const cancellationTasks: Array<Promise<unknown>> = [];
+    if (meeting.calendarProvider && meeting.calendarEventId) {
+      cancellationTasks.push(
+        this.calendar.cancelMeetingEvent(
+          organizationId,
+          meeting.calendarProvider,
+          meeting.calendarEventId,
+        ),
+      );
+    }
+    if (
+      meeting.platform === MeetingPlatform.ZOOM ||
+      (!meeting.calendarEventId && this.isNativeGoogleCalendarMeeting(meeting))
+    ) {
+      cancellationTasks.push(
+        this.deleteWithProvider(
+          organizationId,
+          meeting.platform,
+          meeting.providerMeetingId,
+        ),
+      );
+    }
+    const cancellations = await Promise.allSettled(cancellationTasks);
+    const failedCancellation = cancellations.find(
+      (result) => result.status === 'rejected',
+    );
+    if (failedCancellation?.status === 'rejected') {
+      await this.repository.update(id, organizationId, {
+        failureCode: 'MEETING_CANCELLATION_FAILED',
+        failureMessage: this.errorMessage(failedCancellation.reason),
+      });
+      throw new ServiceUnavailableException(
+        'The meeting could not be fully cancelled; retry the request',
+      );
     }
     const cancelled = await this.repository.update(id, organizationId, {
       status: PlatformMeetingStatus.CANCELLED,
+      failureCode: undefined,
+      failureMessage: undefined,
     });
     return this.toResponse(cancelled || meeting, true);
   }
@@ -308,13 +587,42 @@ export class PlatformMeetingsService {
     organizationId: string,
     platform: MeetingPlatform,
     input: CreateProviderMeetingInput,
+    calendarProvider?: CalendarProviderType,
   ) {
     if (platform === MeetingPlatform.ZOOM) {
       const accessToken = await this.zoomAuth.getAccessToken(organizationId);
       return this.zoomProvider.createMeeting(accessToken, input);
     }
     const accessToken = await this.googleAuth.getAccessToken(organizationId);
+    if (
+      input.immediate ||
+      calendarProvider === CalendarProviderType.OUTLOOK_CALENDAR
+    ) {
+      return this.googleProvider.createStandaloneMeeting(accessToken);
+    }
     return this.googleProvider.createMeeting(accessToken, input);
+  }
+
+  private async updateWithProvider(
+    organizationId: string,
+    platform: MeetingPlatform,
+    providerMeetingId: string,
+    input: UpdateProviderMeetingInput,
+  ) {
+    if (platform === MeetingPlatform.ZOOM) {
+      const accessToken = await this.zoomAuth.getAccessToken(organizationId);
+      return this.zoomProvider.updateMeeting(
+        accessToken,
+        providerMeetingId,
+        input,
+      );
+    }
+    const accessToken = await this.googleAuth.getAccessToken(organizationId);
+    return this.googleProvider.updateMeeting(
+      accessToken,
+      providerMeetingId,
+      input,
+    );
   }
 
   private async deleteWithProvider(
@@ -328,6 +636,49 @@ export class PlatformMeetingsService {
     }
     const accessToken = await this.googleAuth.getAccessToken(organizationId);
     return this.googleProvider.deleteMeeting(accessToken, providerMeetingId);
+  }
+
+  private async rollbackCreatedMeeting(
+    organizationId: string,
+    platform: MeetingPlatform,
+    created: CreatedProviderMeeting,
+    calendarEvent?: {
+      id: string;
+      provider: CalendarProviderType;
+      htmlUrl?: string;
+    },
+  ) {
+    const googleMode = created.metadata?.googleMeetingMode;
+    if (
+      calendarEvent &&
+      !(
+        platform === MeetingPlatform.GOOGLE_MEET &&
+        googleMode === 'CALENDAR_EVENT'
+      )
+    ) {
+      await this.calendar
+        .cancelMeetingEvent(
+          organizationId,
+          calendarEvent.provider,
+          calendarEvent.id,
+        )
+        .catch(() => undefined);
+    }
+    if (platform === MeetingPlatform.ZOOM || googleMode === 'CALENDAR_EVENT') {
+      await this.deleteWithProvider(
+        organizationId,
+        platform,
+        created.providerMeetingId,
+      ).catch(() => undefined);
+    }
+  }
+
+  private isNativeGoogleCalendarMeeting(meeting: StoredPlatformMeeting) {
+    return (
+      meeting.platform === MeetingPlatform.GOOGLE_MEET &&
+      (meeting.metadata?.googleMeetingMode === 'CALENDAR_EVENT' ||
+        meeting.calendarProvider === CalendarProviderType.GOOGLE_CALENDAR)
+    );
   }
 
   private async attachBot(
@@ -459,6 +810,13 @@ export class PlatformMeetingsService {
     return this.config.get<number>(
       'meetingPlatforms.defaultDurationMinutes',
       30,
+    );
+  }
+
+  private get defaultReminderMinutes() {
+    return this.config.get<number>(
+      'meetingPlatforms.defaultReminderMinutes',
+      15,
     );
   }
 

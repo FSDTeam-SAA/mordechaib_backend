@@ -41,9 +41,19 @@ export class Integration {
   @Prop()
   expiresAt?: Date;
 
+  @Prop({ default: false, index: true })
+  isDefaultCalendar?: boolean;
+
   @Prop({ type: Object, default: {} })
   metadata?: Record<string, unknown>;
 }
 
 export const IntegrationSchema = SchemaFactory.createForClass(Integration);
 IntegrationSchema.index({ organizationId: 1, provider: 1 }, { unique: true });
+IntegrationSchema.index(
+  { organizationId: 1, isDefaultCalendar: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDefaultCalendar: true },
+  },
+);

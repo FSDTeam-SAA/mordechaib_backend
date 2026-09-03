@@ -61,15 +61,23 @@ import {
   RecallWebhookEventSchema,
 } from '../schemas/recall-webhook-event.schema';
 import { TeamMember, TeamMemberSchema } from '../schemas/team-member.schema';
-import {
-  ZoomMeeting,
-  ZoomMeetingSchema,
-} from '../schemas/zoom-meeting.schema';
+import { ZoomMeeting, ZoomMeetingSchema } from '../schemas/zoom-meeting.schema';
 import {
   ZoomMeetingTranscript,
   ZoomMeetingTranscriptSchema,
 } from '../schemas/zoom-meeting-transcript.schema';
-
+import {
+  MeetingOAuthState,
+  MeetingOAuthStateSchema,
+} from '../schemas/meeting-oauth-state.schema';
+import {
+  PlatformMeeting,
+  PlatformMeetingSchema,
+} from '../schemas/platform-meeting.schema';
+import {
+  ManagedCalendarEvent,
+  ManagedCalendarEventSchema,
+} from '../schemas/managed-calendar-event.schema';
 
 @Global()
 @Module({
@@ -114,9 +122,14 @@ import {
       { name: TeamMember.name, schema: TeamMemberSchema },
       { name: ZoomMeeting.name, schema: ZoomMeetingSchema },
       { name: ZoomMeetingTranscript.name, schema: ZoomMeetingTranscriptSchema },
+      { name: MeetingOAuthState.name, schema: MeetingOAuthStateSchema },
+      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
+      {
+        name: ManagedCalendarEvent.name,
+        schema: ManagedCalendarEventSchema,
+      },
     ]),
   ],
   exports: [MongooseModule],
 })
-
 export class DatabaseModule {}

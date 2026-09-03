@@ -24,7 +24,6 @@ type VerifiedRecallRequest = { recallMessageId: string };
 @Public()
 @SkipThrottle()
 @Controller('webhooks/recall')
-@UseGuards(RecallSignatureGuard)
 export class RecallWebhookController {
   constructor(
     private readonly queue: MeetingBotsQueue,
@@ -32,6 +31,7 @@ export class RecallWebhookController {
   ) {}
 
   @Post()
+  @UseGuards(RecallSignatureGuard)
   @HttpCode(HttpStatus.ACCEPTED)
   async receive(
     @Req() request: VerifiedRecallRequest,
@@ -42,6 +42,7 @@ export class RecallWebhookController {
   }
 
   @Get('zoom-zak')
+  @UseGuards(RecallSignatureGuard)
   async zoomZak(@Res() response: Response) {
     const token = await this.zoomAuth.getLegacyZakToken();
     response.status(HttpStatus.OK).type('text/plain').send(token);

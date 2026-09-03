@@ -79,7 +79,16 @@ export default () => {
     process.env.GOOGLE_OAUTH_REDIRECT_URI ||
     `${appBaseUrl}/api/v1/google-meetings/oauth/callback`;
   const googleOAuthClientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
-  const googleOAuthClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const googleOAuthClientSecret =
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const microsoftOAuthClientId = process.env.MICROSOFT_OAUTH_CLIENT_ID?.trim();
+  const microsoftOAuthClientSecret =
+    process.env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim();
+  const microsoftOAuthTenant =
+    process.env.MICROSOFT_OAUTH_TENANT?.trim() || 'common';
+  const microsoftOAuthRedirectUri =
+    process.env.MICROSOFT_OAUTH_REDIRECT_URI ||
+    `${appBaseUrl}/api/v1/calendar/outlook/oauth/callback`;
   const meetingOAuthStateSecret =
     process.env.MEETING_OAUTH_STATE_SECRET ||
     process.env.RECALLAI_OAUTH_STATE_SECRET ||
@@ -88,6 +97,20 @@ export default () => {
   if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
     throw new Error(
       'GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together',
+    );
+  }
+  if (Boolean(microsoftOAuthClientId) !== Boolean(microsoftOAuthClientSecret)) {
+    throw new Error(
+      'MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET must be configured together',
+    );
+  }
+  if (
+    microsoftOAuthClientId &&
+    microsoftOAuthRedirectUri !==
+      `${appBaseUrl}/api/v1/calendar/outlook/oauth/callback`
+  ) {
+    throw new Error(
+      'MICROSOFT_OAUTH_REDIRECT_URI must match the callback under APP_BASE_URL',
     );
   }
   if (
@@ -338,17 +361,27 @@ export default () => {
         process.env.MEETING_INTEGRATIONS_FRONTEND_URL ||
         `${frontendUrl}/dashboard/integrations`,
       oauthStateSecret: meetingOAuthStateSecret,
-      defaultTimezone:
-        process.env.MEETING_DEFAULT_TIMEZONE || 'Asia/Dhaka',
+      defaultTimezone: process.env.MEETING_DEFAULT_TIMEZONE || 'Asia/Dhaka',
       defaultDurationMinutes: positiveInteger(
         process.env.MEETING_DEFAULT_DURATION_MINUTES,
         30,
         'MEETING_DEFAULT_DURATION_MINUTES',
       ),
+      defaultReminderMinutes: positiveInteger(
+        process.env.MEETING_DEFAULT_REMINDER_MINUTES,
+        15,
+        'MEETING_DEFAULT_REMINDER_MINUTES',
+      ),
       google: {
         clientId: googleOAuthClientId,
         clientSecret: googleOAuthClientSecret,
         redirectUri: googleOAuthRedirectUri,
+      },
+      microsoft: {
+        clientId: microsoftOAuthClientId,
+        clientSecret: microsoftOAuthClientSecret,
+        redirectUri: microsoftOAuthRedirectUri,
+        authority: `https://login.microsoftonline.com/${microsoftOAuthTenant}`,
       },
     },
 

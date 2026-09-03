@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,7 +19,10 @@ import {
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   RequestOrganization,
   RequestUser,
@@ -26,6 +30,7 @@ import {
 import { CreateConnectedMeetingDto } from './dto/create-connected-meeting.dto';
 import { ListPlatformMeetingsQueryDto } from './dto/list-platform-meetings-query.dto';
 import { PlatformMeetingsService } from './platform-meetings.service';
+import { UpdateConnectedMeetingDto } from './dto/update-connected-meeting.dto';
 
 class ProvisionMeetingBotDto {
   @ApiPropertyOptional({ example: 'Noltra AI Notetaker', maxLength: 100 })
@@ -43,6 +48,8 @@ export class PlatformMeetingsController {
   constructor(private readonly meetings: PlatformMeetingsService) {}
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({
     summary:
       'Create a Zoom or Google Meet using the connected organizer account',
@@ -83,6 +90,8 @@ export class PlatformMeetingsController {
   }
 
   @Post(':id/bot')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Queue or retry the Recall bot for a meeting' })
   provisionBot(
     @CurrentOrg() organization: RequestOrganization,
@@ -93,7 +102,24 @@ export class PlatformMeetingsController {
     return this.meetings.provisionBot(organization.id, user, id, input.botName);
   }
 
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Reschedule or update a provider meeting, calendar event, and bot',
+  })
+  update(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() input: UpdateConnectedMeetingDto,
+  ) {
+    return this.meetings.update(organization.id, user, id, input);
+  }
+
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Cancel the provider meeting and scheduled bot' })
   cancel(
     @CurrentOrg() organization: RequestOrganization,

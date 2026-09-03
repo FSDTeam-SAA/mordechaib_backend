@@ -9,6 +9,7 @@ import { RecallApiError } from './recall.types';
 import {
   CreatedProviderMeeting,
   CreateProviderMeetingInput,
+  UpdateProviderMeetingInput,
 } from './platform-meeting-provider.types';
 
 @Injectable()
@@ -162,6 +163,32 @@ export class RecallZoomAuthProvider {
       `/meetings/${encodeURIComponent(meetingId)}`,
       accessToken,
       { method: 'DELETE' },
+      20_000,
+      [404],
+    );
+  }
+
+  updateMeeting(
+    accessToken: string,
+    meetingId: string,
+    input: UpdateProviderMeetingInput,
+  ) {
+    return this.zoomRequest<void>(
+      `/meetings/${encodeURIComponent(meetingId)}`,
+      accessToken,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          topic: input.title,
+          start_time: input.startsAt.toISOString(),
+          duration: input.durationMinutes,
+          timezone: input.timezone,
+          agenda: input.agenda || '',
+          settings: {
+            meeting_invitees: input.invitees.map((email) => ({ email })),
+          },
+        }),
+      },
     );
   }
 
@@ -177,6 +204,8 @@ export class RecallZoomAuthProvider {
     path: string,
     accessToken: string,
     init: RequestInit = {},
+    timeoutMs = 20_000,
+    acceptedStatuses: number[] = [],
   ): Promise<T> {
     let response: Response;
     try {
@@ -188,12 +217,14 @@ export class RecallZoomAuthProvider {
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),
           ...init.headers,
         },
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new ServiceUnavailableException('Zoom API is unavailable');
     }
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204 || acceptedStatuses.includes(response.status)) {
+      return undefined as T;
+    }
     const body = (await this.client.parseResponseBody(response)) as {
       message?: string;
       reason?: string;

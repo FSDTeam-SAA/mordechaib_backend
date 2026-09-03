@@ -1,16 +1,41 @@
-export type CreateCalendarEventInput = {
+import { CalendarProviderType } from '../enums/calendar-provider.enum';
+
+export type CalendarEventInput = {
   title: string;
-  startTime: string;
-  endTime: string;
-  attendees?: string[];
+  description?: string;
+  startsAt: Date;
+  endsAt: Date;
+  timezone: string;
+  attendees: string[];
+  meetingUrl?: string;
+  reminderMinutesBeforeStart: number;
+};
+
+export type CreateCalendarEventInput = CalendarEventInput;
+
+export type UpdateCalendarEventInput = Partial<CalendarEventInput>;
+
+export type CalendarEventResult = {
+  id: string;
+  provider: CalendarProviderType;
+  htmlUrl?: string;
 };
 
 export interface CalendarProvider {
-  checkAvailability(input: Record<string, unknown>): Promise<unknown>;
-  createEvent(input: CreateCalendarEventInput): Promise<unknown>;
+  readonly provider: CalendarProviderType;
+  refreshAccessToken(refreshToken: string): Promise<{
+    access_token?: string;
+    expires_in?: number;
+    refresh_token?: string;
+  }>;
+  createEvent(
+    accessToken: string,
+    input: CreateCalendarEventInput,
+  ): Promise<CalendarEventResult>;
   updateEvent(
+    accessToken: string,
     eventId: string,
-    input: Record<string, unknown>,
-  ): Promise<unknown>;
-  cancelEvent(eventId: string): Promise<unknown>;
+    input: UpdateCalendarEventInput,
+  ): Promise<CalendarEventResult>;
+  cancelEvent(accessToken: string, eventId: string): Promise<void>;
 }
