@@ -22,6 +22,7 @@ type UpsertOutboundCallInput = {
   fromNumber: string;
   toNumber: string;
   twilioNumber: string;
+  accountSid?: string;
   status: CallStatus;
 };
 
@@ -91,6 +92,7 @@ export class CallsRepository {
             fromNumber: input.fromNumber,
             toNumber: input.toNumber,
             twilioNumber: input.twilioNumber,
+            accountSid: input.accountSid,
             direction: CallDirection.OUTBOUND,
             startedAt: new Date(),
           },
