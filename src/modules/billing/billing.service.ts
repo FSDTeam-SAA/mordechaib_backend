@@ -7,11 +7,15 @@ import { StripeProvider } from '../stripe/stripe.provider';
 import { SubscriptionPlansService } from '../subscriptions/subscription-plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { TwilioProvisioningService } from '../twilio/twilio-provisioning.service';
 
 // Maps Stripe's own subscription statuses onto ours. Stripe has a couple of
 // extra states (`unpaid`, `paused`) that we fold into PAST_DUE/CANCELED
 // rather than modelling separately.
-const STRIPE_STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
+const STRIPE_STATUS_MAP: Record<
+  Stripe.Subscription.Status,
+  SubscriptionStatus
+> = {
   trialing: SubscriptionStatus.TRIALING,
   active: SubscriptionStatus.ACTIVE,
   past_due: SubscriptionStatus.PAST_DUE,
@@ -31,6 +35,7 @@ export class BillingService {
     private readonly plansService: SubscriptionPlansService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly invoicesService: InvoicesService,
+    private readonly twilioProvisioning: TwilioProvisioningService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
@@ -139,6 +144,7 @@ export class BillingService {
       resumesAt,
     );
     await this.subscriptionsService.setPause(organizationId, resumesAt);
+    await this.twilioProvisioning.suspendForBilling(organizationId);
 
     return {
       message: `Subscription paused until ${resumesAt.toDateString()}`,
@@ -158,6 +164,7 @@ export class BillingService {
       subscription.stripeSubscriptionId,
     );
     await this.subscriptionsService.setPause(organizationId, null);
+    await this.twilioProvisioning.resumeForBilling(organizationId);
 
     return { message: 'Subscription resumed' };
   }
@@ -235,19 +242,42 @@ export class BillingService {
       ? new Date(subscription.pause_collection.resumes_at * 1000)
       : null;
 
-    await this.subscriptionsService.syncSubscriptionStatus({
-      stripeSubscriptionId: subscription.id,
-      status: STRIPE_STATUS_MAP[subscription.status],
-      currentPeriodStart: firstItem
-        ? new Date(firstItem.current_period_start * 1000)
-        : undefined,
-      currentPeriodEnd: firstItem
-        ? new Date(firstItem.current_period_end * 1000)
-        : undefined,
-      billingInterval,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      pausedUntil,
-    });
+    const localSubscription =
+      await this.subscriptionsService.syncSubscriptionStatus({
+        stripeSubscriptionId: subscription.id,
+        status: STRIPE_STATUS_MAP[subscription.status],
+        currentPeriodStart: firstItem
+          ? new Date(firstItem.current_period_start * 1000)
+          : undefined,
+        currentPeriodEnd: firstItem
+          ? new Date(firstItem.current_period_end * 1000)
+          : undefined,
+        billingInterval,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        pausedUntil,
+      });
+    if (!localSubscription) return;
+    if (localSubscription.status === SubscriptionStatus.CANCELED) {
+      await this.twilioProvisioning.scheduleCancellationClosure(
+        localSubscription.organizationId,
+      );
+    } else if (
+      localSubscription.status === SubscriptionStatus.PAST_DUE ||
+      (localSubscription.pausedUntil &&
+        localSubscription.pausedUntil > new Date())
+    ) {
+      await this.twilioProvisioning.suspendForBilling(
+        localSubscription.organizationId,
+      );
+    } else if (
+      [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING].includes(
+        localSubscription.status,
+      )
+    ) {
+      await this.twilioProvisioning.resumeForBilling(
+        localSubscription.organizationId,
+      );
+    }
   }
 
   private async onInvoicePaymentFailed(invoice: Stripe.Invoice) {
@@ -261,9 +291,15 @@ export class BillingService {
         : subscriptionRef?.id;
     if (!stripeSubscriptionId) return;
 
-    await this.subscriptionsService.syncSubscriptionStatus({
-      stripeSubscriptionId,
-      status: SubscriptionStatus.PAST_DUE,
-    });
+    const localSubscription =
+      await this.subscriptionsService.syncSubscriptionStatus({
+        stripeSubscriptionId,
+        status: SubscriptionStatus.PAST_DUE,
+      });
+    if (localSubscription) {
+      await this.twilioProvisioning.suspendForBilling(
+        localSubscription.organizationId,
+      );
+    }
   }
 }

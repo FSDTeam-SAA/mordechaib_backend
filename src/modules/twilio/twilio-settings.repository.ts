@@ -47,4 +47,26 @@ export class TwilioSettingsRepository {
       .lean()
       .exec();
   }
+
+  updateForwardingNumber(organizationId: string, forwardingNumber: string) {
+    return this.settingModel
+      .findOneAndUpdate(
+        { organizationId },
+        { $set: { forwardingNumber } },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  deactivate(organizationId: string) {
+    return this.settingModel
+      .findOneAndUpdate(
+        { organizationId },
+        { $set: { status: TwilioSettingStatus.INACTIVE } },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
 }

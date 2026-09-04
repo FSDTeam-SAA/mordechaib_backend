@@ -15,6 +15,18 @@ function booleanValue(value: string | undefined, fallback: boolean) {
   return ['1', 'true', 'yes'].includes(value.trim().toLowerCase());
 }
 
+function positiveNumber(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive number`);
+  }
+  return parsed;
+}
+
 export default () => {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const accessSecret =
@@ -93,6 +105,83 @@ export default () => {
     process.env.MEETING_OAUTH_STATE_SECRET ||
     process.env.RECALLAI_OAUTH_STATE_SECRET ||
     accessSecret;
+  const twilioLiveMode = process.env.TWILIO_LIVE_MODE === 'true';
+  const twilioSubscriptionEnforcementEnabled = booleanValue(
+    process.env.TWILIO_SUBSCRIPTION_ENFORCEMENT_ENABLED,
+    true,
+  );
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const integrationEncryptionKey =
+    process.env.INTEGRATION_ENCRYPTION_KEY ||
+    'replace-with-at-least-32-random-characters';
+  const twilioAllowedCallPrefixes = (
+    process.env.TWILIO_ALLOWED_CALL_PREFIXES || '+1,+33,+44'
+  )
+    .split(',')
+    .map((prefix) => prefix.trim())
+    .filter(Boolean);
+  const twilioMaxOverageUsdPerPeriod = positiveNumber(
+    process.env.TWILIO_MAX_OVERAGE_USD_PER_PERIOD,
+    100,
+    'TWILIO_MAX_OVERAGE_USD_PER_PERIOD',
+  );
+  const twilioNumberRetentionDays = positiveInteger(
+    process.env.TWILIO_NUMBER_RETENTION_DAYS,
+    30,
+    'TWILIO_NUMBER_RETENTION_DAYS',
+  );
+  const twilioUnusualCallMinutes = positiveInteger(
+    process.env.TWILIO_UNUSUAL_CALL_MINUTES,
+    60,
+    'TWILIO_UNUSUAL_CALL_MINUTES',
+  );
+
+  if (twilioLiveMode && (!twilioAccountSid || !twilioAuthToken)) {
+    throw new Error('Twilio credentials are required in live mode');
+  }
+  if (twilioLiveMode && !/^AC[a-fA-F0-9]{32}$/.test(twilioAccountSid || '')) {
+    throw new Error('TWILIO_ACCOUNT_SID must be a valid Twilio Account SID');
+  }
+  if (twilioLiveMode && integrationEncryptionKey.length < 32) {
+    throw new Error(
+      'INTEGRATION_ENCRYPTION_KEY must contain at least 32 characters for Twilio provisioning',
+    );
+  }
+  if (nodeEnv === 'production' && !twilioSubscriptionEnforcementEnabled) {
+    throw new Error(
+      'TWILIO_SUBSCRIPTION_ENFORCEMENT_ENABLED cannot be disabled in production',
+    );
+  }
+  if (
+    twilioAllowedCallPrefixes.some(
+      (prefix) => !/^\+[1-9]\d{0,14}$/.test(prefix),
+    )
+  ) {
+    throw new Error(
+      'TWILIO_ALLOWED_CALL_PREFIXES must contain comma-separated E.164 prefixes',
+    );
+  }
+  if (twilioLiveMode) {
+    let twilioPublicUrl: URL;
+    try {
+      twilioPublicUrl = new URL(appBaseUrl);
+    } catch {
+      throw new Error('APP_BASE_URL must be a valid absolute URL');
+    }
+    if (
+      twilioPublicUrl.pathname !== '/' ||
+      twilioPublicUrl.search ||
+      twilioPublicUrl.hash
+    ) {
+      throw new Error('APP_BASE_URL must contain only the public URL origin');
+    }
+    if (nodeEnv === 'production' && twilioPublicUrl.protocol !== 'https:') {
+      throw new Error(
+        'APP_BASE_URL must use HTTPS for Twilio webhooks in production',
+      );
+    }
+  }
 
   if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
     throw new Error(
@@ -279,10 +368,15 @@ export default () => {
     },
 
     twilio: {
-      accountSid: process.env.TWILIO_ACCOUNT_SID,
-      authToken: process.env.TWILIO_AUTH_TOKEN,
+      accountSid: twilioAccountSid,
+      authToken: twilioAuthToken,
       defaultNumber: process.env.TWILIO_PHONE_NUMBER,
-      liveMode: process.env.TWILIO_LIVE_MODE === 'true',
+      liveMode: twilioLiveMode,
+      subscriptionEnforcementEnabled: twilioSubscriptionEnforcementEnabled,
+      allowedCallPrefixes: twilioAllowedCallPrefixes,
+      maxOverageUsdPerPeriod: twilioMaxOverageUsdPerPeriod,
+      numberRetentionDays: twilioNumberRetentionDays,
+      unusualCallMinutes: twilioUnusualCallMinutes,
     },
 
     openai: {
@@ -308,9 +402,7 @@ export default () => {
     },
 
     integrations: {
-      encryptionKey:
-        process.env.INTEGRATION_ENCRYPTION_KEY ||
-        'replace-with-at-least-32-random-characters',
+      encryptionKey: integrationEncryptionKey,
     },
 
     recall: {
