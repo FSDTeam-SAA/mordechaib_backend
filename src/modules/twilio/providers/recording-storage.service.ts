@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import fs from 'fs/promises';
 import path from 'path';
-import { TwilioProvider } from './twilio.provider';
+import { TwilioAccountContext, TwilioProvider } from './twilio.provider';
 
 @Injectable()
 export class RecordingStorageService {
@@ -27,6 +27,7 @@ export class RecordingStorageService {
     callSid: string;
     recordingSid: string;
     recordingUrl: string;
+    accountContext?: TwilioAccountContext;
   }): Promise<string | null> {
     try {
       const storageDir = this.config.get<string>(
@@ -42,6 +43,7 @@ export class RecordingStorageService {
 
       const mediaBuf = await this.twilioProvider.downloadRecordingMedia(
         input.recordingUrl,
+        input.accountContext,
       );
       if (!mediaBuf || mediaBuf.length === 0) {
         this.logger.warn(

@@ -11,6 +11,10 @@ import { CallLog, CallLogSchema } from '../schemas/call-log.schema';
 import { Approval, ApprovalSchema } from '../schemas/approval.schema';
 import { TaskItem, TaskItemSchema } from '../schemas/task-item.schema';
 import { UsageRecord, UsageRecordSchema } from '../schemas/usage-record.schema';
+import {
+  CallUsagePeriod,
+  CallUsagePeriodSchema,
+} from '../schemas/call-usage-period.schema';
 import { AuditLog, AuditLogSchema } from '../schemas/audit-log.schema';
 import { AuthSession, AuthSessionSchema } from '../schemas/auth-session.schema';
 import { AuthToken, AuthTokenSchema } from '../schemas/auth-token.schema';
@@ -26,6 +30,14 @@ import {
   TwilioSetting,
   TwilioSettingSchema,
 } from '../schemas/twilio-setting.schema';
+import {
+  TwilioAccount,
+  TwilioAccountSchema,
+} from '../schemas/twilio-account.schema';
+import {
+  TwilioPhoneNumber,
+  TwilioPhoneNumberSchema,
+} from '../schemas/twilio-phone-number.schema';
 import {
   OnboardingSetup,
   OnboardingSetupSchema,
@@ -97,12 +109,15 @@ import {
       { name: Approval.name, schema: ApprovalSchema },
       { name: TaskItem.name, schema: TaskItemSchema },
       { name: UsageRecord.name, schema: UsageRecordSchema },
+      { name: CallUsagePeriod.name, schema: CallUsagePeriodSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: AuthSession.name, schema: AuthSessionSchema },
       { name: AuthToken.name, schema: AuthTokenSchema },
       { name: PackageInquiry.name, schema: PackageInquirySchema },
       { name: CallRecording.name, schema: CallRecordingSchema },
       { name: TwilioSetting.name, schema: TwilioSettingSchema },
+      { name: TwilioAccount.name, schema: TwilioAccountSchema },
+      { name: TwilioPhoneNumber.name, schema: TwilioPhoneNumberSchema },
       { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
       { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },

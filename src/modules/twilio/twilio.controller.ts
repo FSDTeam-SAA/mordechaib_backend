@@ -70,6 +70,7 @@ export class TwilioController {
         callSid,
         clientPhone,
         fromNumber: request.body.From || '',
+        accountSid: request.body.AccountSid,
       })
       .then((twiml) => {
         response.type('text/xml').send(twiml);

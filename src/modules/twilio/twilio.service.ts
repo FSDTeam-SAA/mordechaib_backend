@@ -10,6 +10,9 @@ import { RecordingStorageService } from './providers/recording-storage.service';
 import { TwilioProvider } from './providers/twilio.provider';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
 import { TwilioSettingsService } from './twilio-settings.service';
+import { TwilioAccountsService } from './twilio-accounts.service';
+import { TwilioEligibilityService } from './twilio-eligibility.service';
+import { TwilioUsageService } from './twilio-usage.service';
 
 @Injectable()
 export class TwilioService {
@@ -19,6 +22,9 @@ export class TwilioService {
     private readonly settingsService: TwilioSettingsService,
     private readonly callRecordsService: CallRecordsService,
     private readonly recordingStorage: RecordingStorageService,
+    private readonly accountsService: TwilioAccountsService,
+    private readonly eligibility: TwilioEligibilityService,
+    private readonly usage: TwilioUsageService,
   ) {}
 
   async handleIncomingCall(body: TwilioVoiceWebhookDto): Promise<string> {
@@ -34,6 +40,15 @@ export class TwilioService {
       response.say('This phone number is not currently configured.');
       response.hangup();
       return response.toString();
+    }
+
+    const managedAccount = await this.accountsService.contextForOrganization(
+      setting.organizationId,
+    );
+    if (managedAccount && managedAccount.accountSid !== accountSid) {
+      throw new BadRequestException(
+        'Twilio account does not own the configured phone number',
+      );
     }
 
     await this.callRecordsService.recordInboundCall({
@@ -104,20 +119,30 @@ export class TwilioService {
     const fromNumber = setting.twilioNumber;
     const agentPhone = input.agentPhone || setting.forwardingNumber;
 
+    await this.eligibility.assertCanUseCalling(input.organizationId);
+    this.eligibility.assertDestinationsAllowed(agentPhone, input.clientPhone);
+    await this.usage.assertWithinSpendingLimit(input.organizationId);
+
     if (agentPhone === input.clientPhone) {
       throw new BadRequestException(
         'agentPhone must be different from clientPhone',
       );
     }
 
-    const call = await this.twilioProvider.createCall({
-      from: fromNumber,
-      to: agentPhone,
-      url: this.webhookUrl(
-        `outbound-connect?clientPhone=${encodeURIComponent(input.clientPhone)}`,
-      ),
-      statusCallback: this.webhookUrl('call-status'),
-    });
+    const accountContext = await this.accountsService.contextForOrganization(
+      input.organizationId,
+    );
+    const call = await this.twilioProvider.createCall(
+      {
+        from: fromNumber,
+        to: agentPhone,
+        url: this.webhookUrl(
+          `outbound-connect?clientPhone=${encodeURIComponent(input.clientPhone)}`,
+        ),
+        statusCallback: this.webhookUrl('call-status'),
+      },
+      accountContext,
+    );
 
     // Record the outbound call even in mock mode so the full lifecycle
     // (initiate → connect → status → complete) can be tested locally.
@@ -127,6 +152,7 @@ export class TwilioService {
       fromNumber: call.from,
       toNumber: input.clientPhone,
       twilioNumber: fromNumber,
+      accountSid: accountContext?.accountSid,
       status: CallStatus.INITIATED,
     });
 
@@ -152,6 +178,7 @@ export class TwilioService {
     callSid: string;
     clientPhone: string;
     fromNumber: string;
+    accountSid?: string;
   }): Promise<string> {
     const response = this.twilioProvider.twiml();
     const callQuery = `callSid=${encodeURIComponent(input.callSid)}`;
@@ -162,6 +189,16 @@ export class TwilioService {
     const setting = input.fromNumber
       ? await this.settingsService.findActiveByTwilioNumber(input.fromNumber)
       : undefined;
+    if (setting && input.accountSid) {
+      const managedAccount = await this.accountsService.contextForOrganization(
+        setting.organizationId,
+      );
+      if (managedAccount && managedAccount.accountSid !== input.accountSid) {
+        throw new BadRequestException(
+          'Twilio account does not own the configured phone number',
+        );
+      }
+    }
 
     const dialAttributes: Record<string, unknown> = {
       action: dialStatusCallback,
@@ -221,6 +258,9 @@ export class TwilioService {
     const providerCallSid = this.requiredField(body, 'CallSid');
     const recordingSid = this.requiredField(body, 'RecordingSid');
     const recordingUrl = this.requiredField(body, 'RecordingUrl');
+    const accountContext = body.AccountSid
+      ? await this.accountsService.contextForSubaccount(body.AccountSid)
+      : undefined;
 
     // Download the audio from Twilio and store it locally so the recording
     // is persisted on our backend, not only referenced by a Twilio URL.
@@ -230,6 +270,7 @@ export class TwilioService {
       callSid: primaryCallSid || providerCallSid,
       recordingSid,
       recordingUrl,
+      accountContext,
     });
 
     await this.callRecordsService.recordCompletedRecording({
@@ -258,15 +299,25 @@ export class TwilioService {
   ) {
     const callSid = primaryCallSid || this.requiredField(body, 'CallSid');
 
-    await this.callRecordsService.recordDialStatus({
+    const status = this.mapCallStatus(body.DialCallStatus, CallStatus.FAILED);
+    const durationSeconds = this.optionalNonNegativeInteger(
+      body.DialCallDuration,
+      'DialCallDuration',
+    );
+    const call = await this.callRecordsService.recordDialStatus({
       callSid,
       dialCallSid: body.DialCallSid,
-      status: this.mapCallStatus(body.DialCallStatus, CallStatus.FAILED),
-      durationSeconds: this.optionalNonNegativeInteger(
-        body.DialCallDuration,
-        'DialCallDuration',
-      ),
+      status,
+      durationSeconds,
     });
+
+    if (status === CallStatus.COMPLETED) {
+      await this.usage.recordCompletedCall(
+        call.organizationId,
+        call.callSid,
+        durationSeconds,
+      );
+    }
 
     return { received: true };
   }

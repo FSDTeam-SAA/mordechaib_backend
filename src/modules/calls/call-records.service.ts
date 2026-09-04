@@ -26,6 +26,7 @@ export class CallRecordsService {
     fromNumber: string;
     toNumber: string;
     twilioNumber: string;
+    accountSid?: string;
     status: CallStatus;
   }) {
     return this.callsRepository.upsertOutboundCall(input);
