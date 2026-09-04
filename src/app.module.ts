@@ -26,6 +26,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { MetaModule } from './modules/meta/meta.module';
 import { MeetingBotsModule } from './modules/meeting-bots/meeting-bots.module';
 import { TeamModule } from './modules/team/team.module';
+import { MessagesModule } from './modules/messages/messages.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { TeamModule } from './modules/team/team.module';
     MetaModule,
     MeetingBotsModule,
     TeamModule,
+    MessagesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

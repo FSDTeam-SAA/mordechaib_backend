@@ -136,6 +136,39 @@ export default () => {
     60,
     'TWILIO_UNUSUAL_CALL_MINUTES',
   );
+  const cloudinaryUrl = process.env.CLOUDINARY_URL?.trim();
+  let cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  let cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+  let cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+  if (cloudinaryUrl) {
+    let parsedCloudinaryUrl: URL;
+    try {
+      parsedCloudinaryUrl = new URL(cloudinaryUrl);
+    } catch {
+      throw new Error('CLOUDINARY_URL must be a valid Cloudinary URL');
+    }
+    if (parsedCloudinaryUrl.protocol !== 'cloudinary:') {
+      throw new Error('CLOUDINARY_URL must use the cloudinary:// scheme');
+    }
+    cloudinaryCloudName ||= parsedCloudinaryUrl.hostname;
+    cloudinaryApiKey ||= decodeURIComponent(parsedCloudinaryUrl.username);
+    cloudinaryApiSecret ||= decodeURIComponent(parsedCloudinaryUrl.password);
+  }
+  const cloudinaryParts = [
+    cloudinaryCloudName,
+    cloudinaryApiKey,
+    cloudinaryApiSecret,
+  ];
+  if (cloudinaryParts.some(Boolean) && !cloudinaryParts.every(Boolean)) {
+    throw new Error(
+      'Cloudinary requires CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET',
+    );
+  }
+  const cloudinaryDownloadUrlTtlSeconds = positiveInteger(
+    process.env.CLOUDINARY_DOWNLOAD_URL_TTL_SECONDS,
+    300,
+    'CLOUDINARY_DOWNLOAD_URL_TTL_SECONDS',
+  );
 
   if (twilioLiveMode && (!twilioAccountSid || !twilioAuthToken)) {
     throw new Error('Twilio credentials are required in live mode');
@@ -377,6 +410,14 @@ export default () => {
       maxOverageUsdPerPeriod: twilioMaxOverageUsdPerPeriod,
       numberRetentionDays: twilioNumberRetentionDays,
       unusualCallMinutes: twilioUnusualCallMinutes,
+    },
+
+    cloudinary: {
+      cloudName: cloudinaryCloudName,
+      apiKey: cloudinaryApiKey,
+      apiSecret: cloudinaryApiSecret,
+      messageFolder: process.env.CLOUDINARY_MESSAGE_FOLDER || 'noltra/messages',
+      downloadUrlTtlSeconds: cloudinaryDownloadUrlTtlSeconds,
     },
 
     openai: {
