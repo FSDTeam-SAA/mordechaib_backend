@@ -116,6 +116,28 @@ export class StripeProvider {
     return this.client.webhooks.constructEvent(rawBody, signature, secret);
   }
 
+  createCallOverageInvoiceItem(params: {
+    customerId: string;
+    amountCents: number;
+    organizationId: string;
+    callSid: string;
+    durationSeconds: number;
+  }) {
+    return this.client.invoiceItems.create(
+      {
+        customer: params.customerId,
+        amount: params.amountCents,
+        currency: 'usd',
+        description: `Twilio call overage (${params.durationSeconds} seconds)`,
+        metadata: {
+          organizationId: params.organizationId,
+          callSid: params.callSid,
+        },
+      },
+      { idempotencyKey: `twilio-call-overage-${params.callSid}` },
+    );
+  }
+
   // --- Product/Price management, used by SubscriptionPlansService so an
   // admin never has to touch the Stripe dashboard to create a plan. ---
 
