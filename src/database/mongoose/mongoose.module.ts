@@ -90,6 +90,15 @@ import {
   ManagedCalendarEvent,
   ManagedCalendarEventSchema,
 } from '../schemas/managed-calendar-event.schema';
+import {
+  Conversation,
+  ConversationSchema,
+} from '../schemas/conversation.schema';
+import { Message, MessageSchema } from '../schemas/message.schema';
+import {
+  MessageAttachment,
+  MessageAttachmentSchema,
+} from '../schemas/message-attachment.schema';
 
 @Global()
 @Module({
@@ -142,6 +151,12 @@ import {
       {
         name: ManagedCalendarEvent.name,
         schema: ManagedCalendarEventSchema,
+      },
+      { name: Conversation.name, schema: ConversationSchema },
+      { name: Message.name, schema: MessageSchema },
+      {
+        name: MessageAttachment.name,
+        schema: MessageAttachmentSchema,
       },
     ]),
   ],
