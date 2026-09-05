@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -12,9 +13,11 @@ import { AuthTokenType } from '../../common/enums/auth-token-type.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { parseDurationToSeconds } from '../../common/helpers/duration.helper';
 import { sendEmail } from '../../common/helpers/mailer.helper';
+import { assertValidTimezone } from '../../common/helpers/timezone.helper';
 import { getEmailVerificationTemplate } from '../../common/templates/email-verification.template';
 import { getPasswordResetTemplate } from '../../common/templates/password-reset.template';
 import { UserDocument } from '../../database/schemas/user.schema';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { AuthSessionsRepository } from './auth-sessions.repository';
 import { AuthTokensRepository } from './auth-tokens.repository';
@@ -43,6 +46,7 @@ export class AuthService {
     private readonly sessionsRepository: AuthSessionsRepository,
     private readonly tokensRepository: AuthTokensRepository,
     private readonly organizationsService: OrganizationsService,
+    private readonly auditLogs: AuditLogsService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {
@@ -213,11 +217,51 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, ''> = {};
+
+    if (dto.firstName !== undefined) set.firstName = dto.firstName.trim();
+    if (dto.lastName !== undefined) set.lastName = dto.lastName.trim();
+
+    const optionalFields = [
+      'phoneNumber',
+      'timezone',
+      'language',
+      'avatarUrl',
+    ] as const;
+    for (const field of optionalFields) {
+      const value = dto[field];
+      if (value === undefined) continue;
+      if (value === null) {
+        unset[field] = '';
+      } else {
+        set[field] = value;
+      }
+    }
+
+    if (typeof dto.timezone === 'string') {
+      assertValidTimezone(dto.timezone);
+    }
+
+    if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
+      throw new BadRequestException('No profile changes were provided');
+    }
+
     const user = await this.repository.updateProfile(userId, {
-      ...(dto.firstName ? { firstName: dto.firstName.trim() } : {}),
-      ...(dto.lastName ? { lastName: dto.lastName.trim() } : {}),
+      set,
+      unset,
     });
     if (!user) throw new NotFoundException('User not found');
+
+    await this.auditLogs.create({
+      organizationId: user.organizationId,
+      userId,
+      action: 'USER_PROFILE_UPDATED',
+      resourceType: 'User',
+      resourceId: userId,
+      metadata: { fields: [...Object.keys(set), ...Object.keys(unset)] },
+    });
+
     return this.toUserResponse(user);
   }
 
@@ -272,10 +316,10 @@ export class AuthService {
   }
 
   async verifyPassword(userId: string, password: string): Promise<boolean> {
-  const user = await this.repository.findByIdWithPassword(userId);
-  if (!user) return false;
-  return bcrypt.compare(password, user.passwordHash);
-}
+    const user = await this.repository.findByIdWithPassword(userId);
+    if (!user) return false;
+    return bcrypt.compare(password, user.passwordHash);
+  }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.repository.findByIdWithPassword(userId);
@@ -417,6 +461,10 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      phoneNumber: user.phoneNumber,
+      timezone: user.timezone,
+      language: user.language || 'en',
+      avatarUrl: user.avatarUrl,
       role: user.role,
       status: user.status,
       isPlatformAdmin: user.isPlatformAdmin,
