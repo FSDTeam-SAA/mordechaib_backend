@@ -26,6 +26,15 @@ export class Organization {
   @Prop({ trim: true })
   phoneNumber?: string;
 
+  @Prop({ lowercase: true, trim: true })
+  emailAddress?: string;
+
+  @Prop({ trim: true, default: 'en' })
+  language!: string;
+
+  @Prop({ trim: true })
+  logoUrl?: string;
+
   @Prop({ type: { start: String, end: String }, _id: false })
   businessHours?: {
     start: string;
@@ -63,6 +72,9 @@ export class Organization {
 
   @Prop()
   onboardingCompletedAt?: Date;
+
+  @Prop()
+  updatedBy?: string;
 }
 
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);

@@ -59,7 +59,24 @@ export class AuthRepository {
       .exec();
   }
 
-  updateProfile(id: string, input: { firstName?: string; lastName?: string }) {
-    return this.userModel.findByIdAndUpdate(id, input, { new: true }).exec();
+  updateProfile(
+    id: string,
+    input: {
+      set: Record<string, unknown>;
+      unset: Record<string, ''>;
+    },
+  ) {
+    return this.userModel
+      .findByIdAndUpdate(
+        id,
+        {
+          ...(Object.keys(input.set).length > 0 ? { $set: input.set } : {}),
+          ...(Object.keys(input.unset).length > 0
+            ? { $unset: input.unset }
+            : {}),
+        },
+        { new: true, runValidators: true },
+      )
+      .exec();
   }
 }

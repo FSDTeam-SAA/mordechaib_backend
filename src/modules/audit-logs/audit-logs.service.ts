@@ -5,7 +5,18 @@ import { AuditLogsRepository } from './audit-logs.repository';
 export class AuditLogsService {
   constructor(private readonly repository: AuditLogsRepository) {}
 
-  findAll() {
-    return this.repository.findAll();
+  create(input: {
+    organizationId: string;
+    userId?: string;
+    action: string;
+    resourceType?: string;
+    resourceId?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.repository.create(input);
+  }
+
+  findByOrganization(organizationId: string) {
+    return this.repository.findByOrganization(organizationId);
   }
 }

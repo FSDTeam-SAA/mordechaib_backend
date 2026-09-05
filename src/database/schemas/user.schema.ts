@@ -19,6 +19,18 @@ export class User {
   @Prop({ required: true, trim: true })
   lastName!: string;
 
+  @Prop({ trim: true })
+  phoneNumber?: string;
+
+  @Prop({ trim: true })
+  timezone?: string;
+
+  @Prop({ trim: true, default: 'en' })
+  language!: string;
+
+  @Prop({ trim: true })
+  avatarUrl?: string;
+
   @Prop({ required: true, select: false })
   passwordHash!: string;
 

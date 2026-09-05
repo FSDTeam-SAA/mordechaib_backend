@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export class UpdateRequirementsDto {
@@ -77,5 +78,6 @@ export class UpdateRequirementsDto {
 export class UpdateOnboardingSetupDto {
   @IsOptional()
   @Type(() => UpdateRequirementsDto)
+  @ValidateNested()
   requirements?: UpdateRequirementsDto;
 }
