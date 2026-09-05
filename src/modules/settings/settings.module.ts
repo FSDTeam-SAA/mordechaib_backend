@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { SettingsController } from './settings.controller';
+import { SettingsRepository } from './settings.repository';
+import { SettingsService } from './settings.service';
+
+@Module({
+  imports: [AuditLogsModule],
+  controllers: [SettingsController],
+  providers: [SettingsService, SettingsRepository],
+  exports: [SettingsService],
+})
+export class SettingsModule {}

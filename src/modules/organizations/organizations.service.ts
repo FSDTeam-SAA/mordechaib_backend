@@ -1,11 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
+import { assertValidTimezone } from '../../common/helpers/timezone.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { OrganizationsRepository } from './organizations.repository';
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly repository: OrganizationsRepository) {}
+  constructor(
+    private readonly repository: OrganizationsRepository,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   createPendingOrganization(ownerName: string) {
     return this.repository.createPending(`${ownerName}'s Business`);
@@ -29,8 +38,36 @@ export class OrganizationsService {
     return this.repository.findByIds(ids);
   }
 
-  async updateOnboarding(id: string, input: UpdateOnboardingDto) {
+  async updateSettings(
+    id: string,
+    input: UpdateOnboardingDto,
+    updatedBy: string,
+  ) {
+    return this.updateOnboarding(id, input, updatedBy);
+  }
+
+  async updateOnboarding(
+    id: string,
+    input: UpdateOnboardingDto,
+    updatedBy: string,
+  ) {
     const organization = await this.findCurrent(id);
+
+    if (typeof input.timezone === 'string') {
+      assertValidTimezone(input.timezone);
+    }
+
+    if (
+      input.companyName === null ||
+      (typeof input.companyName === 'string' &&
+        input.companyName.trim().length === 0)
+    ) {
+      throw new BadRequestException('companyName cannot be empty');
+    }
+
+    if (Object.values(input).every((value) => value === undefined)) {
+      throw new BadRequestException('No organization changes were provided');
+    }
 
     let nextStep = organization.onboardingStep;
 
@@ -39,6 +76,7 @@ export class OrganizationsService {
       (input.companyName ||
         input.website ||
         input.phoneNumber ||
+        input.emailAddress ||
         input.businessHoursStart ||
         input.businessHoursEnd ||
         input.city ||
@@ -57,13 +95,31 @@ export class OrganizationsService {
       nextStep = OnboardingStep.COMPLETED;
     }
 
-    return this.repository.updateOnboarding(id, {
+    const updated = await this.repository.updateOnboarding(id, {
       ...input,
+      updatedBy,
       ...(nextStep === OnboardingStep.COMPLETED
         ? { onboardingStep: nextStep, onboardingCompletedAt: new Date() }
         : nextStep !== organization.onboardingStep
           ? { onboardingStep: nextStep }
           : {}),
     });
+
+    if (!updated) throw new NotFoundException('Organization not found');
+
+    await this.auditLogs.create({
+      organizationId: id,
+      userId: updatedBy,
+      action: 'ORGANIZATION_SETTINGS_UPDATED',
+      resourceType: 'Organization',
+      resourceId: id,
+      metadata: {
+        fields: Object.keys(input).filter(
+          (field) => input[field as keyof UpdateOnboardingDto] !== undefined,
+        ),
+      },
+    });
+
+    return updated;
   }
 }
