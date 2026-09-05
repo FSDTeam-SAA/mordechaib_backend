@@ -99,6 +99,11 @@ import {
   MessageAttachment,
   MessageAttachmentSchema,
 } from '../schemas/message-attachment.schema';
+import {
+  NotificationPreference,
+  NotificationPreferenceSchema,
+} from '../schemas/notification-preference.schema';
+import { AiSetting, AiSettingSchema } from '../schemas/ai-setting.schema';
 
 @Global()
 @Module({
@@ -158,6 +163,11 @@ import {
         name: MessageAttachment.name,
         schema: MessageAttachmentSchema,
       },
+      {
+        name: NotificationPreference.name,
+        schema: NotificationPreferenceSchema,
+      },
+      { name: AiSetting.name, schema: AiSettingSchema },
     ]),
   ],
   exports: [MongooseModule],

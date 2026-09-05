@@ -8,6 +8,7 @@ import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 type UpdateOnboardingInput = UpdateOnboardingDto & {
   onboardingStep?: OnboardingStep;
   onboardingCompletedAt?: Date;
+  updatedBy?: string;
 };
 
 @Injectable()
@@ -51,42 +52,48 @@ export class OrganizationsRepository {
   }
 
   updateOnboarding(id: string, input: UpdateOnboardingInput) {
-    const update: Record<string, unknown> = {
-      ...(input.companyName ? { name: input.companyName } : {}),
-      ...(input.website ? { website: input.website } : {}),
-      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
-      ...(input.businessHoursStart || input.businessHoursEnd
-        ? {
-            businessHours: {
-              ...(input.businessHoursStart
-                ? { start: input.businessHoursStart }
-                : {}),
-              ...(input.businessHoursEnd
-                ? { end: input.businessHoursEnd }
-                : {}),
-            },
-          }
-        : {}),
-      ...(input.city || input.street || input.state || input.postalCode
-        ? {
-            address: {
-              ...(input.city ? { city: input.city } : {}),
-              ...(input.street ? { street: input.street } : {}),
-              ...(input.state ? { state: input.state } : {}),
-              ...(input.postalCode ? { postalCode: input.postalCode } : {}),
-            },
-          }
-        : {}),
-      ...(input.industry ? { industry: input.industry } : {}),
-      ...(input.businessSize ? { businessSize: input.businessSize } : {}),
-      ...(input.onboardingStep ? { onboardingStep: input.onboardingStep } : {}),
-      ...(input.onboardingCompletedAt
-        ? { onboardingCompletedAt: input.onboardingCompletedAt }
-        : {}),
+    const $set: Record<string, unknown> = {};
+    const $unset: Record<string, 1> = {};
+
+    const setOrUnset = (path: string, value: unknown) => {
+      if (value === undefined) return;
+      if (value === null) {
+        $unset[path] = 1;
+        return;
+      }
+      $set[path] = value;
     };
 
+    if (input.companyName !== undefined && input.companyName !== null) {
+      $set.name = input.companyName;
+    }
+    setOrUnset('website', input.website);
+    setOrUnset('phoneNumber', input.phoneNumber);
+    setOrUnset('emailAddress', input.emailAddress);
+    setOrUnset('timezone', input.timezone);
+    setOrUnset('language', input.language);
+    setOrUnset('logoUrl', input.logoUrl);
+    setOrUnset('businessHours.start', input.businessHoursStart);
+    setOrUnset('businessHours.end', input.businessHoursEnd);
+    setOrUnset('address.city', input.city);
+    setOrUnset('address.street', input.street);
+    setOrUnset('address.state', input.state);
+    setOrUnset('address.postalCode', input.postalCode);
+    setOrUnset('industry', input.industry);
+    setOrUnset('businessSize', input.businessSize);
+    setOrUnset('onboardingStep', input.onboardingStep);
+    setOrUnset('onboardingCompletedAt', input.onboardingCompletedAt);
+    setOrUnset('updatedBy', input.updatedBy);
+
     return this.organizationModel
-      .findByIdAndUpdate(id, update, { new: true })
+      .findByIdAndUpdate(
+        id,
+        {
+          ...(Object.keys($set).length > 0 ? { $set } : {}),
+          ...(Object.keys($unset).length > 0 ? { $unset } : {}),
+        },
+        { new: true, runValidators: true },
+      )
       .lean()
       .exec();
   }
