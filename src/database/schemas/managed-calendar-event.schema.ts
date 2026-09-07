@@ -2,6 +2,8 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 
 export type ManagedCalendarEventDocument =
   HydratedDocument<ManagedCalendarEvent>;
@@ -35,6 +37,21 @@ export class ManagedCalendarEvent {
 
   @Prop()
   description?: string;
+
+  @Prop({
+    required: true,
+    enum: Object.values(MeetingType),
+    default: MeetingType.OTHER,
+    index: true,
+  })
+  meetingType!: MeetingType;
+
+  @Prop({
+    required: true,
+    enum: Object.values(MeetingUrgency),
+    default: MeetingUrgency.MEDIUM,
+  })
+  urgency!: MeetingUrgency;
 
   @Prop({ required: true, index: true })
   startsAt!: Date;

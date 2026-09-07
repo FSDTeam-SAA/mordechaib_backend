@@ -1,11 +1,116 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { isValidObjectId } from 'mongoose';
+import { TaskItem } from '../../database/schemas/task-item.schema';
+import { CreateTaskDto } from './dto/create-task.dto';
+import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { TasksRepository } from './tasks.repository';
 
 @Injectable()
 export class TasksService {
   constructor(private readonly repository: TasksRepository) {}
 
-  findAll() {
-    return this.repository.findAll();
+  async create(organizationId: string, userId: string, dto: CreateTaskDto) {
+    const task = await this.repository.create({
+      ...this.toPersistence(dto),
+      organizationId,
+      createdByUserId: userId,
+    });
+
+    return this.toResponse(task);
+  }
+
+  async findAll(organizationId: string, query: ListTasksQueryDto) {
+    const dueFrom = query.dueFrom ? new Date(query.dueFrom) : undefined;
+    const dueTo = query.dueTo ? new Date(query.dueTo) : undefined;
+    if (dueFrom && dueTo && dueFrom > dueTo) {
+      throw new BadRequestException('dueFrom must be before dueTo');
+    }
+
+    const result = await this.repository.list(
+      organizationId,
+      query.page,
+      query.limit,
+      {
+        search: query.search?.trim(),
+        status: query.status,
+        priority: query.priority,
+        department: query.department,
+        assignedToUserId: query.assignedToUserId,
+        dueFrom,
+        dueTo,
+      },
+    );
+
+    return {
+      ...result,
+      items: result.items.map((item) => this.toResponse(item)),
+    };
+  }
+
+  async findOne(organizationId: string, id: string) {
+    this.assertObjectId(id);
+    const task = await this.repository.findById(organizationId, id);
+    if (!task) throw new NotFoundException('Task not found');
+    return this.toResponse(task);
+  }
+
+  async update(organizationId: string, id: string, dto: UpdateTaskDto) {
+    this.assertObjectId(id);
+    if (Object.values(dto).every((value) => value === undefined)) {
+      throw new BadRequestException('No task changes were provided');
+    }
+
+    const updated = await this.repository.updateById(
+      organizationId,
+      id,
+      this.toPersistence(dto),
+    );
+    if (!updated) throw new NotFoundException('Task not found');
+    return this.toResponse(updated);
+  }
+
+  async remove(organizationId: string, id: string) {
+    this.assertObjectId(id);
+    const deleted = await this.repository.deleteById(organizationId, id);
+    if (!deleted) throw new NotFoundException('Task not found');
+    return { id, deleted: true };
+  }
+
+  private assertObjectId(id: string) {
+    if (!isValidObjectId(id)) throw new BadRequestException('Invalid task id');
+  }
+
+  private toPersistence(dto: CreateTaskDto | UpdateTaskDto) {
+    const input: Record<string, unknown> = { ...dto };
+
+    if (dto.dueDate) input.dueDate = new Date(dto.dueDate);
+    if (dto.subtasks) {
+      input.subtasks = dto.subtasks.map((subtask) => ({
+        ...subtask,
+        ...(subtask.dueDate ? { dueDate: new Date(subtask.dueDate) } : {}),
+      }));
+    }
+    if (dto.tags) input.tags = [...new Set(dto.tags.map((tag) => tag.trim()))];
+    if (dto.stakeholderIds) {
+      input.stakeholderIds = [...new Set(dto.stakeholderIds)];
+    }
+
+    return input;
+  }
+
+  private toResponse(task: TaskItem | Record<string, unknown>) {
+    const record =
+      'toObject' in task && typeof task.toObject === 'function'
+        ? (task.toObject() as Record<string, unknown>)
+        : (task as Record<string, unknown>);
+    const { _id, __v, organizationId, ...response } = record;
+    void __v;
+    void organizationId;
+    return { id: String(_id), ...response };
   }
 }
