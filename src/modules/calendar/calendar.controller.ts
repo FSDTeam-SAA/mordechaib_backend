@@ -51,7 +51,9 @@ export class CalendarController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({
-    summary: 'Create and locally track an event in the default calendar',
+    summary: 'Schedule a meeting or calendar event in the default calendar',
+    description:
+      'Meeting type is restricted to GOOGLE_MEET, ZOOM_MEET, AUDIO_CALL, or OTHER. Use POST /meetings when a provider-created Google Meet or Zoom link is required.',
   })
   createEvent(
     @CurrentOrg() org: { id: string },

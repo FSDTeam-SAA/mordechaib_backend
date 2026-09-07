@@ -1,4 +1,6 @@
 import { CalendarProviderType } from '../enums/calendar-provider.enum';
+import { MeetingType } from '../enums/meeting-type.enum';
+import { MeetingUrgency } from '../enums/meeting-urgency.enum';
 
 export type CalendarEventInput = {
   title: string;
@@ -7,6 +9,8 @@ export type CalendarEventInput = {
   endsAt: Date;
   timezone: string;
   attendees: string[];
+  meetingType?: MeetingType;
+  urgency?: MeetingUrgency;
   meetingUrl?: string;
   reminderMinutesBeforeStart: number;
 };

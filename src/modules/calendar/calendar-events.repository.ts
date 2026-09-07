@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
 
 export type ReserveCalendarEvent = {
@@ -16,11 +18,14 @@ export type ReserveCalendarEvent = {
   endsAt: Date;
   timezone: string;
   attendees: string[];
+  meetingType?: MeetingType;
+  urgency?: MeetingUrgency;
   reminderMinutesBeforeStart: number;
 };
 
 export type CalendarEventListFilter = {
   provider?: CalendarProviderType;
+  meetingType?: MeetingType;
   status?: CalendarEventStatus;
   from?: Date;
   to?: Date;
@@ -99,6 +104,7 @@ export class CalendarEventsRepository {
     const query: FilterQuery<ManagedCalendarEvent> = {
       organizationId,
       ...(filter.provider ? { provider: filter.provider } : {}),
+      ...(filter.meetingType ? { meetingType: filter.meetingType } : {}),
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.from || filter.to
         ? {
