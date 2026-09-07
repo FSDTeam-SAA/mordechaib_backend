@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { CalendarEventStatus } from '../../../common/enums/calendar-event-status.enum';
 import { CalendarProviderType } from '../../../common/enums/calendar-provider.enum';
+import { MeetingType } from '../../../common/enums/meeting-type.enum';
 
 export class ListCalendarEventsQueryDto {
   @ApiPropertyOptional({ default: 1, minimum: 1 })
@@ -29,6 +30,11 @@ export class ListCalendarEventsQueryDto {
   @IsOptional()
   @IsEnum(CalendarProviderType)
   provider?: CalendarProviderType;
+
+  @ApiPropertyOptional({ enum: MeetingType })
+  @IsOptional()
+  @IsEnum(MeetingType)
+  meetingType?: MeetingType;
 
   @ApiPropertyOptional({ enum: CalendarEventStatus })
   @IsOptional()
