@@ -1,5 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
 import { encryptText } from '../../common/helpers/crypto.helper';
 import { CalendarRepository } from './calendar.repository';
@@ -139,6 +141,8 @@ describe('CalendarService', () => {
       title: 'Planning',
       startTime: '2099-09-01T10:00:00.000Z',
       endTime: '2099-09-01T10:30:00.000Z',
+      meetingType: MeetingType.GOOGLE_MEET,
+      urgency: MeetingUrgency.HIGH,
       timezone: 'Asia/Dhaka',
       idempotencyKey: 'planning-1',
     });
@@ -148,6 +152,8 @@ describe('CalendarService', () => {
         organizationId: 'org-1',
         createdByUserId: 'user-1',
         provider: CalendarProviderType.GOOGLE_CALENDAR,
+        meetingType: MeetingType.GOOGLE_MEET,
+        urgency: MeetingUrgency.HIGH,
       }),
     );
     expect(google.createEvent).toHaveBeenCalledWith(
@@ -173,6 +179,8 @@ describe('CalendarService', () => {
           idempotencyHash: 'private-hash',
           organizationId: 'org-1',
           provider: CalendarProviderType.OUTLOOK_CALENDAR,
+          meetingType: MeetingType.OTHER,
+          urgency: MeetingUrgency.MEDIUM,
           title: 'Review',
           startsAt: new Date('2099-09-01T10:00:00.000Z'),
           endsAt: new Date('2099-09-01T10:30:00.000Z'),
