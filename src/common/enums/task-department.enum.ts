@@ -1,0 +1,9 @@
+export enum TaskDepartment {
+  SALES = 'SALES',
+  FINANCE = 'FINANCE',
+  OPERATIONS = 'OPERATIONS',
+  SUPPORT = 'SUPPORT',
+  DESIGN = 'DESIGN',
+  MARKETING = 'MARKETING',
+  OTHER = 'OTHER',
+}

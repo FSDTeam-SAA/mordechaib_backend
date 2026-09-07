@@ -112,6 +112,8 @@ export class CalendarService {
       provider,
       title: input.title,
       description: input.description,
+      meetingType: input.meetingType,
+      urgency: input.urgency,
       startsAt,
       endsAt,
       timezone,
@@ -196,6 +198,7 @@ export class CalendarService {
       query.limit,
       {
         provider: query.provider,
+        meetingType: query.meetingType,
         status: query.status,
         from,
         to,
@@ -246,6 +249,8 @@ export class CalendarService {
     const next = {
       title: input.title ?? event.title,
       description: input.description ?? event.description,
+      meetingType: input.meetingType ?? event.meetingType,
+      urgency: input.urgency ?? event.urgency,
       startsAt,
       endsAt,
       timezone,
