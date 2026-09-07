@@ -5,6 +5,7 @@ import {
   ArrayUnique,
   IsArray,
   IsEmail,
+  IsEnum,
   IsISO8601,
   IsInt,
   IsOptional,
@@ -14,6 +15,8 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { MeetingType } from '../../../common/enums/meeting-type.enum';
+import { MeetingUrgency } from '../../../common/enums/meeting-urgency.enum';
 
 export class CreateCalendarEventDto {
   @ApiProperty({ example: 'Quarterly planning', maxLength: 200 })
@@ -27,6 +30,16 @@ export class CreateCalendarEventDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiPropertyOptional({ enum: MeetingType, default: MeetingType.OTHER })
+  @IsOptional()
+  @IsEnum(MeetingType)
+  meetingType?: MeetingType;
+
+  @ApiPropertyOptional({ enum: MeetingUrgency, default: MeetingUrgency.MEDIUM })
+  @IsOptional()
+  @IsEnum(MeetingUrgency)
+  urgency?: MeetingUrgency;
 
   @ApiProperty({ example: '2026-09-10T10:00:00.000Z' })
   @IsISO8601({ strict: true })
