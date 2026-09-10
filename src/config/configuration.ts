@@ -115,6 +115,37 @@ export default () => {
   const integrationEncryptionKey =
     process.env.INTEGRATION_ENCRYPTION_KEY ||
     'replace-with-at-least-32-random-characters';
+  const aiServiceBaseUrl = process.env.AI_SERVICE_URL?.trim().replace(
+    /\/+$/,
+    '',
+  );
+  const aiServiceSharedSecret = process.env.AI_SERVICE_SHARED_SECRET?.trim();
+  const aiAutomationEnabled = booleanValue(
+    process.env.AI_AUTOMATION_ENABLED,
+    Boolean(aiServiceBaseUrl),
+  );
+  const aiServiceTimeoutMs = positiveInteger(
+    process.env.AI_SERVICE_TIMEOUT_MS,
+    30_000,
+    'AI_SERVICE_TIMEOUT_MS',
+  );
+  const aiMessageAnalysisDelayMs = positiveInteger(
+    process.env.AI_MESSAGE_ANALYSIS_DELAY_MS,
+    1_500,
+    'AI_MESSAGE_ANALYSIS_DELAY_MS',
+  );
+  const aiCallTranscriptionEnabled = booleanValue(
+    process.env.AI_CALL_TRANSCRIPTION_ENABLED,
+    false,
+  );
+  const aiCallTranscriptionModel = (
+    process.env.AI_CALL_TRANSCRIPTION_MODEL || 'whisper-1'
+  ).trim();
+  const aiCallTranscriptionMaxBytes = positiveInteger(
+    process.env.AI_CALL_TRANSCRIPTION_MAX_BYTES,
+    25 * 1024 * 1024,
+    'AI_CALL_TRANSCRIPTION_MAX_BYTES',
+  );
   const twilioAllowedCallPrefixes = (
     process.env.TWILIO_ALLOWED_CALL_PREFIXES || '+1,+33,+44'
   )
@@ -343,6 +374,17 @@ export default () => {
     );
   }
 
+  if (aiAutomationEnabled && (!aiServiceBaseUrl || !aiServiceSharedSecret)) {
+    throw new Error(
+      'AI_SERVICE_URL and AI_SERVICE_SHARED_SECRET are required when AI automation is enabled',
+    );
+  }
+  if (aiCallTranscriptionEnabled && !process.env.OPENAI_API_KEY?.trim()) {
+    throw new Error(
+      'OPENAI_API_KEY is required when AI call transcription is enabled',
+    );
+  }
+
   return {
     NODE_ENV: nodeEnv,
     PORT: Number(process.env.PORT || 5000),
@@ -422,6 +464,19 @@ export default () => {
 
     openai: {
       apiKey: process.env.OPENAI_API_KEY,
+    },
+
+      aiService: {
+        baseUrl: aiServiceBaseUrl,
+        sharedSecret: aiServiceSharedSecret,
+        automationEnabled: aiAutomationEnabled,
+        timeoutMs: aiServiceTimeoutMs,
+        messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
+      callTranscription: {
+        enabled: aiCallTranscriptionEnabled,
+        model: aiCallTranscriptionModel,
+        maxBytes: aiCallTranscriptionMaxBytes,
+      },
     },
 
     stripe: {

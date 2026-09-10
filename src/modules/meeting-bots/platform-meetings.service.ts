@@ -30,11 +30,17 @@ import {
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { AiProposalAgent } from '../../database/schemas/ai-action-proposal.schema';
 
 type StoredPlatformMeeting = PlatformMeeting & {
   _id: unknown;
   createdAt?: Date;
   updatedAt?: Date;
+};
+
+type AiProposalTrace = {
+  aiActionProposalId: string;
+  proposedByAgent: AiProposalAgent;
 };
 
 @Injectable()
@@ -54,6 +60,7 @@ export class PlatformMeetingsService {
     organizationId: string,
     userId: string,
     input: CreateConnectedMeetingDto,
+    trace?: AiProposalTrace,
   ) {
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
     const immediate = !input.startsAt;
@@ -73,7 +80,7 @@ export class PlatformMeetingsService {
     const idempotencyHash = this.hash(
       `${organizationId}|${input.platform}|${input.idempotencyKey || crypto.randomUUID()}`,
     );
-    const reservation = await this.repository.reserve({
+    const reservationInput = {
       platform: input.platform,
       organizationId,
       createdByUserId: userId,
@@ -89,11 +96,25 @@ export class PlatformMeetingsService {
       reminderMinutesBeforeStart,
       calendarProvider,
       metadata: input.metadata,
-    });
+      ...(trace || {}),
+    };
+    let reservation = await this.repository.reserve(reservationInput);
     if (!reservation.meeting) {
       throw new ServiceUnavailableException(
         'The meeting could not be reserved',
       );
+    }
+    if (
+      !reservation.created &&
+      trace &&
+      reservation.meeting.status === PlatformMeetingStatus.FAILED
+    ) {
+      const restarted = await this.repository.restartFailedAiProposal(
+        String(reservation.meeting._id),
+        organizationId,
+        reservationInput,
+      );
+      if (restarted) reservation = { meeting: restarted, created: true };
     }
     if (!reservation.created) {
       return {
@@ -255,6 +276,26 @@ export class PlatformMeetingsService {
       duplicate: false,
       ...(warning ? { warning } : {}),
     };
+  }
+
+  createFromAiProposal(
+    organizationId: string,
+    userId: string,
+    input: CreateConnectedMeetingDto,
+    trace: AiProposalTrace & { proposalId: string },
+  ) {
+    return this.create(
+      organizationId,
+      userId,
+      {
+        ...input,
+        idempotencyKey: `ai-action:${trace.proposalId}`,
+      },
+      {
+        aiActionProposalId: trace.aiActionProposalId,
+        proposedByAgent: trace.proposedByAgent,
+      },
+    );
   }
 
   async list(

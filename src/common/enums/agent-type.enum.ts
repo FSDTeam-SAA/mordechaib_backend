@@ -1,0 +1,9 @@
+export enum AgentType {
+  SALES = 'SALES',
+  OPERATIONS = 'OPERATIONS',
+  SUPPORT = 'SUPPORT',
+  MARKETING = 'MARKETING',
+  STRATEGY = 'STRATEGY',
+  DESIGN = 'DESIGN',
+  CUSTOM = 'CUSTOM',
+}

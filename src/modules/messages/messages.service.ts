@@ -5,6 +5,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import crypto from 'crypto';
 import { createReadStream } from 'fs';
@@ -12,11 +14,14 @@ import { unlink } from 'fs/promises';
 import path from 'path';
 import { Types } from 'mongoose';
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
+import { MessageProcessingStatus } from '../../common/enums/message-processing-status.enum';
 import { MessageType } from '../../common/enums/message-type.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AttachmentDisposition } from './dto/attachment-download-query.dto';
+import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { ConversationsRepository } from './conversations.repository';
 import { MessageAttachmentsRepository } from './message-attachments.repository';
@@ -25,6 +30,7 @@ import {
   resolveAttachmentCategory,
 } from './message-upload.config';
 import { MessagesRepository } from './messages.repository';
+import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 import {
   MESSAGE_ATTACHMENT_STORAGE,
   MessageAttachmentStorage,
@@ -50,10 +56,48 @@ export class MessagesService {
     private readonly attachments: MessageAttachmentsRepository,
     @Inject(MESSAGE_ATTACHMENT_STORAGE)
     private readonly storage: MessageAttachmentStorage,
+    @Optional()
+    @Inject(forwardRef(() => AiJobsQueue))
+    private readonly aiJobs?: AiJobsQueue,
   ) {}
 
-  getConversation(organizationId: string) {
-    return this.conversations.findByOrganization(organizationId);
+  getConversation(organizationId: string, userId: string) {
+    return this.conversations.findLatest(organizationId, userId);
+  }
+
+  createConversation(
+    organizationId: string,
+    userId: string,
+    input: CreateConversationDto,
+  ) {
+    return this.conversations.create(
+      organizationId,
+      userId,
+      input.title || 'New Chat',
+    );
+  }
+
+  async listConversations(
+    organizationId: string,
+    userId: string,
+    query: ListConversationsQueryDto,
+  ) {
+    const result = await this.conversations.list(
+      organizationId,
+      userId,
+      query.page,
+      query.limit,
+      query,
+    );
+    return {
+      items: result.items,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        pages: Math.ceil(result.total / query.limit),
+      },
+    };
   }
 
   async create(
@@ -79,10 +123,14 @@ export class MessagesService {
       }
 
       const validatedFiles = files.map((file) => this.validateFile(file));
-      const conversation = await this.conversations.findOrCreate(
-        organizationId,
-        userId,
-      );
+      const conversation = input.conversationId
+        ? await this.conversations.findById(
+            organizationId,
+            input.conversationId,
+            userId,
+          )
+        : await this.conversations.findOrCreate(organizationId, userId);
+      if (!conversation) throw new NotFoundException('Conversation not found');
       const conversationId = String(conversation._id);
       const uploaded: UploadedAttachment[] = [];
       let messageId: string | undefined;
@@ -131,8 +179,44 @@ export class MessagesService {
             ...attachment.stored,
           })),
         );
-        await this.conversations.recordMessage(organizationId, new Date());
-        return this.publicMessage(message, messageAttachments);
+        await this.conversations.recordMessage(
+          organizationId,
+          conversationId,
+          new Date(),
+        );
+        const response = this.publicMessage(message, messageAttachments);
+        if (this.aiJobs) {
+          try {
+            const queued = await this.aiJobs.enqueueMessageAnalysis({
+              organizationId,
+              messageId: messageId!,
+            });
+            if (!queued.queued) {
+              await this.messages
+                .updateProcessingStatus(
+                  organizationId,
+                  messageId!,
+                  MessageProcessingStatus.NOT_REQUESTED,
+                )
+                .catch(() => undefined);
+            }
+          } catch (error) {
+            const messageError =
+              error instanceof Error ? error.message : 'AI queue unavailable';
+            await this.messages
+              .updateProcessingStatus(
+                organizationId,
+                messageId!,
+                MessageProcessingStatus.FAILED,
+                messageError,
+              )
+              .catch(() => undefined);
+            this.logger.warn(
+              `Unable to enqueue AI analysis for message ${messageId}: ${messageError}`,
+            );
+          }
+        }
+        return response;
       } catch (error) {
         if (messageId) {
           await Promise.allSettled([
@@ -159,9 +243,18 @@ export class MessagesService {
     }
   }
 
-  async list(organizationId: string, query: ListMessagesQueryDto) {
-    const conversation =
-      await this.conversations.findByOrganization(organizationId);
+  async list(
+    organizationId: string,
+    userId: string,
+    query: ListMessagesQueryDto,
+  ) {
+    const conversation = query.conversationId
+      ? await this.conversations.findById(
+          organizationId,
+          query.conversationId,
+          userId,
+        )
+      : await this.conversations.findLatest(organizationId, userId);
     if (!conversation) {
       return {
         conversation: null,
@@ -205,18 +298,24 @@ export class MessagesService {
     };
   }
 
-  async get(organizationId: string, messageId: string) {
+  async get(organizationId: string, actor: RequestUser, messageId: string) {
     this.assertObjectId(messageId, 'messageId');
     const message = await this.messages.findActiveById(
       organizationId,
       messageId,
     );
     if (!message) throw new NotFoundException('Message not found');
+    await this.assertConversationAccess(
+      organizationId,
+      message.conversationId,
+      actor,
+    );
     return this.withAttachments(organizationId, message);
   }
 
   async getAttachmentDownload(
     organizationId: string,
+    actor: RequestUser,
     messageId: string,
     attachmentId: string,
     disposition: AttachmentDisposition,
@@ -228,6 +327,11 @@ export class MessagesService {
       messageId,
     );
     if (!message) throw new NotFoundException('Message not found');
+    await this.assertConversationAccess(
+      organizationId,
+      message.conversationId,
+      actor,
+    );
     const attachment = await this.attachments.findActiveWithStorage(
       organizationId,
       messageId,
@@ -315,11 +419,15 @@ export class MessagesService {
       senderId: messageData.senderId,
       senderType: messageData.senderType,
       clientMessageId: messageData.clientMessageId,
+      aiResponseId: messageData.aiResponseId,
       type: messageData.type,
       content: messageData.content,
       attachmentCount: messageData.attachmentCount,
       processingStatus: messageData.processingStatus,
       sourceMessageId: messageData.sourceMessageId,
+      agentId: messageData.agentId,
+      agentName: messageData.agentName,
+      agentRunId: messageData.agentRunId,
       createdAt: messageData.createdAt,
       updatedAt: messageData.updatedAt,
       attachments: attachments.map((attachment) => {
@@ -424,6 +532,20 @@ export class MessagesService {
     }
   }
 
+  private async assertConversationAccess(
+    organizationId: string,
+    conversationId: string,
+    actor: RequestUser,
+  ) {
+    if ([UserRole.OWNER, UserRole.ADMIN].includes(actor.role)) return;
+    const conversation = await this.conversations.findById(
+      organizationId,
+      conversationId,
+      actor.id,
+    );
+    if (!conversation) throw new NotFoundException('Message not found');
+  }
+
   private isDuplicateKey(error: unknown) {
     return (
       typeof error === 'object' &&
@@ -432,4 +554,5 @@ export class MessagesService {
       error.code === 11000
     );
   }
+
 }

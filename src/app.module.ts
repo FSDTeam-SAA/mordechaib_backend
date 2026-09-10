@@ -12,7 +12,6 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwilioModule } from './modules/twilio/twilio.module';
 import { CallsModule } from './modules/calls/calls.module';
-import { AiModule } from './modules/ai/ai.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
@@ -28,6 +27,9 @@ import { MeetingBotsModule } from './modules/meeting-bots/meeting-bots.module';
 import { TeamModule } from './modules/team/team.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { AiActionsModule } from './modules/ai-actions/ai-actions.module';
+import { AiIntegrationModule } from './modules/ai-integration/ai-integration.module';
+import { AgentsModule } from './modules/agents/agents.module';
 
 @Module({
   imports: [
@@ -42,7 +44,6 @@ import { SettingsModule } from './modules/settings/settings.module';
     IntegrationsModule,
     TwilioModule,
     CallsModule,
-    AiModule,
     ApprovalsModule,
     CrmModule,
     CalendarModule,
@@ -58,6 +59,9 @@ import { SettingsModule } from './modules/settings/settings.module';
     TeamModule,
     MessagesModule,
     SettingsModule,
+    AiActionsModule,
+    AiIntegrationModule,
+    AgentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

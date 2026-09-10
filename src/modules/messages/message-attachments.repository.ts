@@ -54,6 +54,20 @@ export class MessageAttachmentsRepository {
       .exec();
   }
 
+  findForAiByMessageIds(organizationId: string, messageIds: string[]) {
+    if (!messageIds.length) return Promise.resolve([]);
+    return this.attachmentModel
+      .find({
+        organizationId,
+        messageId: { $in: messageIds },
+        status: MessageAttachmentStatus.ACTIVE,
+      })
+      .select('+extractedText +transcription')
+      .sort({ createdAt: 1, _id: 1 })
+      .lean()
+      .exec();
+  }
+
   findActiveWithStorage(
     organizationId: string,
     messageId: string,
