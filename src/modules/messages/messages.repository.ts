@@ -16,6 +16,17 @@ type CreateMessageInput = {
   attachmentCount: number;
 };
 
+type CreateAiMessageInput = {
+  organizationId: string;
+  conversationId: string;
+  sourceMessageId: string;
+  aiResponseId: string;
+  agentId: string;
+  agentName: string;
+  agentRunId?: string;
+  content: string;
+};
+
 @Injectable()
 export class MessagesRepository {
   constructor(
@@ -27,7 +38,20 @@ export class MessagesRepository {
     const message = await this.messageModel.create({
       ...input,
       senderType: MessageSenderType.USER,
-      processingStatus: MessageProcessingStatus.NOT_REQUESTED,
+      processingStatus: MessageProcessingStatus.PENDING,
+    });
+    return message.toObject();
+  }
+
+  async createAi(input: CreateAiMessageInput) {
+    const message = await this.messageModel.create({
+      ...input,
+      senderId: input.agentId,
+      senderType: MessageSenderType.AI,
+      type: MessageType.TEXT,
+      attachmentCount: 0,
+      processingStatus: MessageProcessingStatus.COMPLETED,
+      processedAt: new Date(),
     });
     return message.toObject();
   }
@@ -56,6 +80,24 @@ export class MessagesRepository {
     return { items, total };
   }
 
+  async listForAi(
+    organizationId: string,
+    conversationId: string,
+    limit: number,
+  ) {
+    return this.messageModel
+      .find({
+        organizationId,
+        conversationId,
+        deletedAt: { $exists: false },
+      })
+      .select('+extractedText +transcription')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .lean()
+      .exec();
+  }
+
   findActiveById(organizationId: string, messageId: string) {
     return this.messageModel
       .findOne({
@@ -70,6 +112,71 @@ export class MessagesRepository {
   findByClientMessageId(organizationId: string, clientMessageId: string) {
     return this.messageModel
       .findOne({ organizationId, clientMessageId })
+      .lean()
+      .exec();
+  }
+
+  findByAiResponseId(organizationId: string, aiResponseId: string) {
+    return this.messageModel
+      .findOne({ organizationId, aiResponseId })
+      .lean()
+      .exec();
+  }
+
+  findForAi(organizationId: string, messageId: string) {
+    return this.messageModel
+      .findOne({
+        _id: messageId,
+        organizationId,
+        deletedAt: { $exists: false },
+      })
+      .select('+extractedText +transcription')
+      .lean()
+      .exec();
+  }
+
+  markSourceProcessed(organizationId: string, messageId: string) {
+    return this.messageModel
+      .updateOne(
+        { _id: messageId, organizationId },
+        {
+          $set: {
+            processingStatus: MessageProcessingStatus.COMPLETED,
+            processedAt: new Date(),
+          },
+          $unset: { aiError: 1 },
+        },
+      )
+      .exec();
+  }
+
+  updateProcessingStatus(
+    organizationId: string,
+    messageId: string,
+    status: MessageProcessingStatus,
+    error?: string,
+  ) {
+    return this.messageModel
+      .findOneAndUpdate(
+        {
+          _id: messageId,
+          organizationId,
+          senderType: MessageSenderType.USER,
+          deletedAt: { $exists: false },
+        },
+        {
+          $set: {
+            processingStatus: status,
+            ...(status === MessageProcessingStatus.FAILED
+              ? { aiError: (error || 'AI processing failed').slice(0, 500) }
+              : {}),
+          },
+          ...(status !== MessageProcessingStatus.FAILED
+            ? { $unset: { aiError: 1 } }
+            : {}),
+        },
+        { new: true, runValidators: true },
+      )
       .lean()
       .exec();
   }

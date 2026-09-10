@@ -104,6 +104,11 @@ import {
   NotificationPreferenceSchema,
 } from '../schemas/notification-preference.schema';
 import { AiSetting, AiSettingSchema } from '../schemas/ai-setting.schema';
+import {
+  AiActionProposal,
+  AiActionProposalSchema,
+} from '../schemas/ai-action-proposal.schema';
+import { Agent, AgentSchema } from '../schemas/agent.schema';
 
 @Global()
 @Module({
@@ -168,6 +173,11 @@ import { AiSetting, AiSettingSchema } from '../schemas/ai-setting.schema';
         schema: NotificationPreferenceSchema,
       },
       { name: AiSetting.name, schema: AiSettingSchema },
+      {
+        name: AiActionProposal.name,
+        schema: AiActionProposalSchema,
+      },
+      { name: Agent.name, schema: AgentSchema },
     ]),
   ],
   exports: [MongooseModule],

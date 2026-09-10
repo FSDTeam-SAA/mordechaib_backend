@@ -5,6 +5,7 @@ import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { AiProposalAgent } from '../../database/schemas/ai-action-proposal.schema';
 
 export type ReservePlatformMeeting = {
   platform: MeetingPlatform;
@@ -22,6 +23,8 @@ export type ReservePlatformMeeting = {
   reminderMinutesBeforeStart: number;
   calendarProvider?: CalendarProviderType;
   metadata?: Record<string, unknown>;
+  aiActionProposalId?: string;
+  proposedByAgent?: AiProposalAgent;
 };
 
 @Injectable()
@@ -62,6 +65,39 @@ export class PlatformMeetingsRepository {
     return this.model
       .findOne({ idempotencyHash })
       .select('+idempotencyHash +joinUrlEncrypted +startUrlEncrypted')
+      .lean()
+      .exec();
+  }
+
+  restartFailedAiProposal(
+    id: string,
+    organizationId: string,
+    input: ReservePlatformMeeting,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          aiActionProposalId: input.aiActionProposalId,
+          status: PlatformMeetingStatus.FAILED,
+        },
+        {
+          $set: { ...input, status: PlatformMeetingStatus.CREATING },
+          $unset: {
+            providerMeetingId: 1,
+            meetingBotId: 1,
+            calendarEventId: 1,
+            calendarEventUrl: 1,
+            joinUrlEncrypted: 1,
+            startUrlEncrypted: 1,
+            failureCode: 1,
+            failureMessage: 1,
+          },
+        },
+        { new: true, runValidators: true },
+      )
+      .select('+joinUrlEncrypted +startUrlEncrypted')
       .lean()
       .exec();
   }

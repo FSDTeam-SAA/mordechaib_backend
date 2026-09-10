@@ -3,6 +3,11 @@ import { HydratedDocument } from 'mongoose';
 import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import {
+  AiActionProposal,
+  AiProposalAgent,
+  AiProposalAgentSchema,
+} from './ai-action-proposal.schema';
 
 export type PlatformMeetingDocument = HydratedDocument<PlatformMeeting>;
 
@@ -84,9 +89,22 @@ export class PlatformMeeting {
 
   @Prop({ type: Object, default: {} })
   metadata?: Record<string, unknown>;
+
+  @Prop({ ref: AiActionProposal.name, index: true })
+  aiActionProposalId?: string;
+
+  @Prop({ type: AiProposalAgentSchema })
+  proposedByAgent?: AiProposalAgent;
 }
 
 export const PlatformMeetingSchema =
   SchemaFactory.createForClass(PlatformMeeting);
 PlatformMeetingSchema.index({ organizationId: 1, startsAt: -1 });
 PlatformMeetingSchema.index({ organizationId: 1, platform: 1, startsAt: -1 });
+PlatformMeetingSchema.index(
+  { organizationId: 1, aiActionProposalId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { aiActionProposalId: { $type: 'string' } },
+  },
+);
