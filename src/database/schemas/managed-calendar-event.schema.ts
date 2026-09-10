@@ -4,6 +4,11 @@ import { CalendarEventStatus } from '../../common/enums/calendar-event-status.en
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
+import {
+  AiActionProposal,
+  AiProposalAgent,
+  AiProposalAgentSchema,
+} from './ai-action-proposal.schema';
 
 export type ManagedCalendarEventDocument =
   HydratedDocument<ManagedCalendarEvent>;
@@ -81,6 +86,12 @@ export class ManagedCalendarEvent {
 
   @Prop()
   failureMessage?: string;
+
+  @Prop({ ref: AiActionProposal.name, index: true })
+  aiActionProposalId?: string;
+
+  @Prop({ type: AiProposalAgentSchema })
+  proposedByAgent?: AiProposalAgent;
 }
 
 export const ManagedCalendarEventSchema =
@@ -96,5 +107,12 @@ ManagedCalendarEventSchema.index(
   {
     unique: true,
     partialFilterExpression: { providerEventId: { $type: 'string' } },
+  },
+);
+ManagedCalendarEventSchema.index(
+  { organizationId: 1, aiActionProposalId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { aiActionProposalId: { $type: 'string' } },
   },
 );

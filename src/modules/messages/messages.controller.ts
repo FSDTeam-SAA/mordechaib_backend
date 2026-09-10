@@ -30,7 +30,9 @@ import {
   RequestUser,
 } from '../../common/types/request-context.type';
 import { AttachmentDownloadQueryDto } from './dto/attachment-download-query.dto';
+import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import {
   MAX_MESSAGE_ATTACHMENTS,
@@ -47,9 +49,33 @@ export class MessagesController {
   constructor(private readonly messages: MessagesService) {}
 
   @Get('conversation')
-  @ApiOperation({ summary: "Get the organization's single AI conversation" })
-  getConversation(@CurrentOrg() organization: RequestOrganization) {
-    return this.messages.getConversation(organization.id);
+  @ApiOperation({ summary: "Get the user's latest AI conversation" })
+  getConversation(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.messages.getConversation(organization.id, user.id);
+  }
+
+  @Post('conversations')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER)
+  @ApiOperation({ summary: 'Start a new AI conversation' })
+  createConversation(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Body() input: CreateConversationDto,
+  ) {
+    return this.messages.createConversation(organization.id, user.id, input);
+  }
+
+  @Get('conversations')
+  @ApiOperation({ summary: "List the user's AI conversations" })
+  listConversations(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Query() query: ListConversationsQueryDto,
+  ) {
+    return this.messages.listConversations(organization.id, user.id, query);
   }
 
   @Post()
@@ -65,6 +91,7 @@ export class MessagesController {
       type: 'object',
       properties: {
         clientMessageId: { type: 'string', format: 'uuid' },
+        conversationId: { type: 'string' },
         content: { type: 'string', maxLength: 20_000 },
         files: {
           type: 'array',
@@ -85,24 +112,29 @@ export class MessagesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List messages in the organization conversation' })
+  @ApiOperation({
+    summary: "List messages in the user's selected conversation",
+  })
   list(
     @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
     @Query() query: ListMessagesQueryDto,
   ) {
-    return this.messages.list(organization.id, query);
+    return this.messages.list(organization.id, user.id, query);
   }
 
   @Get(':messageId/attachments/:attachmentId/download')
   @ApiOperation({ summary: 'Get an authorized short-lived attachment URL' })
   getAttachmentDownload(
     @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
     @Param('messageId') messageId: string,
     @Param('attachmentId') attachmentId: string,
     @Query() query: AttachmentDownloadQueryDto,
   ) {
     return this.messages.getAttachmentDownload(
       organization.id,
+      user,
       messageId,
       attachmentId,
       query.disposition,
@@ -113,9 +145,10 @@ export class MessagesController {
   @ApiOperation({ summary: 'Get one message and its attachments' })
   get(
     @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
     @Param('messageId') messageId: string,
   ) {
-    return this.messages.get(organization.id, messageId);
+    return this.messages.get(organization.id, user, messageId);
   }
 
   @Delete(':messageId')

@@ -13,6 +13,7 @@ import { TwilioSettingsService } from './twilio-settings.service';
 import { TwilioAccountsService } from './twilio-accounts.service';
 import { TwilioEligibilityService } from './twilio-eligibility.service';
 import { TwilioUsageService } from './twilio-usage.service';
+import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 
 @Injectable()
 export class TwilioService {
@@ -25,6 +26,7 @@ export class TwilioService {
     private readonly accountsService: TwilioAccountsService,
     private readonly eligibility: TwilioEligibilityService,
     private readonly usage: TwilioUsageService,
+    private readonly aiJobs: AiJobsQueue,
   ) {}
 
   async handleIncomingCall(body: TwilioVoiceWebhookDto): Promise<string> {
@@ -273,7 +275,7 @@ export class TwilioService {
       accountContext,
     });
 
-    await this.callRecordsService.recordCompletedRecording({
+    const recording = await this.callRecordsService.recordCompletedRecording({
       primaryCallSid,
       providerCallSid,
       recordingSid,
@@ -289,6 +291,12 @@ export class TwilioService {
       ),
       localFilePath: localFilePath || undefined,
     });
+    if (localFilePath) {
+      await this.aiJobs.enqueueCallTranscription({
+        organizationId: recording.organizationId,
+        recordingId: String(recording._id),
+      });
+    }
 
     return { received: true };
   }

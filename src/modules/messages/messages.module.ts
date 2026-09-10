@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 import { ConversationsRepository } from './conversations.repository';
 import { MessageAttachmentsRepository } from './message-attachments.repository';
 import { MessagesController } from './messages.controller';
@@ -9,6 +10,7 @@ import { MESSAGE_ATTACHMENT_STORAGE } from './storage/message-attachment-storage
 import { TemporaryUploadCleanupInterceptor } from './temporary-upload-cleanup.interceptor';
 
 @Module({
+  imports: [forwardRef(() => AiIntegrationModule)],
   controllers: [MessagesController],
   providers: [
     MessagesService,

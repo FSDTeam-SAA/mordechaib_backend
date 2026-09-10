@@ -1,5 +1,5 @@
 import { BullModule } from '@nestjs/bullmq';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GoogleMeetingsController } from './google-meetings.controller';
 import { GoogleMeetAuthService } from './google-meet-auth.service';
@@ -29,6 +29,7 @@ import { ZoomMeetingsController } from './zoom-meetings.controller';
 import { CalendarModule } from '../calendar/calendar.module';
 import { OutlookCalendarController } from './outlook-calendar.controller';
 import { OutlookCalendarAuthService } from './outlook-calendar-auth.service';
+import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -48,6 +49,7 @@ function redisConnection(urlValue: string) {
   imports: [
     ConfigModule,
     CalendarModule,
+    forwardRef(() => AiIntegrationModule),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -90,6 +92,6 @@ function redisConnection(urlValue: string) {
     RecallAudioStorage,
     { provide: MEETING_AUDIO_STORAGE, useExisting: RecallAudioStorage },
   ],
-  exports: [MeetingBotsService],
+  exports: [MeetingBotsService, PlatformMeetingsService],
 })
 export class MeetingBotsModule {}
