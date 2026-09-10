@@ -4,6 +4,11 @@ import { TaskAttachmentKind } from '../../common/enums/task-attachment-kind.enum
 import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { TaskPriority } from '../../common/enums/task-priority.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
+import {
+  AiActionProposal,
+  AiProposalAgent,
+  AiProposalAgentSchema,
+} from './ai-action-proposal.schema';
 
 export type TaskItemDocument = HydratedDocument<TaskItem>;
 
@@ -158,8 +163,21 @@ export class TaskItem {
 
   @Prop({ required: true, index: true })
   createdByUserId!: string;
+
+  @Prop({ ref: AiActionProposal.name, index: true })
+  aiActionProposalId?: string;
+
+  @Prop({ type: AiProposalAgentSchema })
+  proposedByAgent?: AiProposalAgent;
 }
 
 export const TaskItemSchema = SchemaFactory.createForClass(TaskItem);
 TaskItemSchema.index({ organizationId: 1, status: 1, dueDate: 1 });
 TaskItemSchema.index({ organizationId: 1, assignedToUserId: 1, createdAt: -1 });
+TaskItemSchema.index(
+  { organizationId: 1, aiActionProposalId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { aiActionProposalId: { $type: 'string' } },
+  },
+);

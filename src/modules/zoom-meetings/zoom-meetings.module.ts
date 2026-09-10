@@ -10,6 +10,7 @@ import { ZoomMeetingsController } from './zoom-meetings.controller';
 import { ZoomMeetingsProcessor } from './zoom-meetings.processor';
 import { ZoomMeetingsRepository } from './zoom-meetings.repository';
 import { ZoomMeetingsService } from './zoom-meetings.service';
+import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -28,6 +29,7 @@ function redisConnection(urlValue: string) {
 @Module({
   imports: [
     ConfigModule,
+    AiIntegrationModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

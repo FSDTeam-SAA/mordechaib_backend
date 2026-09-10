@@ -6,6 +6,7 @@ import { GoogleMeetAuthService } from './google-meet-auth.service';
 import { MeetingBotsService } from './meeting-bots.service';
 import { PlatformMeetingsRepository } from './platform-meetings.repository';
 import { PlatformMeetingsService } from './platform-meetings.service';
+import { AgentType } from '../../common/enums/agent-type.enum';
 import { GoogleMeetProvider } from './providers/google-meet.provider';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
@@ -47,6 +48,7 @@ describe('PlatformMeetingsService', () => {
         return stored;
       }),
       findInternalById: jest.fn(),
+      restartFailedAiProposal: jest.fn(),
       list: jest.fn(),
     };
     meetingBots = {
@@ -129,6 +131,58 @@ describe('PlatformMeetingsService', () => {
         status: PlatformMeetingStatus.SCHEDULED,
         meetingBotId: 'meeting-bot-1',
         joinUrl: 'https://meet.google.com/abc-defg-hij',
+        duplicate: false,
+      }),
+    );
+  });
+
+  it('restarts a failed AI-proposed meeting reservation on retry', async () => {
+    const failed = {
+      ...stored,
+      aiActionProposalId: 'proposal-object-id',
+      status: PlatformMeetingStatus.FAILED,
+    };
+    repository.reserve.mockResolvedValueOnce({
+      meeting: failed,
+      created: false,
+    });
+    repository.restartFailedAiProposal.mockResolvedValueOnce({
+      ...failed,
+      status: PlatformMeetingStatus.CREATING,
+    });
+
+    const result = await service.createFromAiProposal(
+      'org-1',
+      'approver-1',
+      {
+        platform: MeetingPlatform.GOOGLE_MEET,
+        title: 'Project review',
+        startsAt: '2099-09-01T10:00:00.000Z',
+        sendBot: false,
+      },
+      {
+        aiActionProposalId: 'proposal-object-id',
+        proposalId: 'proposal-1',
+        proposedByAgent: {
+          id: 'scheduler',
+          name: 'Scheduler Agent',
+          type: AgentType.OPERATIONS,
+        },
+      },
+    );
+
+    expect(repository.restartFailedAiProposal).toHaveBeenCalledWith(
+      meetingId,
+      'org-1',
+      expect.objectContaining({
+        createdByUserId: 'approver-1',
+        aiActionProposalId: 'proposal-object-id',
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: meetingId,
+        status: PlatformMeetingStatus.SCHEDULED,
         duplicate: false,
       }),
     );

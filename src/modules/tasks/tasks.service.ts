@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { isValidObjectId } from 'mongoose';
 import { TaskItem } from '../../database/schemas/task-item.schema';
+import { AiProposalAgent } from '../../database/schemas/ai-action-proposal.schema';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -22,6 +23,41 @@ export class TasksService {
     });
 
     return this.toResponse(task);
+  }
+
+  async createFromAiProposal(
+    organizationId: string,
+    userId: string,
+    dto: CreateTaskDto,
+    trace: {
+      aiActionProposalId: string;
+      proposedByAgent: AiProposalAgent;
+    },
+  ) {
+    const existing = await this.repository.findByAiActionProposalId(
+      organizationId,
+      trace.aiActionProposalId,
+    );
+    if (existing) return this.toResponse(existing);
+
+    try {
+      const task = await this.repository.create({
+        ...this.toPersistence(dto),
+        organizationId,
+        createdByUserId: userId,
+        aiActionProposalId: trace.aiActionProposalId,
+        proposedByAgent: trace.proposedByAgent,
+      });
+      return this.toResponse(task);
+    } catch (error) {
+      if (!this.isDuplicateKey(error)) throw error;
+      const raced = await this.repository.findByAiActionProposalId(
+        organizationId,
+        trace.aiActionProposalId,
+      );
+      if (!raced) throw error;
+      return this.toResponse(raced);
+    }
   }
 
   async findAll(organizationId: string, query: ListTasksQueryDto) {
@@ -83,6 +119,15 @@ export class TasksService {
 
   private assertObjectId(id: string) {
     if (!isValidObjectId(id)) throw new BadRequestException('Invalid task id');
+  }
+
+  private isDuplicateKey(error: unknown) {
+    return (
+      !!error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 11000
+    );
   }
 
   private toPersistence(dto: CreateTaskDto | UpdateTaskDto) {

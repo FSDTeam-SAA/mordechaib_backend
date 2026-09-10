@@ -27,6 +27,7 @@ import {
 import { TwilioProvisioningService } from './twilio-provisioning.service';
 import { TwilioUsageRepository } from './twilio-usage.repository';
 import { TwilioUsageService } from './twilio-usage.service';
+import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -50,6 +51,7 @@ function redisConnection(urlValue: string) {
     SubscriptionsModule,
     StripeModule,
     UsersModule,
+    AiIntegrationModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
