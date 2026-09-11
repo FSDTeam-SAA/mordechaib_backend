@@ -148,20 +148,20 @@ export const AiCustomerIntelligenceSchema =
 
 @Schema({ _id: false })
 export class AiPatternDetection {
-  @Prop({ required: true, min: 0, max: 100, default: 0 })
-  valueProposition!: number;
+  @Prop({ min: 0, max: 100 })
+  valueProposition?: number;
 
-  @Prop({ required: true, min: 0, max: 100, default: 0 })
-  pricingObjection!: number;
+  @Prop({ min: 0, max: 100 })
+  pricingObjection?: number;
 
-  @Prop({ required: true, min: 0, max: 100, default: 0 })
-  budgetApproval!: number;
+  @Prop({ min: 0, max: 100 })
+  budgetApproval?: number;
 
-  @Prop({ required: true, min: 0, max: 100, default: 0 })
-  marketTrends!: number;
+  @Prop({ min: 0, max: 100 })
+  marketTrends?: number;
 
-  @Prop({ required: true, min: 0, max: 100, default: 0 })
-  followUpRequests!: number;
+  @Prop({ min: 0, max: 100 })
+  followUpRequests?: number;
 }
 
 export const AiPatternDetectionSchema =
@@ -190,7 +190,7 @@ export class AiActionProposal {
   @Prop({ required: true, trim: true, maxlength: 20 })
   schemaVersion!: string;
 
-  @Prop({ required: true, trim: true, maxlength: 200 })
+  @Prop({ required: true, trim: true, maxlength: 400 })
   proposalId!: string;
 
   @Prop({ required: true, trim: true, maxlength: 200, index: true })

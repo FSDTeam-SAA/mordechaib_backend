@@ -14,6 +14,7 @@ import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-trans
 import { Conversation } from '../../database/schemas/conversation.schema';
 import { Message } from '../../database/schemas/message.schema';
 import { MessageAttachment } from '../../database/schemas/message-attachment.schema';
+import { User } from '../../database/schemas/user.schema';
 import {
   AiActionProposal,
   AiActionProposalStatus,
@@ -53,6 +54,8 @@ export class AiSourceContextService {
     private readonly attachments: Model<MessageAttachment>,
     @InjectModel(AiActionProposal.name)
     private readonly proposals: Model<AiActionProposal>,
+    @InjectModel(User.name)
+    private readonly users: Model<User>,
     private readonly attachmentStorage: CloudinaryMessageAttachmentStorage,
   ) {}
 
@@ -128,6 +131,24 @@ export class AiSourceContextService {
       industry: organization.industry,
       businessSize: organization.businessSize,
       businessHours: organization.businessHours,
+    };
+  }
+
+  async requesterContext(organizationId: string, userId?: string) {
+    if (!userId || !isValidObjectId(userId)) return undefined;
+    const user = await this.users
+      .findOne(
+        { _id: userId, organizationId },
+        { firstName: 1, lastName: 1, timezone: 1, language: 1 },
+      )
+      .lean()
+      .exec();
+    if (!user) return undefined;
+    return {
+      userId: String(user._id),
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      timezone: user.timezone,
+      language: user.language,
     };
   }
 
@@ -300,6 +321,7 @@ export class AiSourceContextService {
 
     return {
       organizationId: message.organizationId,
+      requesterUserId: message.senderId,
       source: { type: 'USER_MESSAGE', id: sourceId },
       occurredAt: (message as unknown as MessageContextRecord).createdAt,
       conversationId: message.conversationId,
@@ -352,6 +374,10 @@ export class AiSourceContextService {
     ];
     return {
       organizationId: String(meeting.organizationId),
+      requesterUserId:
+        typeof meeting.createdByUserId === 'string'
+          ? meeting.createdByUserId
+          : undefined,
       source: { type: sourceType, id: sourceId },
       occurredAt:
         meeting.transcriptCompletedAt || meeting.joinAt || meeting.createdAt,
