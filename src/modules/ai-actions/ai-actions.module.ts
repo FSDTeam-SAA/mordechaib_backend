@@ -10,6 +10,7 @@ import {
 } from './ai-actions.controller';
 import { AiActionsRepository } from './ai-actions.repository';
 import { AiActionsService } from './ai-actions.service';
+import { SourceAnalysesModule } from '../source-analyses/source-analyses.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AiActionsService } from './ai-actions.service';
     OrganizationsModule,
     TasksModule,
     UsersModule,
+    SourceAnalysesModule,
   ],
   controllers: [AiActionsController, SourceActionCenterController],
   providers: [AiActionsService, AiActionsRepository],

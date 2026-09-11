@@ -30,6 +30,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { AiActionsModule } from './modules/ai-actions/ai-actions.module';
 import { AiIntegrationModule } from './modules/ai-integration/ai-integration.module';
 import { AgentsModule } from './modules/agents/agents.module';
+import { CallIntelligenceModule } from './modules/call-intelligence/call-intelligence.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AgentsModule } from './modules/agents/agents.module';
     AiActionsModule,
     AiIntegrationModule,
     AgentsModule,
+    CallIntelligenceModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
