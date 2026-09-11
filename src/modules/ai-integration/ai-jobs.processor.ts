@@ -17,10 +17,10 @@ import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { AiAnalysisAction, AiAnalysisResult } from '../ai-actions/dto/ai-analysis-result.dto';
 import { AiSourceContextService } from '../ai-internal/ai-source-context.service';
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
-import { AgentType } from '../../common/enums/agent-type.enum';
 
 type MessageAnalysisContext = {
   organizationId: string;
+  requesterUserId?: string;
   conversationId?: string;
   latestMessageId?: string;
   message?: { content?: string };
@@ -72,11 +72,6 @@ export class AiJobsProcessor extends WorkerHost {
 
   private async analyzeSource(job: Job<AnalyzeSourceJob>) {
     const { organizationId, sourceType, sourceId } = job.data;
-    const agent = job.data.agent || {
-      id: 'operations-agent',
-      name: 'Operations Agent',
-      type: AgentType.OPERATIONS,
-    };
     let context: MessageAnalysisContext & Record<string, unknown>;
     try {
       context = (await this.sourceContext.sourceContext(
@@ -151,6 +146,14 @@ export class AiJobsProcessor extends WorkerHost {
       const organization = await this.sourceContext.organizationContext(
         organizationId,
       );
+      const requester = await this.sourceContext.requesterContext(
+        organizationId,
+        context.requesterUserId,
+      );
+      const effectiveTimezone =
+        requester?.timezone || organization.timezone;
+      const boundedContext = { ...context };
+      delete boundedContext.requesterUserId;
       const requestId = `source-${sourceType.toLowerCase()}-${sourceId}`;
       const analysisResult = await this.aiService.request<AiAnalysisResult>(
         '/api/v1/ai/jobs/analyze-source',
@@ -159,9 +162,13 @@ export class AiJobsProcessor extends WorkerHost {
           jobId: requestId,
           idempotencyKey: requestId,
           organizationId,
-          agent,
           source: { type: sourceType, id: sourceId },
-          context: { ...context, organization },
+          context: {
+            ...boundedContext,
+            organization,
+            ...(requester ? { requester } : {}),
+            effectiveTimezone,
+          },
           generatedAt: new Date().toISOString(),
         },
       );
@@ -171,18 +178,22 @@ export class AiJobsProcessor extends WorkerHost {
         );
       }
       const ingested = await this.actions.ingestAnalysis(
-      organizationId,
-      { type: sourceType as AiProposalSourceType, id: sourceId },
-      { ...analysisResult, requestId: analysisResult.requestId || requestId },
-      context.conversationId,
-    );
-    if (sourceType === 'USER_MESSAGE') {
-      await this.sourceContext.markMessageProcessed(
         organizationId,
-        sourceId,
-        'COMPLETED',
+        { type: sourceType as AiProposalSourceType, id: sourceId },
+        analysisResult,
+        {
+          conversationId: context.conversationId,
+          effectiveTimezone,
+          expectedRequestId: requestId,
+        },
       );
-    }
+      if (sourceType === 'USER_MESSAGE') {
+        await this.sourceContext.markMessageProcessed(
+          organizationId,
+          sourceId,
+          'COMPLETED',
+        );
+      }
       return ingested;
     } catch (error) {
       if (sourceType === 'USER_MESSAGE') {

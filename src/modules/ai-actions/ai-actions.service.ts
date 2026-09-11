@@ -9,6 +9,8 @@ import { validate, ValidationError } from 'class-validator';
 import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
 import { AgentType } from '../../common/enums/agent-type.enum';
+import { assertValidTimezone } from '../../common/helpers/timezone.helper';
+import { TranscriptInsightCategory } from '../../database/schemas/ai-source-analysis.schema';
 import {
   AiActionProposal,
   AiActionProposalStatus,
@@ -33,12 +35,19 @@ import {
   AiAnalysisSummary,
   AiAnalysisResult,
 } from './dto/ai-analysis-result.dto';
+import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 
 type StoredProposal = AiActionProposal & {
   _id: unknown;
   proposalHash?: string;
   createdAt?: Date;
   updatedAt?: Date;
+};
+
+type IngestAnalysisOptions = {
+  conversationId?: string;
+  effectiveTimezone?: string;
+  expectedRequestId?: string;
 };
 
 @Injectable()
@@ -50,6 +59,7 @@ export class AiActionsService {
     private readonly users: UsersService,
     private readonly organizations: OrganizationsService,
     private readonly auditLogs: AuditLogsService,
+    private readonly sourceAnalyses: SourceAnalysesRepository,
   ) {}
 
   /**
@@ -60,21 +70,35 @@ export class AiActionsService {
     organizationId: string,
     source: { type: AiActionProposal['source']['type']; id: string },
     result: AiAnalysisResult,
-    conversationId?: string,
+    options: IngestAnalysisOptions = {},
   ) {
-    await this.organizations.findCurrent(organizationId);
-    const analysis = this.normalizeAnalysis(result.analysis);
+    const organization = await this.organizations.findCurrent(organizationId);
+    const requestId = this.validateAnalysisIdentity(
+      source,
+      result,
+      options.expectedRequestId,
+    );
+    const actions = this.normalizeActions(result.actions);
+    const analysis = this.normalizeAnalysis(result.analysis, actions);
+    const proposalAnalysis = this.proposalAnalysis(analysis);
     const items = await Promise.all(
-      result.actions.map((action) =>
+      actions.map((action) =>
         this.storeAnalysisAction(
           organizationId,
           source,
-          result.requestId,
+          requestId,
           action,
-          analysis,
-          conversationId,
+          proposalAnalysis,
+          options.conversationId,
+          options.effectiveTimezone || organization.timezone,
         ),
       ),
+    );
+    await this.sourceAnalyses.upsert(
+      organizationId,
+      requestId,
+      source,
+      analysis as unknown as Record<string, unknown>,
     );
     return items;
   }
@@ -118,12 +142,22 @@ export class AiActionsService {
     if (action.actionType !== proposal.actionType) {
       throw new BadRequestException('AI cannot change a proposal action type');
     }
-    if (proposal.proposalId !== `${proposal.requestId}:${action.actionId}`) {
+    const actionId = this.normalizeActionId(action.actionId);
+    if (proposal.proposalId !== `${proposal.requestId}:${actionId}`) {
       throw new BadRequestException(
         'AI cannot change a proposal action identifier during refinement',
       );
     }
-    return this.updateAnalysisAction(proposal, action);
+    const organization = await this.organizations.findCurrent(organizationId);
+    const proposalTimezone =
+      typeof proposal.payload?.timezone === 'string'
+        ? proposal.payload.timezone
+        : undefined;
+    return this.updateAnalysisAction(
+      proposal,
+      { ...action, actionId },
+      proposalTimezone || organization.timezone,
+    );
   }
 
   async list(organizationId: string, query: ListAiActionProposalsQueryDto) {
@@ -386,6 +420,7 @@ export class AiActionsService {
     action: AiAnalysisAction,
     analysis: AiAnalysisSummary,
     conversationId?: string,
+    effectiveTimezone?: string,
   ) {
     if (!Object.values(AiActionType).includes(action.actionType)) {
       throw new BadRequestException('AI returned an unsupported action type');
@@ -395,9 +430,18 @@ export class AiActionsService {
     const status = questions.length
       ? AiActionProposalStatus.NEEDS_CLARIFICATION
       : AiActionProposalStatus.PENDING;
+    const timezoneAwarePayload = this.withEffectiveTimezone(
+      action.actionType,
+      action.payload,
+      effectiveTimezone,
+    );
     const payload = questions.length
-      ? action.payload
-      : await this.validatePayload(action.actionType, action.payload);
+      ? timezoneAwarePayload
+      : await this.validatePayload(
+          action.actionType,
+          timezoneAwarePayload,
+          effectiveTimezone,
+        );
     const normalized = {
       organizationId,
       schemaVersion: '1.0',
@@ -446,11 +490,21 @@ export class AiActionsService {
   private async updateAnalysisAction(
     proposal: StoredProposal,
     action: AiAnalysisAction,
+    effectiveTimezone?: string,
   ) {
     const questions = this.normalizedQuestions(action.clarificationQuestions);
+    const timezoneAwarePayload = this.withEffectiveTimezone(
+      action.actionType,
+      action.payload,
+      effectiveTimezone,
+    );
     const payload = questions.length
-      ? action.payload
-      : await this.validatePayload(action.actionType, action.payload);
+      ? timezoneAwarePayload
+      : await this.validatePayload(
+          action.actionType,
+          timezoneAwarePayload,
+          effectiveTimezone,
+        );
     const next = await this.repository.applyClarificationResult(
       proposal.organizationId,
       String(proposal._id),
@@ -495,35 +549,144 @@ export class AiActionsService {
     });
   }
 
-  private normalizeAnalysis(analysis: AiAnalysisSummary) {
+  private validateAnalysisIdentity(
+    source: AiActionProposal['source'],
+    result: AiAnalysisResult,
+    expectedRequestId?: string,
+  ) {
+    const requestId = result?.requestId?.trim();
+    if (!requestId || requestId.length > 200) {
+      throw new BadRequestException(
+        'AI response requestId is required and must not exceed 200 characters',
+      );
+    }
+    if (expectedRequestId && requestId !== expectedRequestId) {
+      throw new BadRequestException(
+        'AI response requestId does not match the submitted jobId',
+      );
+    }
+    if (
+      !result.source ||
+      result.source.type !== source.type ||
+      result.source.id !== source.id
+    ) {
+      throw new BadRequestException(
+        'AI response source does not match the submitted source',
+      );
+    }
+    return requestId;
+  }
+
+  private normalizeActions(actions: AiAnalysisResult['actions']) {
+    if (!Array.isArray(actions)) {
+      throw new BadRequestException('AI response actions must be an array');
+    }
+    const actionIds = new Set<string>();
+    return actions.map((action) => {
+      const actionId = this.normalizeActionId(action?.actionId);
+      if (
+        typeof action?.confidence !== 'number' ||
+        !Number.isFinite(action.confidence) ||
+        action.confidence < 0 ||
+        action.confidence > 1
+      ) {
+        throw new BadRequestException(
+          'AI action confidence must be a number from 0 to 1',
+        );
+      }
+      if (actionIds.has(actionId)) {
+        throw new BadRequestException(
+          'AI returned duplicate actionId values in one response',
+        );
+      }
+      actionIds.add(actionId);
+      return { ...action, actionId };
+    });
+  }
+
+  private normalizeActionId(value?: string) {
+    const actionId = value?.trim();
+    if (!actionId || actionId.length > 128) {
+      throw new BadRequestException(
+        'AI actionId is required and must not exceed 128 characters',
+      );
+    }
+    return actionId;
+  }
+
+  private normalizeAnalysis(
+    analysis: AiAnalysisSummary,
+    actions: AiAnalysisAction[],
+  ) {
     const score = analysis?.sentimentAnalysis?.score;
     const intelligence = analysis?.customerIntelligence;
     const patterns = analysis?.patternDetection;
-    const values = [
+    const requiredValues = [
       score?.positive,
       score?.neutral,
       score?.negative,
       intelligence?.healthScore,
-      patterns?.valueProposition,
-      patterns?.pricingObjection,
-      patterns?.budgetApproval,
-      patterns?.marketTrends,
-      patterns?.followUpRequests,
     ];
+    const optionalPatternValues = patterns
+      ? Object.values(patterns).filter((value) => value !== undefined)
+      : [];
     if (
       !score ||
       !intelligence ||
       !patterns ||
-      values.some(
-        (value) => typeof value !== 'number' || value < 0 || value > 100,
+      requiredValues.some(
+        (value) =>
+          typeof value !== 'number' ||
+          !Number.isFinite(value) ||
+          value < 0 ||
+          value > 100,
       ) ||
+      optionalPatternValues.some(
+        (value) =>
+          typeof value !== 'number' ||
+          !Number.isFinite(value) ||
+          value < 0 ||
+          value > 100,
+      ) ||
+      Math.abs(
+        (score?.positive || 0) +
+          (score?.neutral || 0) +
+          (score?.negative || 0) -
+          100,
+      ) > 0.01 ||
       !intelligence.riskLevel?.trim()
     ) {
       throw new BadRequestException(
         'AI returned an invalid analysis summary',
       );
     }
+    const summary = analysis.summary?.trim();
+    if (summary && summary.length > 10_000) {
+      throw new BadRequestException('AI summary exceeds 10000 characters');
+    }
+    const derivedConfidence = actions.length
+      ? actions.reduce((total, action) => total + action.confidence, 0) /
+        actions.length
+      : undefined;
+    const overallConfidence =
+      analysis.overallConfidence ?? derivedConfidence;
+    if (
+      overallConfidence !== undefined &&
+      (typeof overallConfidence !== 'number' ||
+        !Number.isFinite(overallConfidence) ||
+        overallConfidence < 0 ||
+        overallConfidence > 1)
+    ) {
+      throw new BadRequestException(
+        'AI overallConfidence must be a number from 0 to 1',
+      );
+    }
+    const classifiedSegments = this.normalizeClassifiedSegments(
+      analysis.classifiedSegments,
+    );
     return {
+      ...(summary ? { summary } : {}),
+      ...(overallConfidence !== undefined ? { overallConfidence } : {}),
       sentimentAnalysis: {
         score: {
           positive: score.positive,
@@ -535,13 +698,86 @@ export class AiActionsService {
         healthScore: intelligence.healthScore,
         riskLevel: intelligence.riskLevel.trim().toUpperCase(),
       },
-      patternDetection: {
-        valueProposition: patterns.valueProposition,
-        pricingObjection: patterns.pricingObjection,
-        budgetApproval: patterns.budgetApproval,
-        marketTrends: patterns.marketTrends,
-        followUpRequests: patterns.followUpRequests,
-      },
+      patternDetection: Object.fromEntries(
+        Object.entries(patterns).filter(([, value]) => value !== undefined),
+      ),
+      classifiedSegments,
+    };
+  }
+
+  private normalizeClassifiedSegments(
+    segments: AiAnalysisSummary['classifiedSegments'],
+  ) {
+    if (!segments?.length) return [];
+    if (segments.length > 500) {
+      throw new BadRequestException(
+        'AI returned too many classified transcript segments',
+      );
+    }
+    const ids = new Set<string>();
+    return segments.map((segment) => {
+      const id = segment.id?.trim();
+      const text = segment.text?.trim();
+      if (
+        !id ||
+        id.length > 128 ||
+        ids.has(id) ||
+        !text ||
+        text.length > 5000 ||
+        !Object.values(TranscriptInsightCategory).includes(segment.category)
+      ) {
+        throw new BadRequestException(
+          'AI returned an invalid classified transcript segment',
+        );
+      }
+      const numericValues = [
+        segment.startTimeSeconds,
+        segment.endTimeSeconds,
+      ].filter((value) => value !== undefined);
+      if (
+        numericValues.some(
+          (value) =>
+            typeof value !== 'number' || !Number.isFinite(value) || value < 0,
+        ) ||
+        (segment.confidence !== undefined &&
+          (typeof segment.confidence !== 'number' ||
+            !Number.isFinite(segment.confidence) ||
+            segment.confidence < 0 ||
+            segment.confidence > 1)) ||
+        (segment.startTimeSeconds !== undefined &&
+          segment.endTimeSeconds !== undefined &&
+          segment.endTimeSeconds < segment.startTimeSeconds)
+      ) {
+        throw new BadRequestException(
+          'AI returned invalid classified transcript segment timing or confidence',
+        );
+      }
+      ids.add(id);
+      return {
+        id,
+        category: segment.category,
+        text,
+        ...(segment.speaker?.trim()
+          ? { speaker: segment.speaker.trim() }
+          : {}),
+        ...(segment.startTimeSeconds !== undefined
+          ? { startTimeSeconds: segment.startTimeSeconds }
+          : {}),
+        ...(segment.endTimeSeconds !== undefined
+          ? { endTimeSeconds: segment.endTimeSeconds }
+          : {}),
+        ...(segment.confidence !== undefined
+          ? { confidence: segment.confidence }
+          : {}),
+      };
+    });
+  }
+
+  private proposalAnalysis(analysis: ReturnType<AiActionsService['normalizeAnalysis']>) {
+    return {
+      sentimentAnalysis: analysis.sentimentAnalysis,
+      customerIntelligence: analysis.customerIntelligence,
+      patternDetection: analysis.patternDetection,
     };
   }
 
@@ -565,15 +801,21 @@ export class AiActionsService {
   private async validatePayload(
     actionType: AiActionType,
     payload: Record<string, unknown>,
+    effectiveTimezone?: string,
   ): Promise<
     | AiTaskActionPayloadDto
     | AiMeetingActionPayloadDto
   > {
+    const normalizedPayload = this.withEffectiveTimezone(
+      actionType,
+      payload,
+      effectiveTimezone,
+    );
     const type =
       actionType === AiActionType.CREATE_TASK
         ? AiTaskActionPayloadDto
         : AiMeetingActionPayloadDto;
-    const instance = plainToInstance(type, payload);
+    const instance = plainToInstance(type, normalizedPayload);
     const errors = await validate(instance, {
       whitelist: true,
       forbidNonWhitelisted: true,
@@ -584,15 +826,42 @@ export class AiActionsService {
         errors: this.validationMessages(errors),
       });
     }
-    if (
-      actionType === AiActionType.SCHEDULE_MEETING &&
-      !(instance as AiMeetingActionPayloadDto).startsAt
-    ) {
-      throw new BadRequestException(
-        'SCHEDULE_MEETING payload requires startsAt',
-      );
+    if (actionType === AiActionType.SCHEDULE_MEETING) {
+      const meeting = instance as AiMeetingActionPayloadDto;
+      if (!meeting.startsAt) {
+        throw new BadRequestException(
+          'SCHEDULE_MEETING payload requires startsAt',
+        );
+      }
+      if (!meeting.timezone) {
+        throw new BadRequestException(
+          'SCHEDULE_MEETING payload requires an effective timezone',
+        );
+      }
+      assertValidTimezone(meeting.timezone);
+      if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(meeting.startsAt)) {
+        throw new BadRequestException(
+          'SCHEDULE_MEETING startsAt must include Z or an explicit UTC offset',
+        );
+      }
+      meeting.startsAt = new Date(meeting.startsAt).toISOString();
     }
     return instance;
+  }
+
+  private withEffectiveTimezone(
+    actionType: AiActionType,
+    payload: Record<string, unknown>,
+    effectiveTimezone?: string,
+  ) {
+    if (actionType !== AiActionType.SCHEDULE_MEETING) return payload;
+    const explicitTimezone =
+      typeof payload?.timezone === 'string' ? payload.timezone.trim() : '';
+    const fallbackTimezone = effectiveTimezone?.trim() || '';
+    const timezone = explicitTimezone || fallbackTimezone;
+    if (!timezone) return { ...payload };
+    assertValidTimezone(timezone);
+    return { ...payload, timezone };
   }
 
   private async assertValidAssignee(
