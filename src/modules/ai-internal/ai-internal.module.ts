@@ -40,6 +40,7 @@ import {
   AiActionProposalSchema,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
+import { User, UserSchema } from '../../database/schemas/user.schema';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudina
       { name: Message.name, schema: MessageSchema },
       { name: MessageAttachment.name, schema: MessageAttachmentSchema },
       { name: AiActionProposal.name, schema: AiActionProposalSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   providers: [AiSourceContextService, CloudinaryMessageAttachmentStorage],

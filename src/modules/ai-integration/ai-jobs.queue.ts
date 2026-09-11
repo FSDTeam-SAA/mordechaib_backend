@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import { Queue } from 'bullmq';
 import { AiServiceClient } from './ai-service.client';
 import { CallTranscriptionService } from './call-transcription.service';
-import { AgentType } from '../../common/enums/agent-type.enum';
 
 export const AI_JOBS_QUEUE = 'ai-jobs';
 export const AI_ANALYZE_SOURCE_JOB = 'analyze-source';
@@ -20,7 +19,6 @@ export type AnalyzeSourceJob = {
     | 'GOOGLE_MEET'
     | 'USER_MESSAGE';
   sourceId: string;
-  agent?: { id: string; name: string; type: AgentType };
 };
 
 
@@ -59,14 +57,12 @@ export class AiJobsQueue {
   async enqueueMessageAnalysis(input: {
     organizationId: string;
     messageId: string;
-    agent?: { id: string; name: string; type: AgentType };
   }) {
     return this.enqueueSourceAnalysis(
       {
         organizationId: input.organizationId,
         sourceType: 'USER_MESSAGE',
         sourceId: input.messageId,
-        agent: input.agent,
       },
       this.config.get<number>('aiService.messageAnalysisDelayMs', 1_500),
     );

@@ -81,10 +81,6 @@ JSON and should be idempotent for the same `jobId`/`idempotencyKey`.
   "jobId": "source-google_meet-66cc9bdfa847ea856c7b41d2",
   "idempotencyKey": "source-google_meet-66cc9bdfa847ea856c7b41d2",
   "organizationId": "66cc9bdfa847ea856c7b41d1",
-  "agent": {
-    "id": "operations-agent",
-    "name": "Operations Agent"
-  },
   "source": {
     "type": "GOOGLE_MEET",
     "id": "66cc9bdfa847ea856c7b41d2"
@@ -110,6 +106,13 @@ JSON and should be idempotent for the same `jobId`/`idempotencyKey`.
       "businessSize": "SMALL",
       "businessHours": {}
     },
+    "requester": {
+      "userId": "66cc9bdfa847ea856c7b41d5",
+      "name": "Rifat Hossain",
+      "timezone": "America/New_York",
+      "language": "en"
+    },
+    "effectiveTimezone": "America/New_York",
     "transcript": {
       "text": "Customer: Please send the quotation...",
       "segments": [],
@@ -122,9 +125,9 @@ JSON and should be idempotent for the same `jobId`/`idempotencyKey`.
 ```
 
 Supported source types are `CALL_AUDIO`, `CALL_TRANSCRIPT`, `ZOOM_MEETING`,
-and `GOOGLE_MEET`. For meeting E2E testing, Main Backend uses the MongoDB
-Meeting Bot ID for `source.id`; it is not a Zoom meeting number, Google event
-ID, Recall recording ID, or transcript ID.
+`GOOGLE_MEET`, and `USER_MESSAGE`. For meeting E2E testing, Main Backend uses
+the MongoDB Meeting Bot ID for `source.id`; it is not a Zoom meeting number,
+Google event ID, Recall recording ID, or transcript ID.
 
 `context.transcript` can be `null` only for a source that is not ready for
 analysis. For the transcript-complete queue trigger, it is populated. The AI
@@ -179,7 +182,7 @@ The response must be a raw JSON object, not `{ "success": true, "data": ... }`.
         "platform": "GOOGLE_MEET",
         "title": "Project review meeting",
         "agenda": "Review quotation, project progress, and live-server issues.",
-        "timezone": "Asia/Dhaka"
+        "timezone": "America/New_York"
       },
       "clarificationQuestions": [
         {
@@ -199,6 +202,8 @@ The response must be a raw JSON object, not `{ "success": true, "data": ... }`.
     }
   ],
   "analysis": {
+    "summary": "The customer requested a quotation and a follow-up meeting.",
+    "overallConfidence": 0.91,
     "sentimentAnalysis": {
       "score": { "positive": 40, "neutral": 50, "negative": 10 }
     },
@@ -207,12 +212,19 @@ The response must be a raw JSON object, not `{ "success": true, "data": ... }`.
       "riskLevel": "LOW"
     },
     "patternDetection": {
-      "valueProposition": 0,
-      "pricingObjection": 0,
-      "budgetApproval": 0,
-      "marketTrends": 0,
       "followUpRequests": 80
-    }
+    },
+    "classifiedSegments": [
+      {
+        "id": "segment-commitment-1",
+        "category": "COMMITMENT",
+        "text": "I am going to send the quotation later.",
+        "speaker": "Account Executive",
+        "startTimeSeconds": 120,
+        "endTimeSeconds": 124,
+        "confidence": 0.94
+      }
+    ]
   }
 }
 ```
@@ -221,7 +233,7 @@ For every action, Main Backend requires:
 
 | Field | Rules |
 | --- | --- |
-| `actionId` | Non-empty, stable inside the same `requestId`. Reuse it unchanged on retries. |
+| `actionId` | Non-empty, maximum 128 characters, unique and stable inside the same `requestId`. Reuse it unchanged on retries. |
 | `actionType` | Exactly `CREATE_TASK` or `SCHEDULE_MEETING`. |
 | `proposedByAgent.id` / `.name` / `.type` | Stable ID, display name, and valid agent type. Use IDs such as `sales-agent`, not presentation-only names. |
 | `payload` | JSON object. It is validated before a draft becomes executable. |
@@ -233,6 +245,18 @@ If `clarificationQuestions` is non-empty, Main Backend stores the proposal as
 `NEEDS_CLARIFICATION` and permits an incomplete payload. If it is empty, the
 payload must already be valid and the proposal becomes `PENDING` for CEO
 approval.
+
+The Main Backend does not send or select an agent. The AI Backend master agent
+assigns each action to a specialist and returns that identity in
+`proposedByAgent`. Pattern signals are individually optional: omitted means
+not evaluated or insufficient evidence, while `0` means evaluated and not
+detected. `patternDetection: {}` is valid.
+
+For the details page, AI should also provide `analysis.summary`,
+`analysis.overallConfidence`, and `analysis.classifiedSegments`. Valid segment
+categories are `OBJECTION`, `COMMITMENT`, and `ACTION_ITEM`. Main Backend stores
+these once per source rather than copying large transcript insights into every
+proposal.
 
 ## 2. Supported action payloads
 
@@ -266,7 +290,8 @@ For a ready (no clarification) meeting proposal, Main Backend requires:
 {
   "platform": "ZOOM",
   "title": "Project review",
-  "startsAt": "2026-09-15T09:00:00.000Z"
+  "startsAt": "2026-09-15T19:00:00.000Z",
+  "timezone": "America/New_York"
 }
 ```
 
@@ -277,9 +302,9 @@ Recommended complete payload:
   "platform": "ZOOM",
   "title": "Project review",
   "agenda": "Review project progress and next steps.",
-  "startsAt": "2026-09-15T09:00:00.000Z",
+  "startsAt": "2026-09-15T19:00:00.000Z",
   "durationMinutes": 30,
-  "timezone": "Asia/Dhaka",
+  "timezone": "America/New_York",
   "invitees": ["customer@example.com"],
   "reminderMinutesBeforeStart": 15,
   "sendBot": true,
@@ -291,8 +316,8 @@ Recommended complete payload:
 | --- | --- |
 | `platform` | Exactly `ZOOM` or `GOOGLE_MEET` |
 | `title` | Required, 1-200 characters |
-| `startsAt` | Required for ready proposal; strict ISO-8601 and must be in the future when CEO approves |
-| `timezone` | Recommended IANA timezone, for example `Asia/Dhaka`; Main Backend validates it during execution |
+| `startsAt` | Required for ready proposal; absolute ISO-8601 with `Z` or an explicit offset, normalized to UTC before persistence, and in the future when approved |
+| `timezone` | Required for a ready proposal; valid IANA timezone, for example `America/New_York` |
 | `durationMinutes` | Optional integer `1-1440`; backend default is used if omitted |
 | `invitees` | Optional valid email addresses, maximum 100 |
 | `reminderMinutesBeforeStart` | Optional integer `0-40320` |
@@ -303,11 +328,12 @@ in `startsAt`. If the date or time is uncertain, place only known values in
 `payload` and return a clarification question. The follow-up response must
 return the resolved ISO datetime.
 
-The organization timezone is available from Main Backend internally but is not
-included in `context.organization.timezone`. The AI Backend must use that IANA
-timezone when it resolves an unambiguous local date/time. If it is absent or
-the transcript remains ambiguous, the AI Backend must ask for clarification;
-it must not silently assume a timezone.
+Main Backend sends `context.effectiveTimezone`, resolved from requester
+timezone first and organization timezone second. The AI Backend must use it
+when resolving an unambiguous local date/time and must not hard-code
+`Asia/Dhaka`, UTC, or its server timezone. An explicitly named timezone in the
+source may override it for that action. If the date or time remains ambiguous,
+the AI Backend must ask for clarification.
 
 ## 3. Clarification refinement endpoint
 
@@ -453,6 +479,39 @@ or a ready meeting action only after the AI has an unambiguous full datetime.
 
 Frontend talks only to Main Backend with CEO/Owner/Admin authentication.
 
+The optimized details endpoint is:
+
+```http
+GET /api/v1/call-intelligence/:sourceId/details
+  ?sourceType=GOOGLE_MEET
+  &status=PENDING
+  &taskLimit=4
+  &meetingLimit=4
+  &includeTranscript=false
+```
+
+It aggregates metadata, audio availability/path, source analysis, and task and
+meeting proposals. Raw transcript content is excluded by default so the first
+page load stays small; use `includeTranscript=true` when the transcript panel
+is opened. `extensions.crm` is currently `null` and is the stable integration
+point for future CRM/customer intelligence data.
+
+Reports are downloadable without regenerating AI analysis:
+
+```http
+GET /api/v1/call-intelligence/:sourceId/report?sourceType=GOOGLE_MEET&format=html
+GET /api/v1/call-intelligence/:sourceId/report?sourceType=GOOGLE_MEET&format=json
+```
+
+For Twilio recordings, the authenticated audio route is:
+
+```http
+GET /api/v1/call-intelligence/:sourceId/audio?sourceType=CALL_TRANSCRIPT
+```
+
+Meeting audio continues to use the `audio.downloadPath` returned by the
+details endpoint.
+
 | Main Backend route | Use |
 | --- | --- |
 | `GET /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION` | List questions requiring CEO input |
@@ -592,10 +651,12 @@ AI content is intentionally rejected as an idempotency conflict.
 - [ ] Accept and use `context` in `analyze-source`.
 - [ ] Return raw `{ requestId, source, actions, analysis }`, not the legacy
       `job_id/analysis/submitted_proposals` envelope.
+- [ ] Echo request `jobId` as `requestId` and echo source type/ID unchanged.
 - [ ] Never call Main Backend proposal, task, meeting, or approval APIs.
 - [ ] Convert only supported task/meeting recommendations into `actions`.
 - [ ] Ask clarification for unknown scheduling data instead of emitting a
       natural-language or guessed ISO date/time.
+- [ ] Use `context.effectiveTimezone`; never use a hard-coded timezone.
 - [ ] Implement `POST /api/v1/ai/actions/refine`.
 - [ ] Preserve action identity/type across refinement.
 - [ ] Test a full task proposal, a meeting clarification proposal, and a

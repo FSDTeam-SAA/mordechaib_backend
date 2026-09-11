@@ -33,7 +33,6 @@ transcript completes.
   "jobId": "source-google_meet-meeting-bot-id",
   "idempotencyKey": "source-google_meet-meeting-bot-id",
   "organizationId": "MongoDB ObjectId",
-  "agent": { "id": "operations-agent", "name": "Operations Agent" },
   "source": { "type": "GOOGLE_MEET", "id": "meeting-bot-id" },
   "context": {
     "organizationId": "MongoDB ObjectId",
@@ -46,6 +45,13 @@ transcript completes.
       "businessSize": "SMALL",
       "businessHours": {}
     },
+    "requester": {
+      "userId": "organizer-user-id",
+      "name": "Rifat Hossain",
+      "timezone": "America/New_York",
+      "language": "en"
+    },
+    "effectiveTimezone": "America/New_York",
     "transcript": { "text": "...", "segments": [] }
   },
   "generatedAt": "2026-09-10T10:00:00.000Z"
@@ -53,6 +59,9 @@ transcript completes.
 ```
 
 The AI service returns JSON only. It must not call any Main Backend endpoint.
+The Main Backend does not select an agent. The AI Backend master agent routes
+the source to its specialist agents, and every returned action identifies its
+owner through required `proposedByAgent.id`, `name`, and `type` fields.
 
 ### Chat message analysis
 
@@ -94,6 +103,7 @@ frontend can display it and later reporting can query it.
 ```json
 {
   "requestId": "source-google_meet-meeting-bot-id",
+  "source": { "type": "GOOGLE_MEET", "id": "meeting-bot-id" },
   "actions": [
     {
       "actionId": "task-send-quotation",
@@ -122,7 +132,7 @@ frontend can display it and later reporting can query it.
       "payload": {
         "platform": "GOOGLE_MEET",
         "title": "Project review meeting",
-        "timezone": "Asia/Dhaka"
+        "timezone": "America/New_York"
       },
       "clarificationQuestions": [
         {
@@ -138,6 +148,8 @@ frontend can display it and later reporting can query it.
     }
   ],
   "analysis": {
+    "summary": "The customer requested a quotation and follow-up meeting.",
+    "overallConfidence": 0.91,
     "sentimentAnalysis": {
       "score": { "positive": 40, "neutral": 50, "negative": 10 }
     },
@@ -146,12 +158,16 @@ frontend can display it and later reporting can query it.
       "riskLevel": "LOW"
     },
     "patternDetection": {
-      "valueProposition": 0,
-      "pricingObjection": 0,
-      "budgetApproval": 0,
-      "marketTrends": 0,
       "followUpRequests": 80
-    }
+    },
+    "classifiedSegments": [
+      {
+        "id": "segment-commitment-1",
+        "category": "COMMITMENT",
+        "text": "I am going to send the quotation later.",
+        "confidence": 0.94
+      }
+    ]
   }
 }
 ```
@@ -163,10 +179,21 @@ Rules:
 - Every `proposedByAgent` must include `id`, display `name`, and a valid `type`:
   `SALES`, `OPERATIONS`, `SUPPORT`, `MARKETING`, `STRATEGY`, `DESIGN`, or
   `CUSTOM`.
-- A ready meeting needs `platform`, `title`, ISO-8601 `startsAt`, and a valid
-  timezone. If a required value is unknown, return a clarification question.
-- `actionId` is stable within one `requestId`; retries with unchanged content
-  are idempotent.
+- Pattern signals are individually optional. Omit a signal when it could not
+  be evaluated; send `0` only when it was evaluated and not detected.
+- Return a source `summary`, `overallConfidence`, and zero or more classified
+  transcript segments. Segment categories are `OBJECTION`, `COMMITMENT`, and
+  `ACTION_ITEM`; the frontend builds the All tab from the raw transcript.
+- Main Backend resolves `context.effectiveTimezone` from requester timezone,
+  then organization timezone. AI must not hard-code `Asia/Dhaka` or use its
+  server timezone.
+- A ready meeting needs `platform`, `title`, an absolute ISO-8601 `startsAt`
+  containing `Z` or an explicit UTC offset, and a valid IANA timezone. Main
+  Backend normalizes `startsAt` to UTC before persistence. If a required value
+  is unknown, return a clarification question.
+- Response `requestId` and `source` must exactly echo the request. `actionId`
+  is non-empty, maximum 128 characters, unique and stable within one
+  `requestId`; retries with unchanged content are idempotent.
 - A refinement response must preserve both its original `actionId` and
   `actionType`.
 - Email, CRM, and calendar tool recommendations are not supported action
@@ -202,9 +229,9 @@ Return one updated action:
     "payload": {
       "platform": "GOOGLE_MEET",
       "title": "Project review meeting",
-      "startsAt": "2026-09-15T15:00:00.000Z",
+      "startsAt": "2026-09-15T19:00:00.000Z",
       "durationMinutes": 30,
-      "timezone": "Asia/Dhaka",
+      "timezone": "America/New_York",
       "invitees": []
     },
     "confidence": 0.9,

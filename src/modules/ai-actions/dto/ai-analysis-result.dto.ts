@@ -4,6 +4,17 @@ import {
   AiProposalSourceType,
 } from '../../../database/schemas/ai-action-proposal.schema';
 import { AgentType } from '../../../common/enums/agent-type.enum';
+import { TranscriptInsightCategory } from '../../../database/schemas/ai-source-analysis.schema';
+
+export type AiClassifiedTranscriptSegment = {
+  id: string;
+  category: TranscriptInsightCategory;
+  text: string;
+  speaker?: string;
+  startTimeSeconds?: number;
+  endTimeSeconds?: number;
+  confidence?: number;
+};
 
 export type AiClarificationQuestionInput = {
   id: string;
@@ -14,6 +25,8 @@ export type AiClarificationQuestionInput = {
 };
 
 export type AiAnalysisSummary = {
+  summary?: string;
+  overallConfidence?: number;
   sentimentAnalysis: {
     score: {
       positive: number;
@@ -26,12 +39,13 @@ export type AiAnalysisSummary = {
     riskLevel: string;
   };
   patternDetection: {
-    valueProposition: number;
-    pricingObjection: number;
-    budgetApproval: number;
-    marketTrends: number;
-    followUpRequests: number;
+    valueProposition?: number;
+    pricingObjection?: number;
+    budgetApproval?: number;
+    marketTrends?: number;
+    followUpRequests?: number;
   };
+  classifiedSegments?: AiClassifiedTranscriptSegment[];
 };
 
 /**
@@ -50,7 +64,7 @@ export type AiAnalysisAction = {
 
 export type AiAnalysisResult = {
   requestId: string;
-  source?: { type: AiProposalSourceType; id: string };
+  source: { type: AiProposalSourceType; id: string };
   actions: AiAnalysisAction[];
   analysis: AiAnalysisSummary;
 };
