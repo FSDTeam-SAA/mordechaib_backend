@@ -7,14 +7,19 @@ import {
   AI_ANALYZE_SOURCE_JOB,
   AI_JOBS_QUEUE,
   AI_REFINE_ACTION_JOB,
+  AI_SYNC_AGENT_JOB,
   AI_TRANSCRIBE_CALL_JOB,
+  AgentSyncEvent,
   AiJobsQueue,
   AnalyzeSourceJob,
   RefineActionJob,
   TranscribeCallJob,
 } from './ai-jobs.queue';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
-import { AiAnalysisAction, AiAnalysisResult } from '../ai-actions/dto/ai-analysis-result.dto';
+import {
+  AiAnalysisAction,
+  AiAnalysisResult,
+} from '../ai-actions/dto/ai-analysis-result.dto';
 import { AiSourceContextService } from '../ai-internal/ai-source-context.service';
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
 
@@ -55,6 +60,8 @@ export class AiJobsProcessor extends WorkerHost {
           return this.refineAction(job as Job<RefineActionJob>);
         case AI_TRANSCRIBE_CALL_JOB:
           return this.transcribeCall(job as Job<TranscribeCallJob>);
+        case AI_SYNC_AGENT_JOB:
+          return this.syncAgent(job as Job<AgentSyncEvent>);
         default:
           throw new UnrecoverableError(`Unsupported AI job ${job.name}`);
       }
@@ -143,15 +150,13 @@ export class AiJobsProcessor extends WorkerHost {
           'AI source organization does not match the queued job',
         );
       }
-      const organization = await this.sourceContext.organizationContext(
-        organizationId,
-      );
+      const organization =
+        await this.sourceContext.organizationContext(organizationId);
       const requester = await this.sourceContext.requesterContext(
         organizationId,
         context.requesterUserId,
       );
-      const effectiveTimezone =
-        requester?.timezone || organization.timezone;
+      const effectiveTimezone = requester?.timezone || organization.timezone;
       const boundedContext = { ...context };
       delete boundedContext.requesterUserId;
       const requestId = `source-${sourceType.toLowerCase()}-${sourceId}`;
@@ -237,7 +242,9 @@ export class AiJobsProcessor extends WorkerHost {
       },
     );
     if (!result?.action) {
-      throw new UnrecoverableError('AI service returned an invalid clarification response');
+      throw new UnrecoverableError(
+        'AI service returned an invalid clarification response',
+      );
     }
     return this.actions.applyClarificationResult(
       job.data.organizationId,
@@ -254,6 +261,19 @@ export class AiJobsProcessor extends WorkerHost {
         sourceType: 'CALL_TRANSCRIPT',
         sourceId: job.data.recordingId,
       });
+    }
+    return result;
+  }
+
+  private async syncAgent(job: Job<AgentSyncEvent>) {
+    const result = await this.aiService.request<{
+      eventId: string;
+      accepted: boolean;
+    }>('/api/v1/ai/agents/events', job.data);
+    if (result?.eventId !== job.data.eventId || result.accepted !== true) {
+      throw new UnrecoverableError(
+        'AI service returned an invalid agent synchronization acknowledgement',
+      );
     }
     return result;
   }

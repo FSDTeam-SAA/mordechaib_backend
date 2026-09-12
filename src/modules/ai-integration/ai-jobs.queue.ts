@@ -5,10 +5,31 @@ import crypto from 'crypto';
 import { Queue } from 'bullmq';
 import { AiServiceClient } from './ai-service.client';
 import { CallTranscriptionService } from './call-transcription.service';
+import { AgentStatus } from '../../common/enums/agent-status.enum';
+import { AgentType } from '../../common/enums/agent-type.enum';
 
 export const AI_JOBS_QUEUE = 'ai-jobs';
 export const AI_ANALYZE_SOURCE_JOB = 'analyze-source';
 export const AI_TRANSCRIBE_CALL_JOB = 'transcribe-call';
+export const AI_SYNC_AGENT_JOB = 'sync-agent';
+
+export type AgentSyncEventType =
+  'AGENT_UPSERTED' | 'AGENT_DISABLED' | 'AGENT_ACTIVATED';
+
+export type AgentSyncEvent = {
+  schemaVersion: '1.0';
+  eventId: string;
+  eventType: AgentSyncEventType;
+  agent: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+    type: AgentType;
+    status: AgentStatus;
+    version: number;
+  };
+  occurredAt: string;
+};
 
 export type AnalyzeSourceJob = {
   organizationId: string;
@@ -20,7 +41,6 @@ export type AnalyzeSourceJob = {
     | 'USER_MESSAGE';
   sourceId: string;
 };
-
 
 export const AI_REFINE_ACTION_JOB = 'refine-action';
 export type RefineActionJob = {
@@ -68,7 +88,6 @@ export class AiJobsQueue {
     );
   }
 
-
   async enqueueActionRefinement(input: RefineActionJob) {
     if (!this.aiService.enabled) return { queued: false };
     return this.enqueue(
@@ -76,6 +95,11 @@ export class AiJobsQueue {
       input,
       `refine:${input.proposalId}:${input.questionId}:${input.answer}`,
     );
+  }
+
+  async enqueueAgentSync(event: AgentSyncEvent) {
+    if (!this.aiService.enabled) return { queued: false };
+    return this.enqueue(AI_SYNC_AGENT_JOB, event, event.eventId);
   }
 
   async enqueueCallTranscription(input: TranscribeCallJob) {

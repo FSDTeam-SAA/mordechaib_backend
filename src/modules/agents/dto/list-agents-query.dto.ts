@@ -1,6 +1,15 @@
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { AgentType } from '../../../common/enums/agent-type.enum';
+import { AgentStatus } from '../../../common/enums/agent-status.enum';
 import { trimString } from '../../../common/transformers/trim-string.transformer';
 
 export class ListAgentsQueryDto {
@@ -24,4 +33,8 @@ export class ListAgentsQueryDto {
   @IsOptional()
   @IsEnum(AgentType)
   type?: AgentType;
+
+  @IsOptional()
+  @IsEnum(AgentStatus)
+  status?: AgentStatus;
 }
