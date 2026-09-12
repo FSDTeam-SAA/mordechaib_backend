@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
+import { AgentStatus } from '../../common/enums/agent-status.enum';
+import { Agent } from '../../database/schemas/agent.schema';
 import {
   AiActionProposal,
   AiActionProposalStatus,
@@ -27,7 +29,19 @@ export class AiActionsRepository {
   constructor(
     @InjectModel(AiActionProposal.name)
     private readonly model: Model<AiActionProposal>,
+    @InjectModel(Agent.name)
+    private readonly agents: Model<Agent>,
   ) {}
+
+  findActiveAgent(id: string) {
+    return this.agents
+      .findOne({
+        _id: id,
+        $or: [{ status: AgentStatus.ACTIVE }, { status: { $exists: false } }],
+      })
+      .lean()
+      .exec();
+  }
 
   create(input: Record<string, unknown>) {
     return this.model.create(input);

@@ -16,6 +16,7 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage --runInBand",
+    "bootstrap:platform-admin": "node --env-file=.env scripts/bootstrap-platform-admin.js",
     "migrate:meeting-bots": "node --env-file=.env scripts/migrate-meeting-bot-collections.js",
     "migrate:meeting-bots:execute": "node --env-file=.env scripts/migrate-meeting-bot-collections.js --execute"
   },

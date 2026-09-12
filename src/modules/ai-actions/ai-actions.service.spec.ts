@@ -15,12 +15,15 @@ import { SourceAnalysesRepository } from '../source-analyses/source-analyses.rep
 
 describe('AiActionsService analysis ingestion', () => {
   const organizationId = '66cc9bdfa847ea856c7b41d2';
+  const salesAgentId = '66cc9bdfa847ea856c7b41a1';
+  const operationsAgentId = '66cc9bdfa847ea856c7b41a2';
   const source = {
     type: AiProposalSourceType.GOOGLE_MEET,
     id: '66cc9bdfa847ea856c7b41d4',
   };
   const repository = {
     findByProposalIdWithHash: jest.fn(),
+    findActiveAgent: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
   };
@@ -44,6 +47,15 @@ describe('AiActionsService analysis ingestion', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     repository.findByProposalIdWithHash.mockResolvedValue(null);
+    repository.findActiveAgent.mockImplementation(async (id: string) =>
+      id === salesAgentId
+        ? { _id: id, name: 'Sales Agent', type: AgentType.SALES }
+        : {
+            _id: id,
+            name: 'Operations Agent',
+            type: AgentType.OPERATIONS,
+          },
+    );
     organizations.findCurrent.mockResolvedValue({
       _id: organizationId,
       timezone: 'UTC',
@@ -72,7 +84,7 @@ describe('AiActionsService analysis ingestion', () => {
           actionId: 'send-quotation',
           actionType: AiActionType.CREATE_TASK,
           proposedByAgent: {
-            id: 'sales-agent',
+            id: salesAgentId,
             name: 'Sales Agent',
             type: AgentType.SALES,
           },
@@ -96,6 +108,69 @@ describe('AiActionsService analysis ingestion', () => {
     );
   });
 
+  it('rejects a new proposal from an unregistered or disabled agent', async () => {
+    repository.findActiveAgent.mockResolvedValue(null);
+
+    await expect(
+      service.ingestAnalysis(organizationId, source, {
+        requestId: 'meeting-disabled-agent',
+        source,
+        actions: [
+          {
+            actionId: 'send-quotation',
+            actionType: AiActionType.CREATE_TASK,
+            proposedByAgent: {
+              id: salesAgentId,
+              name: 'Sales Agent',
+              type: AgentType.SALES,
+            },
+            payload: { title: 'Send quotation' },
+            confidence: 0.9,
+          },
+        ],
+        analysis,
+      }),
+    ).rejects.toThrow('AI proposedByAgent is not an active platform agent');
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('persists canonical agent profile metadata from Main Backend', async () => {
+    repository.findActiveAgent.mockResolvedValue({
+      _id: operationsAgentId,
+      name: 'Layla',
+      type: AgentType.OPERATIONS,
+    });
+
+    await service.ingestAnalysis(organizationId, source, {
+      requestId: 'meeting-stale-agent-profile',
+      source,
+      actions: [
+        {
+          actionId: 'review-notes',
+          actionType: AiActionType.CREATE_TASK,
+          proposedByAgent: {
+            id: operationsAgentId,
+            name: 'Old display name',
+            type: AgentType.CUSTOM,
+          },
+          payload: { title: 'Review notes' },
+          confidence: 0.9,
+        },
+      ],
+      analysis,
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proposedByAgent: {
+          id: operationsAgentId,
+          name: 'Layla',
+          type: AgentType.OPERATIONS,
+        },
+      }),
+    );
+  });
+
   it('stores an incomplete meeting as a clarification draft', async () => {
     await service.ingestAnalysis(organizationId, source, {
       requestId: 'meeting-002',
@@ -105,7 +180,7 @@ describe('AiActionsService analysis ingestion', () => {
           actionId: 'project-review',
           actionType: AiActionType.SCHEDULE_MEETING,
           proposedByAgent: {
-            id: 'operations-agent',
+            id: operationsAgentId,
             name: 'Operations Agent',
             type: AgentType.OPERATIONS,
           },
@@ -156,7 +231,7 @@ describe('AiActionsService analysis ingestion', () => {
           actionId: 'follow-up-task',
           actionType: AiActionType.CREATE_TASK,
           proposedByAgent: {
-            id: 'sales-agent',
+            id: salesAgentId,
             name: 'Sales Agent',
             type: AgentType.SALES,
           },
@@ -195,7 +270,7 @@ describe('AiActionsService analysis ingestion', () => {
           actionId: 'general-task',
           actionType: AiActionType.CREATE_TASK,
           proposedByAgent: {
-            id: 'operations-agent',
+            id: operationsAgentId,
             name: 'Operations Agent',
             type: AgentType.OPERATIONS,
           },
@@ -303,9 +378,7 @@ describe('AiActionsService analysis ingestion', () => {
         actions: [],
         analysis,
       }),
-    ).rejects.toThrow(
-      'AI response source does not match the submitted source',
-    );
+    ).rejects.toThrow('AI response source does not match the submitted source');
   });
 
   it('rejects duplicate action identifiers within one AI response', async () => {
@@ -313,7 +386,7 @@ describe('AiActionsService analysis ingestion', () => {
       actionId: 'duplicate-action',
       actionType: AiActionType.CREATE_TASK,
       proposedByAgent: {
-        id: 'operations-agent',
+        id: operationsAgentId,
         name: 'Operations Agent',
         type: AgentType.OPERATIONS,
       },
@@ -328,9 +401,7 @@ describe('AiActionsService analysis ingestion', () => {
         actions: [action, { ...action }],
         analysis,
       }),
-    ).rejects.toThrow(
-      'AI returned duplicate actionId values in one response',
-    );
+    ).rejects.toThrow('AI returned duplicate actionId values in one response');
   });
 
   it('resolves the effective IANA timezone and stores startsAt in UTC', async () => {
@@ -345,7 +416,7 @@ describe('AiActionsService analysis ingestion', () => {
             actionId: 'schedule-review',
             actionType: AiActionType.SCHEDULE_MEETING,
             proposedByAgent: {
-              id: 'operations-agent',
+              id: operationsAgentId,
               name: 'Operations Agent',
               type: AgentType.OPERATIONS,
             },
@@ -385,7 +456,7 @@ describe('AiActionsService analysis ingestion', () => {
               actionId: 'schedule-review',
               actionType: AiActionType.SCHEDULE_MEETING,
               proposedByAgent: {
-                id: 'operations-agent',
+                id: operationsAgentId,
                 name: 'Operations Agent',
                 type: AgentType.OPERATIONS,
               },
@@ -417,17 +488,21 @@ describe('AiActionsService analysis ingestion', () => {
     });
 
     await expect(
-      service.applyClarificationResult(organizationId, '66cc9bdfa847ea856c7b41d5', {
-        actionId: 'different-meeting',
-        actionType: AiActionType.SCHEDULE_MEETING,
-        proposedByAgent: {
-          id: 'operations-agent',
-          name: 'Operations Agent',
-          type: AgentType.OPERATIONS,
+      service.applyClarificationResult(
+        organizationId,
+        '66cc9bdfa847ea856c7b41d5',
+        {
+          actionId: 'different-meeting',
+          actionType: AiActionType.SCHEDULE_MEETING,
+          proposedByAgent: {
+            id: operationsAgentId,
+            name: 'Operations Agent',
+            type: AgentType.OPERATIONS,
+          },
+          payload: {},
+          confidence: 0.9,
         },
-        payload: {},
-        confidence: 0.9,
-      }),
+      ),
     ).rejects.toThrow(
       'AI cannot change a proposal action identifier during refinement',
     );
