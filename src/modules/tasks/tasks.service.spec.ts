@@ -3,6 +3,7 @@ import { TaskPriority } from '../../common/enums/task-priority.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { TasksRepository } from './tasks.repository';
 import { TasksService } from './tasks.service';
+import { AgentType } from '../../common/enums/agent-type.enum';
 
 describe('TasksService', () => {
   let repository: Record<string, jest.Mock>;
@@ -11,12 +12,55 @@ describe('TasksService', () => {
   beforeEach(() => {
     repository = {
       create: jest.fn(),
+      findByAiActionProposalId: jest.fn(),
       list: jest.fn(),
       findById: jest.fn(),
       updateById: jest.fn(),
       deleteById: jest.fn(),
     };
     service = new TasksService(repository as unknown as TasksRepository);
+  });
+
+  it('creates an AI-proposed task with the approver as creator', async () => {
+    repository.findByAiActionProposalId.mockResolvedValue(null);
+    repository.create.mockResolvedValue({
+      _id: 'task-1',
+      organizationId: 'org-1',
+      createdByUserId: 'approver-1',
+      title: 'Send proposal',
+      aiActionProposalId: 'proposal-object-id',
+      proposedByAgent: {
+        id: 'sales-agent',
+        name: 'Sales Agent',
+        type: AgentType.SALES,
+      },
+    });
+
+    await service.createFromAiProposal(
+      'org-1',
+      'approver-1',
+      { title: 'Send proposal' },
+      {
+        aiActionProposalId: 'proposal-object-id',
+        proposedByAgent: {
+          id: 'sales-agent',
+          name: 'Sales Agent',
+          type: AgentType.SALES,
+        },
+      },
+    );
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdByUserId: 'approver-1',
+        aiActionProposalId: 'proposal-object-id',
+        proposedByAgent: {
+          id: 'sales-agent',
+          name: 'Sales Agent',
+          type: AgentType.SALES,
+        },
+      }),
+    );
   });
 
   it('creates a task with the organization and creator context', async () => {

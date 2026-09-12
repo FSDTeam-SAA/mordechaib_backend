@@ -30,12 +30,19 @@ describe('MessagesService', () => {
 
   beforeEach(() => {
     conversations = {
-      findByOrganization: jest.fn(),
+      findLatest: jest.fn(),
+      findById: jest.fn(),
+      create: jest.fn(),
+      list: jest.fn(),
       findOrCreate: jest.fn().mockResolvedValue({ _id: conversationId }),
       recordMessage: jest.fn().mockResolvedValue({ _id: conversationId }),
     };
     messages = {
       findByClientMessageId: jest.fn(),
+      findByAiResponseId: jest.fn(),
+      findForAi: jest.fn(),
+      createAi: jest.fn(),
+      markSourceProcessed: jest.fn(),
       create: jest.fn().mockImplementation((input: Record<string, unknown>) =>
         Promise.resolve({
           _id: messageId,
@@ -55,6 +62,7 @@ describe('MessagesService', () => {
       createMany: jest.fn().mockResolvedValue([]),
       hardDeleteByMessage: jest.fn(),
       findByMessageIds: jest.fn().mockResolvedValue([]),
+      findForAiByMessageIds: jest.fn().mockResolvedValue([]),
       findActiveWithStorage: jest.fn(),
       markDeletionPending: jest.fn(),
       findCleanupCandidates: jest.fn().mockResolvedValue([]),
@@ -94,6 +102,11 @@ describe('MessagesService', () => {
       }),
     );
     expect(storage.store).not.toHaveBeenCalled();
+    expect(conversations.recordMessage).toHaveBeenCalledWith(
+      organizationId,
+      conversationId,
+      expect.any(Date),
+    );
     expect(result).toEqual(
       expect.objectContaining({ id: messageId, content: 'hello AI' }),
     );
@@ -185,7 +198,7 @@ describe('MessagesService', () => {
   });
 
   it('keeps list attachments grouped under their messages', async () => {
-    conversations.findByOrganization.mockResolvedValue({ _id: conversationId });
+    conversations.findLatest.mockResolvedValue({ _id: conversationId });
     messages.list.mockResolvedValue({
       items: [
         {
@@ -208,7 +221,10 @@ describe('MessagesService', () => {
       },
     ]);
 
-    const result = await service.list(organizationId, { page: 1, limit: 30 });
+    const result = await service.list(organizationId, userId, {
+      page: 1,
+      limit: 30,
+    });
 
     expect(attachments.findByMessageIds).toHaveBeenCalledWith(organizationId, [
       messageId,

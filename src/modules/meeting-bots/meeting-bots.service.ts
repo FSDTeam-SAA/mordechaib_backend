@@ -7,6 +7,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -39,6 +40,7 @@ import {
   MeetingAudioStorage,
 } from './storage/meeting-audio-storage.interface';
 import { ZoomAuthService } from './zoom-auth.service';
+import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 
 @Injectable()
 export class MeetingBotsService {
@@ -50,6 +52,7 @@ export class MeetingBotsService {
     private readonly config: ConfigService,
     @Inject(MEETING_AUDIO_STORAGE)
     private readonly audioStorage: MeetingAudioStorage,
+    @Optional() private readonly aiJobs?: AiJobsQueue,
   ) {}
 
   async create(
@@ -570,6 +573,14 @@ export class MeetingBotsService {
       transcriptId,
       transcriptCompletedAt: new Date(),
       status: MeetingBotStatus.COMPLETED,
+    });
+    await this.aiJobs?.enqueueSourceAnalysis({
+      organizationId: meeting.organizationId,
+      sourceType:
+        meeting.platform === MeetingPlatform.GOOGLE_MEET
+          ? 'GOOGLE_MEET'
+          : 'ZOOM_MEETING',
+      sourceId: String(meeting._id),
     });
   }
 

@@ -1,8 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, Max, Min } from 'class-validator';
+import { IsInt, IsMongoId, IsOptional, Max, Min } from 'class-validator';
 
 export class ListMessagesQueryDto {
+  @ApiPropertyOptional({
+    description: 'Conversation ID; latest chat by default',
+  })
+  @IsOptional()
+  @IsMongoId()
+  conversationId?: string;
+
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Type(() => Number)
   @IsInt()
