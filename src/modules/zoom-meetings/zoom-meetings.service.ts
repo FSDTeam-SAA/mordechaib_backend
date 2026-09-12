@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import {
 } from './providers/recall-zoom.provider';
 import { ZoomMeetingsQueue } from './zoom-meetings.queue';
 import { ZoomMeetingsRepository } from './zoom-meetings.repository';
+import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 
 type ZoomOAuthState = {
   userId: string;
@@ -39,6 +41,7 @@ export class ZoomMeetingsService {
     private readonly provider: RecallZoomProvider,
     private readonly queue: ZoomMeetingsQueue,
     private readonly config: ConfigService,
+    @Optional() private readonly aiJobs?: AiJobsQueue,
   ) {}
 
   async create(
@@ -537,6 +540,11 @@ export class ZoomMeetingsService {
       transcriptId,
       transcriptCompletedAt: new Date(),
       status: ZoomMeetingStatus.COMPLETED,
+    });
+    await this.aiJobs?.enqueueSourceAnalysis({
+      organizationId: meeting.organizationId,
+      sourceType: 'ZOOM_MEETING',
+      sourceId: String(meeting._id),
     });
   }
 

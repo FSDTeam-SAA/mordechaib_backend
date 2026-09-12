@@ -27,6 +27,13 @@ export class TasksRepository {
     return this.taskModel.create(input);
   }
 
+  findByAiActionProposalId(organizationId: string, aiActionProposalId: string) {
+    return this.taskModel
+      .findOne({ organizationId, aiActionProposalId })
+      .lean()
+      .exec();
+  }
+
   async list(
     organizationId: string,
     page: number,

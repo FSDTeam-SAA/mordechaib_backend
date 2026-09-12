@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   Allow,
+  IsMongoId,
   IsOptional,
   IsString,
   IsUUID,
@@ -9,6 +10,13 @@ import {
 } from 'class-validator';
 
 export class CreateMessageDto {
+  @ApiPropertyOptional({
+    description: 'Conversation to append to. Omit to use the latest chat.',
+  })
+  @IsMongoId()
+  @IsOptional()
+  conversationId?: string;
+
   @ApiPropertyOptional({
     description:
       'Client-generated UUID used to safely retry the same HTTP message.',

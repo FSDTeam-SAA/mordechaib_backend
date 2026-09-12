@@ -20,6 +20,9 @@ export class Message {
   @Prop({ index: true })
   clientMessageId?: string;
 
+  @Prop({ index: true })
+  aiResponseId?: string;
+
   @Prop({
     required: true,
     enum: Object.values(MessageSenderType),
@@ -46,6 +49,15 @@ export class Message {
 
   @Prop({ index: true })
   sourceMessageId?: string;
+
+  @Prop({ trim: true, maxlength: 128 })
+  agentId?: string;
+
+  @Prop({ trim: true, maxlength: 200 })
+  agentName?: string;
+
+  @Prop({ trim: true, maxlength: 200, index: true })
+  agentRunId?: string;
 
   @Prop({ select: false })
   extractedText?: string;
@@ -74,5 +86,12 @@ MessageSchema.index(
   {
     unique: true,
     partialFilterExpression: { clientMessageId: { $type: 'string' } },
+  },
+);
+MessageSchema.index(
+  { organizationId: 1, aiResponseId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { aiResponseId: { $type: 'string' } },
   },
 );
