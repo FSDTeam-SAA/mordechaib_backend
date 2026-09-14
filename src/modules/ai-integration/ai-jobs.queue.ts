@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
 import { Queue } from 'bullmq';
@@ -57,6 +57,8 @@ export type TranscribeCallJob = {
 
 @Injectable()
 export class AiJobsQueue {
+  private readonly logger = new Logger(AiJobsQueue.name);
+
   constructor(
     @InjectQueue(AI_JOBS_QUEUE) private readonly queue: Queue,
     private readonly aiService: AiServiceClient,
@@ -65,7 +67,12 @@ export class AiJobsQueue {
   ) {}
 
   async enqueueSourceAnalysis(input: AnalyzeSourceJob, delay = 0) {
-    if (!this.aiService.enabled) return { queued: false };
+    if (!this.aiService.enabled) {
+      this.logger.warn(
+        `AI source analysis was not queued: automation is disabled, source=${input.sourceType}:${input.sourceId}`,
+      );
+      return { queued: false };
+    }
     return this.enqueue(
       AI_ANALYZE_SOURCE_JOB,
       input,
@@ -127,7 +134,16 @@ export class AiJobsQueue {
       removeOnComplete: { age: 86_400, count: 10_000 },
       removeOnFail: { age: 604_800, count: 10_000 },
     });
-    if ((await job.getState()) === 'failed') await job.retry();
+    const state = await job.getState();
+    this.logger.log(
+      `AI job accepted: name=${name}, id=${String(job.id)}, state=${state}`,
+    );
+    if (state === 'failed') {
+      this.logger.warn(
+        `Retrying previously failed AI job: name=${name}, id=${String(job.id)}`,
+      );
+      await job.retry();
+    }
     return { queued: true, jobId: String(job.id) };
   }
 }
