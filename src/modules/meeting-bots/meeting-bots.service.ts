@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException,
@@ -44,6 +45,8 @@ import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 
 @Injectable()
 export class MeetingBotsService {
+  private readonly logger = new Logger(MeetingBotsService.name);
+
   constructor(
     private readonly repository: MeetingBotsRepository,
     private readonly provider: RecallMeetingProvider,
@@ -574,7 +577,7 @@ export class MeetingBotsService {
       transcriptCompletedAt: new Date(),
       status: MeetingBotStatus.COMPLETED,
     });
-    await this.aiJobs?.enqueueSourceAnalysis({
+    const analysisJob = await this.aiJobs?.enqueueSourceAnalysis({
       organizationId: meeting.organizationId,
       sourceType:
         meeting.platform === MeetingPlatform.GOOGLE_MEET
@@ -582,6 +585,11 @@ export class MeetingBotsService {
           : 'ZOOM_MEETING',
       sourceId: String(meeting._id),
     });
+    const aiJobId =
+      analysisJob && 'jobId' in analysisJob ? analysisJob.jobId : undefined;
+    this.logger.log(
+      `Meeting transcript completed: meetingId=${String(meeting._id)}, platform=${meeting.platform}, words=${formatted.wordCount}, aiAnalysisQueued=${analysisJob?.queued ?? false}${aiJobId ? `, aiJobId=${aiJobId}` : ''}`,
+    );
   }
 
   private formatTranscript(value: unknown) {

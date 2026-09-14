@@ -79,12 +79,18 @@ export class AiJobsProcessor extends WorkerHost {
 
   private async analyzeSource(job: Job<AnalyzeSourceJob>) {
     const { organizationId, sourceType, sourceId } = job.data;
+    this.logger.log(
+      `AI source analysis started: jobId=${String(job.id)}, attempt=${job.attemptsMade + 1}, source=${sourceType}:${sourceId}`,
+    );
     let context: MessageAnalysisContext & Record<string, unknown>;
     try {
       context = (await this.sourceContext.sourceContext(
         sourceType,
         sourceId,
       )) as unknown as MessageAnalysisContext & Record<string, unknown>;
+      this.logger.log(
+        `AI source context prepared: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
+      );
       if (
         sourceType === 'USER_MESSAGE' &&
         context.latestMessageId &&
@@ -182,6 +188,9 @@ export class AiJobsProcessor extends WorkerHost {
           'AI service returned an invalid analysis response',
         );
       }
+      this.logger.log(
+        `AI analysis response accepted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}, actions=${analysisResult.actions.length}`,
+      );
       const ingested = await this.actions.ingestAnalysis(
         organizationId,
         { type: sourceType as AiProposalSourceType, id: sourceId },
@@ -199,6 +208,9 @@ export class AiJobsProcessor extends WorkerHost {
           'COMPLETED',
         );
       }
+      this.logger.log(
+        `AI proposals persisted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
+      );
       return ingested;
     } catch (error) {
       if (sourceType === 'USER_MESSAGE') {
