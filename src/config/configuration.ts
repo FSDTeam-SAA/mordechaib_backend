@@ -124,6 +124,10 @@ export default () => {
     process.env.AI_AUTOMATION_ENABLED,
     Boolean(aiServiceBaseUrl),
   );
+  const aiLogAnalyzeSourceRequestBody = booleanValue(
+    process.env.AI_LOG_ANALYZE_SOURCE_REQUEST_BODY,
+    false,
+  );
   const aiServiceTimeoutMs = positiveInteger(
     process.env.AI_SERVICE_TIMEOUT_MS,
     30_000,
@@ -470,6 +474,7 @@ export default () => {
         baseUrl: aiServiceBaseUrl,
         sharedSecret: aiServiceSharedSecret,
         automationEnabled: aiAutomationEnabled,
+        logAnalyzeSourceRequestBody: aiLogAnalyzeSourceRequestBody,
         timeoutMs: aiServiceTimeoutMs,
         messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
       callTranscription: {

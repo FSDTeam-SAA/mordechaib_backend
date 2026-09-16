@@ -789,8 +789,7 @@ GET  /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION
 GET  /api/v1/ai-actions/proposals/:id
 POST /api/v1/ai-actions/proposals/:id/clarifications
 GET  /api/v1/ai-actions/proposals?status=PENDING
-POST /api/v1/ai-actions/proposals/:id/approve
-POST /api/v1/ai-actions/proposals/:id/reject
+POST /api/v1/ai-actions/proposals/:id/action
 ```
 
 The details endpoint returns metadata, audio availability/download path,
