@@ -32,6 +32,7 @@ import { ListAiActionProposalsQueryDto } from './dto/list-ai-action-proposals-qu
 import { GetActionCenterQueryDto } from './dto/get-action-center-query.dto';
 import {
   AiAnalysisAction,
+  AiClarificationQuestionInput,
   AiAnalysisSummary,
   AiAnalysisResult,
 } from './dto/ai-analysis-result.dto';
@@ -91,6 +92,7 @@ export class AiActionsService {
           proposalAnalysis,
           options.conversationId,
           options.effectiveTimezone || organization.timezone,
+          analysis.summary,
         ),
       ),
     );
@@ -131,6 +133,18 @@ export class AiActionsService {
       );
     }
     return this.toResponse(updated as StoredProposal);
+  }
+
+  async restoreClarificationAfterRefinementFailure(
+    organizationId: string,
+    id: string,
+  ) {
+    const restored =
+      await this.repository.restoreClarificationAfterRefinementFailure(
+        organizationId,
+        id,
+      );
+    return restored ? this.toResponse(restored as StoredProposal) : undefined;
   }
 
   async applyClarificationResult(
@@ -426,6 +440,7 @@ export class AiActionsService {
     analysis: AiAnalysisSummary,
     conversationId?: string,
     effectiveTimezone?: string,
+    analysisSummary?: string,
   ) {
     if (!Object.values(AiActionType).includes(action.actionType)) {
       throw new BadRequestException('AI returned an unsupported action type');
@@ -441,13 +456,24 @@ export class AiActionsService {
         ? existing.proposedByAgent
         : returnedAgent
       : await this.resolveActiveAgent(returnedAgent.id);
-    const questions = this.normalizedQuestions(action.clarificationQuestions);
+    const returnedQuestions = this.normalizedQuestions(
+      action.clarificationQuestions,
+    );
+    const inferredQuestions = this.inferScheduleClarificationQuestions(
+      action,
+      analysisSummary,
+      returnedQuestions,
+    );
+    const questions = [...returnedQuestions, ...inferredQuestions];
     const status = questions.length
       ? AiActionProposalStatus.NEEDS_CLARIFICATION
       : AiActionProposalStatus.PENDING;
+    const actionPayload = inferredQuestions.length
+      ? this.withoutAssumedMeetingTime(action.payload)
+      : action.payload;
     const timezoneAwarePayload = this.withEffectiveTimezone(
       action.actionType,
-      action.payload,
+      actionPayload,
       effectiveTimezone,
     );
     const payload = questions.length
@@ -588,6 +614,49 @@ export class AiActionsService {
         required: question.required !== false,
       };
     });
+  }
+
+  /**
+   * Prevent an AI service from silently turning an explicitly unknown meeting
+   * time into midnight. The follow-up refinement flow will provide startsAt
+   * after the user answers this question.
+   */
+  private inferScheduleClarificationQuestions(
+    action: AiAnalysisAction,
+    analysisSummary: string | undefined,
+    returnedQuestions: AiClarificationQuestionInput[],
+  ): AiClarificationQuestionInput[] {
+    if (
+      action.actionType !== AiActionType.SCHEDULE_MEETING ||
+      returnedQuestions.some((question) => question.field === 'startsAt') ||
+      !this.analysisSaysMeetingTimeIsUnknown(analysisSummary)
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: 'meeting-start-time',
+        field: 'startsAt',
+        question: 'What date and time should this meeting start?',
+        inputType: 'datetime',
+        required: true,
+      },
+    ];
+  }
+
+  private analysisSaysMeetingTimeIsUnknown(summary?: string) {
+    return (
+      typeof summary === 'string' &&
+      /(?:no|without)\s+(?:an?\s+)?(?:exact|specific)\s+(?:meeting\s+)?time\s+(?:was\s+)?(?:provided|specified)/i.test(
+        summary,
+      )
+    );
+  }
+
+  private withoutAssumedMeetingTime(payload: Record<string, unknown>) {
+    const remaining = { ...payload };
+    delete remaining.startsAt;
+    return remaining;
   }
 
   private validateAnalysisIdentity(
@@ -996,6 +1065,14 @@ export class AiActionsService {
       source: proposal.source,
       confidence: proposal.confidence,
       status,
+      clarificationQuestions: Array.isArray(proposal.clarificationQuestions)
+        ? proposal.clarificationQuestions
+        : [],
+      clarificationAnswers:
+        proposal.clarificationAnswers &&
+        typeof proposal.clarificationAnswers === 'object'
+          ? proposal.clarificationAnswers
+          : {},
       canApprove: status === AiActionProposalStatus.PENDING,
       canReject: status === AiActionProposalStatus.PENDING,
       canRetry: status === AiActionProposalStatus.FAILED,
