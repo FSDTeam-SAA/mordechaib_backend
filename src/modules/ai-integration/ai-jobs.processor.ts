@@ -7,14 +7,19 @@ import {
   AI_ANALYZE_SOURCE_JOB,
   AI_JOBS_QUEUE,
   AI_REFINE_ACTION_JOB,
+  AI_SYNC_AGENT_JOB,
   AI_TRANSCRIBE_CALL_JOB,
+  AgentSyncEvent,
   AiJobsQueue,
   AnalyzeSourceJob,
   RefineActionJob,
   TranscribeCallJob,
 } from './ai-jobs.queue';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
-import { AiAnalysisAction, AiAnalysisResult } from '../ai-actions/dto/ai-analysis-result.dto';
+import {
+  AiAnalysisAction,
+  AiAnalysisResult,
+} from '../ai-actions/dto/ai-analysis-result.dto';
 import { AiSourceContextService } from '../ai-internal/ai-source-context.service';
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
 
@@ -55,6 +60,8 @@ export class AiJobsProcessor extends WorkerHost {
           return this.refineAction(job as Job<RefineActionJob>);
         case AI_TRANSCRIBE_CALL_JOB:
           return this.transcribeCall(job as Job<TranscribeCallJob>);
+        case AI_SYNC_AGENT_JOB:
+          return this.syncAgent(job as Job<AgentSyncEvent>);
         default:
           throw new UnrecoverableError(`Unsupported AI job ${job.name}`);
       }
@@ -72,12 +79,18 @@ export class AiJobsProcessor extends WorkerHost {
 
   private async analyzeSource(job: Job<AnalyzeSourceJob>) {
     const { organizationId, sourceType, sourceId } = job.data;
+    this.logger.log(
+      `AI source analysis started: jobId=${String(job.id)}, attempt=${job.attemptsMade + 1}, source=${sourceType}:${sourceId}`,
+    );
     let context: MessageAnalysisContext & Record<string, unknown>;
     try {
       context = (await this.sourceContext.sourceContext(
         sourceType,
         sourceId,
       )) as unknown as MessageAnalysisContext & Record<string, unknown>;
+      this.logger.log(
+        `AI source context prepared: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
+      );
       if (
         sourceType === 'USER_MESSAGE' &&
         context.latestMessageId &&
@@ -143,15 +156,13 @@ export class AiJobsProcessor extends WorkerHost {
           'AI source organization does not match the queued job',
         );
       }
-      const organization = await this.sourceContext.organizationContext(
-        organizationId,
-      );
+      const organization =
+        await this.sourceContext.organizationContext(organizationId);
       const requester = await this.sourceContext.requesterContext(
         organizationId,
         context.requesterUserId,
       );
-      const effectiveTimezone =
-        requester?.timezone || organization.timezone;
+      const effectiveTimezone = requester?.timezone || organization.timezone;
       const boundedContext = { ...context };
       delete boundedContext.requesterUserId;
       const requestId = `source-${sourceType.toLowerCase()}-${sourceId}`;
@@ -177,6 +188,9 @@ export class AiJobsProcessor extends WorkerHost {
           'AI service returned an invalid analysis response',
         );
       }
+      this.logger.log(
+        `AI analysis response accepted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}, actions=${analysisResult.actions.length}`,
+      );
       const ingested = await this.actions.ingestAnalysis(
         organizationId,
         { type: sourceType as AiProposalSourceType, id: sourceId },
@@ -194,6 +208,9 @@ export class AiJobsProcessor extends WorkerHost {
           'COMPLETED',
         );
       }
+      this.logger.log(
+        `AI proposals persisted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
+      );
       return ingested;
     } catch (error) {
       if (sourceType === 'USER_MESSAGE') {
@@ -237,7 +254,9 @@ export class AiJobsProcessor extends WorkerHost {
       },
     );
     if (!result?.action) {
-      throw new UnrecoverableError('AI service returned an invalid clarification response');
+      throw new UnrecoverableError(
+        'AI service returned an invalid clarification response',
+      );
     }
     return this.actions.applyClarificationResult(
       job.data.organizationId,
@@ -254,6 +273,19 @@ export class AiJobsProcessor extends WorkerHost {
         sourceType: 'CALL_TRANSCRIPT',
         sourceId: job.data.recordingId,
       });
+    }
+    return result;
+  }
+
+  private async syncAgent(job: Job<AgentSyncEvent>) {
+    const result = await this.aiService.request<{
+      eventId: string;
+      accepted: boolean;
+    }>('/api/v1/ai/agents/events', job.data);
+    if (result?.eventId !== job.data.eventId || result.accepted !== true) {
+      throw new UnrecoverableError(
+        'AI service returned an invalid agent synchronization acknowledgement',
+      );
     }
     return result;
   }

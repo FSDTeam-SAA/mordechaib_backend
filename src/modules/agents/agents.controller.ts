@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -10,12 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CurrentOrg } from '../../common/decorators/current-org.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '../../common/enums/user-role.enum';
-import { OrganizationGuard } from '../../common/guards/organization.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { RequestOrganization } from '../../common/types/request-context.type';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
+import { RequestUser } from '../../common/types/request-context.type';
+import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { AgentsService } from './agents.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { ListAgentsQueryDto } from './dto/list-agents-query.dto';
@@ -24,53 +23,47 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 @ApiTags('Agents')
 @ApiBearerAuth()
 @Controller('agents')
-@UseGuards(OrganizationGuard)
 export class AgentsController {
   constructor(private readonly agents: AgentsService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Create an organization AI agent profile' })
-  create(
-    @CurrentOrg() organization: RequestOrganization,
-    @Body() dto: CreateAgentDto,
-  ) {
-    return this.agents.create(organization.id, dto);
+  @UseGuards(PlatformAdminGuard)
+  @ApiOperation({ summary: 'Create a platform AI agent profile' })
+  create(@Body() dto: CreateAgentDto) {
+    return this.agents.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List organization AI agent profiles' })
-  list(
-    @CurrentOrg() organization: RequestOrganization,
-    @Query() query: ListAgentsQueryDto,
-  ) {
-    return this.agents.list(organization.id, query);
+  @ApiOperation({ summary: 'List platform AI agent profiles' })
+  list(@CurrentUser() actor: RequestUser, @Query() query: ListAgentsQueryDto) {
+    if (!actor.isPlatformAdmin) {
+      if (query.status && query.status !== AgentStatus.ACTIVE) {
+        throw new ForbiddenException(
+          'Only platform admins can view disabled agents',
+        );
+      }
+      query.status = AgentStatus.ACTIVE;
+    }
+    return this.agents.list(query);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one organization AI agent profile' })
-  get(@CurrentOrg() organization: RequestOrganization, @Param('id') id: string) {
-    return this.agents.get(organization.id, id);
+  @ApiOperation({ summary: 'Get one platform AI agent profile' })
+  get(@CurrentUser() actor: RequestUser, @Param('id') id: string) {
+    return this.agents.get(id, actor.isPlatformAdmin);
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update an organization AI agent profile' })
-  update(
-    @CurrentOrg() organization: RequestOrganization,
-    @Param('id') id: string,
-    @Body() dto: UpdateAgentDto,
-  ) {
-    return this.agents.update(organization.id, id, dto);
+  @UseGuards(PlatformAdminGuard)
+  @ApiOperation({ summary: 'Update a platform AI agent profile' })
+  update(@Param('id') id: string, @Body() dto: UpdateAgentDto) {
+    return this.agents.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Delete an organization AI agent profile' })
-  remove(@CurrentOrg() organization: RequestOrganization, @Param('id') id: string) {
-    return this.agents.remove(organization.id, id);
+  @UseGuards(PlatformAdminGuard)
+  @ApiOperation({ summary: 'Disable a platform AI agent profile' })
+  remove(@Param('id') id: string) {
+    return this.agents.remove(id);
   }
 }

@@ -118,14 +118,17 @@ export class AiActionsService {
     const question = proposal.clarificationQuestions?.find(
       (item) => item.id === questionId,
     );
-    if (!question) throw new BadRequestException('Unknown clarification question');
+    if (!question)
+      throw new BadRequestException('Unknown clarification question');
     const updated = await this.repository.startClarificationRefinement(
       organizationId,
       id,
       { ...proposal.clarificationAnswers, [questionId]: answer },
     );
     if (!updated) {
-      throw new ConflictException('The clarification response could not be saved');
+      throw new ConflictException(
+        'The clarification response could not be saved',
+      );
     }
     return this.toResponse(updated as StoredProposal);
   }
@@ -137,7 +140,9 @@ export class AiActionsService {
   ) {
     const proposal = await this.getStored(organizationId, id);
     if (proposal.status !== AiActionProposalStatus.ANALYZING) {
-      throw new ConflictException('The proposal is not awaiting an AI response');
+      throw new ConflictException(
+        'The proposal is not awaiting an AI response',
+      );
     }
     if (action.actionType !== proposal.actionType) {
       throw new BadRequestException('AI cannot change a proposal action type');
@@ -426,6 +431,16 @@ export class AiActionsService {
       throw new BadRequestException('AI returned an unsupported action type');
     }
     const proposalId = `${requestId}:${action.actionId}`;
+    const existing = await this.repository.findByProposalIdWithHash(
+      organizationId,
+      proposalId,
+    );
+    const returnedAgent = this.normalizeAgent(action.proposedByAgent);
+    const proposedByAgent = existing
+      ? returnedAgent.id === existing.proposedByAgent.id
+        ? existing.proposedByAgent
+        : returnedAgent
+      : await this.resolveActiveAgent(returnedAgent.id);
     const questions = this.normalizedQuestions(action.clarificationQuestions);
     const status = questions.length
       ? AiActionProposalStatus.NEEDS_CLARIFICATION
@@ -449,7 +464,7 @@ export class AiActionsService {
       requestId,
       ...(conversationId ? { conversationId } : {}),
       actionType: action.actionType,
-      proposedByAgent: this.normalizeAgent(action.proposedByAgent),
+      proposedByAgent,
       source,
       payload,
       confidence: action.confidence,
@@ -461,21 +476,26 @@ export class AiActionsService {
       status,
     };
     const proposalHash = this.hash(this.stableStringify(normalized));
-    const existing = await this.repository.findByProposalIdWithHash(
-      organizationId,
-      proposalId,
-    );
     if (existing) {
       if (existing.proposalHash !== proposalHash) {
         throw new ConflictException(
           'The AI action identifier was reused with different content',
         );
       }
-      return { ...this.toResponse(existing as StoredProposal), duplicate: true };
+      return {
+        ...this.toResponse(existing as StoredProposal),
+        duplicate: true,
+      };
     }
     try {
-      const created = await this.repository.create({ ...normalized, proposalHash });
-      return { ...this.toResponse(created as StoredProposal), duplicate: false };
+      const created = await this.repository.create({
+        ...normalized,
+        proposalHash,
+      });
+      return {
+        ...this.toResponse(created as StoredProposal),
+        duplicate: false,
+      };
     } catch (error) {
       if (!this.isDuplicateKey(error)) throw error;
       const raced = await this.repository.findByProposalIdWithHash(
@@ -492,6 +512,12 @@ export class AiActionsService {
     action: AiAnalysisAction,
     effectiveTimezone?: string,
   ) {
+    const proposedByAgent = this.normalizeAgent(action.proposedByAgent);
+    if (proposedByAgent.id !== proposal.proposedByAgent.id) {
+      throw new BadRequestException(
+        'AI cannot change a proposal agent identity during refinement',
+      );
+    }
     const questions = this.normalizedQuestions(action.clarificationQuestions);
     const timezoneAwarePayload = this.withEffectiveTimezone(
       action.actionType,
@@ -512,14 +538,15 @@ export class AiActionsService {
         payload: payload as Record<string, unknown>,
         confidence: action.confidence,
         evidence: action.evidence || [],
-        proposedByAgent: this.normalizeAgent(action.proposedByAgent),
+        proposedByAgent: proposal.proposedByAgent,
         clarificationQuestions: questions,
         status: questions.length
           ? AiActionProposalStatus.NEEDS_CLARIFICATION
           : AiActionProposalStatus.PENDING,
       },
     );
-    if (!next) throw new ConflictException('The AI clarification result was not saved');
+    if (!next)
+      throw new ConflictException('The AI clarification result was not saved');
     return this.toResponse(next as StoredProposal);
   }
 
@@ -528,22 +555,36 @@ export class AiActionsService {
   ) {
     if (!questions?.length) return [];
     if (questions.length > 10) {
-      throw new BadRequestException('AI returned too many clarification questions');
+      throw new BadRequestException(
+        'AI returned too many clarification questions',
+      );
     }
     const ids = new Set<string>();
     return questions.map((question) => {
       const id = question.id?.trim();
       const field = question.field?.trim();
       const text = question.question?.trim();
-      if (!id || !field || !text || id.length > 128 || field.length > 200 || text.length > 2000 || ids.has(id)) {
-        throw new BadRequestException('AI returned an invalid clarification question');
+      if (
+        !id ||
+        !field ||
+        !text ||
+        id.length > 128 ||
+        field.length > 200 ||
+        text.length > 2000 ||
+        ids.has(id)
+      ) {
+        throw new BadRequestException(
+          'AI returned an invalid clarification question',
+        );
       }
       ids.add(id);
       return {
         id,
         field,
         question: text,
-        ...(question.inputType?.trim() ? { inputType: question.inputType.trim() } : {}),
+        ...(question.inputType?.trim()
+          ? { inputType: question.inputType.trim() }
+          : {}),
         required: question.required !== false,
       };
     });
@@ -656,9 +697,7 @@ export class AiActionsService {
       ) > 0.01 ||
       !intelligence.riskLevel?.trim()
     ) {
-      throw new BadRequestException(
-        'AI returned an invalid analysis summary',
-      );
+      throw new BadRequestException('AI returned an invalid analysis summary');
     }
     const summary = analysis.summary?.trim();
     if (summary && summary.length > 10_000) {
@@ -668,8 +707,7 @@ export class AiActionsService {
       ? actions.reduce((total, action) => total + action.confidence, 0) /
         actions.length
       : undefined;
-    const overallConfidence =
-      analysis.overallConfidence ?? derivedConfidence;
+    const overallConfidence = analysis.overallConfidence ?? derivedConfidence;
     if (
       overallConfidence !== undefined &&
       (typeof overallConfidence !== 'number' ||
@@ -757,9 +795,7 @@ export class AiActionsService {
         id,
         category: segment.category,
         text,
-        ...(segment.speaker?.trim()
-          ? { speaker: segment.speaker.trim() }
-          : {}),
+        ...(segment.speaker?.trim() ? { speaker: segment.speaker.trim() } : {}),
         ...(segment.startTimeSeconds !== undefined
           ? { startTimeSeconds: segment.startTimeSeconds }
           : {}),
@@ -773,7 +809,9 @@ export class AiActionsService {
     });
   }
 
-  private proposalAnalysis(analysis: ReturnType<AiActionsService['normalizeAnalysis']>) {
+  private proposalAnalysis(
+    analysis: ReturnType<AiActionsService['normalizeAnalysis']>,
+  ) {
     return {
       sentimentAnalysis: analysis.sentimentAnalysis,
       customerIntelligence: analysis.customerIntelligence,
@@ -798,14 +836,26 @@ export class AiActionsService {
     return { id, name, type: agent.type };
   }
 
+  private async resolveActiveAgent(id: string) {
+    if (!isValidObjectId(id)) {
+      throw new BadRequestException(
+        'AI proposedByAgent.id must be a Main Backend agent MongoDB ObjectId',
+      );
+    }
+    const registered = await this.repository.findActiveAgent(id);
+    if (!registered) {
+      throw new BadRequestException(
+        'AI proposedByAgent is not an active platform agent',
+      );
+    }
+    return { id, name: registered.name, type: registered.type };
+  }
+
   private async validatePayload(
     actionType: AiActionType,
     payload: Record<string, unknown>,
     effectiveTimezone?: string,
-  ): Promise<
-    | AiTaskActionPayloadDto
-    | AiMeetingActionPayloadDto
-  > {
+  ): Promise<AiTaskActionPayloadDto | AiMeetingActionPayloadDto> {
     const normalizedPayload = this.withEffectiveTimezone(
       actionType,
       payload,

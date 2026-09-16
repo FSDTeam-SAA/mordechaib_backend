@@ -60,8 +60,9 @@ transcript completes.
 
 The AI service returns JSON only. It must not call any Main Backend endpoint.
 The Main Backend does not select an agent. The AI Backend master agent routes
-the source to its specialist agents, and every returned action identifies its
-owner through required `proposedByAgent.id`, `name`, and `type` fields.
+the source to specialist agents from the global active catalog, and every
+returned action identifies its owner through required `proposedByAgent.id`,
+`name`, and `type` fields.
 
 ### Chat message analysis
 
@@ -175,10 +176,10 @@ frontend can display it and later reporting can query it.
 Rules:
 
 - Supported `actionType` values: `CREATE_TASK`, `SCHEDULE_MEETING`.
-- Use stable hyphenated agent IDs, for example `sales-agent`.
+- Use the Main Backend Agent MongoDB ObjectId received from catalog sync.
 - Every `proposedByAgent` must include `id`, display `name`, and a valid `type`:
-  `SALES`, `OPERATIONS`, `SUPPORT`, `MARKETING`, `STRATEGY`, `DESIGN`, or
-  `CUSTOM`.
+  `SALES`, `OPERATIONS`, `SUPPORT`, `MARKETING`, `STRATEGY`,
+  `CHIEF_OF_STAFF`, `DESIGN`, or `CUSTOM`.
 - Pattern signals are individually optional. Omit a signal when it could not
   be evaluated; send `0` only when it was evaluated and not detected.
 - Return a source `summary`, `overallConfidence`, and zero or more classified
@@ -245,15 +246,15 @@ Return one updated action:
 All routes use a CEO/Owner/Admin bearer token. The frontend never calls the
 AI service directly.
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/v1/ai-actions/proposals` | List drafts and ready proposals. Filter by `status`, `actionType`, or agent. |
-| `GET` | `/api/v1/ai-actions/proposals/:id` | Read one proposal and its clarification questions. |
-| `POST` | `/api/v1/ai-actions/proposals/:id/clarifications` | Submit `{ "questionId": "...", "answer": "..." }`. |
-| `POST` | `/api/v1/ai-actions/proposals/:id/approve` | Approve a ready proposal and execute it once. |
-| `POST` | `/api/v1/ai-actions/proposals/:id/reject` | Reject a proposal. |
-| `POST` | `/api/v1/ai-actions/proposals/:id/retry` | Retry an approved execution that failed. |
-| `GET` | `/api/v1/ai-actions/sources/:sourceId/action-center` | Return UI-ready pending task and meeting proposals for one source. |
+| Method | Route                                                | Purpose                                                                      |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/ai-actions/proposals`                       | List drafts and ready proposals. Filter by `status`, `actionType`, or agent. |
+| `GET`  | `/api/v1/ai-actions/proposals/:id`                   | Read one proposal and its clarification questions.                           |
+| `POST` | `/api/v1/ai-actions/proposals/:id/clarifications`    | Submit `{ "questionId": "...", "answer": "..." }`.                           |
+| `POST` | `/api/v1/ai-actions/proposals/:id/approve`           | Approve a ready proposal and execute it once.                                |
+| `POST` | `/api/v1/ai-actions/proposals/:id/reject`            | Reject a proposal.                                                           |
+| `POST` | `/api/v1/ai-actions/proposals/:id/retry`             | Retry an approved execution that failed.                                     |
+| `GET`  | `/api/v1/ai-actions/sources/:sourceId/action-center` | Return UI-ready pending task and meeting proposals for one source.           |
 
 Proposal statuses:
 
