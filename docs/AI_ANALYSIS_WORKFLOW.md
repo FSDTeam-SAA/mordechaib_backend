@@ -251,10 +251,8 @@ AI service directly.
 | `GET`  | `/api/v1/ai-actions/proposals`                       | List drafts and ready proposals. Filter by `status`, `actionType`, or agent. |
 | `GET`  | `/api/v1/ai-actions/proposals/:id`                   | Read one proposal and its clarification questions.                           |
 | `POST` | `/api/v1/ai-actions/proposals/:id/clarifications`    | Submit `{ "questionId": "...", "answer": "..." }`.                           |
-| `POST` | `/api/v1/ai-actions/proposals/:id/approve`           | Approve a ready proposal and execute it once.                                |
-| `POST` | `/api/v1/ai-actions/proposals/:id/reject`            | Reject a proposal.                                                           |
-| `POST` | `/api/v1/ai-actions/proposals/:id/retry`             | Retry an approved execution that failed.                                     |
-| `GET`  | `/api/v1/ai-actions/sources/:sourceId/action-center` | Return UI-ready pending task and meeting proposals for one source.           |
+| `POST` | `/api/v1/ai-actions/proposals/:id/action`            | Submit `APPROVE`, `REJECT`, or `RETRY`; rejection also requires `reason`.     |
+| `GET`  | `/api/v1/ai-actions/sources/:sourceId/action-center` | Return source proposal cards, clarification questions, and submitted answers. |
 
 Proposal statuses:
 
@@ -268,6 +266,6 @@ ANALYZING → NEEDS_CLARIFICATION → PENDING → APPROVED
 
 ## Execution boundary
 
-Only `POST /ai-actions/proposals/:id/approve` can execute a task or provider
-meeting. The approving CEO/Admin becomes the created-by user. No AI request
-can bypass this boundary.
+Only `POST /ai-actions/proposals/:id/action` with `{ "action": "APPROVE" }`
+can execute a task or provider meeting. The approving CEO/Admin becomes the
+created-by user. No AI request can bypass this boundary.

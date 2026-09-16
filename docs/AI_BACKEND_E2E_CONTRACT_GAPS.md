@@ -518,13 +518,14 @@ details endpoint.
 | `GET /api/v1/ai-actions/proposals?status=PENDING` | List complete drafts ready for final approval |
 | `GET /api/v1/ai-actions/proposals/:id` | Open a proposal preview, evidence, questions and status |
 | `POST /api/v1/ai-actions/proposals/:id/clarifications` | Send `{ "questionId": "...", "answer": "..." }` |
-| `POST /api/v1/ai-actions/proposals/:id/approve` | Execute exactly one ready Task or Meeting |
+| `POST /api/v1/ai-actions/proposals/:id/action` | Submit `APPROVE`, `REJECT`, or `RETRY`; rejection also requires `reason` |
 | `GET /api/v1/ai-actions/sources/:sourceId/action-center?status=PENDING` | Show compact task/meeting cards after the draft is ready |
 
-Important: Action Center defaults to `PENDING`, so it does not show
-`NEEDS_CLARIFICATION` proposals. The frontend must use the proposal list/detail
-route for CEO questions, then refresh or poll until the refinement changes the
-status to `PENDING` or again to `NEEDS_CLARIFICATION`.
+Important: Action Center defaults to `PENDING`. Request it with
+`status=NEEDS_CLARIFICATION` to receive proposal cards containing
+`clarificationQuestions` and `clarificationAnswers`, then refresh or poll until
+the refinement changes the status to `PENDING` or again to
+`NEEDS_CLARIFICATION`.
 
 Each proposal also contains the source-level AI analysis snapshot returned by
 the AI service. This is how frontend proposal details access sentiment,

@@ -26,6 +26,7 @@ describe('AiActionsService analysis ingestion', () => {
     findActiveAgent: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
+    getActionCenter: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
@@ -72,6 +73,71 @@ describe('AiActionsService analysis ingestion', () => {
       organizations as unknown as OrganizationsService,
       {} as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
+    );
+  });
+
+  it('includes clarification questions and answers in action center cards', async () => {
+    repository.getActionCenter.mockResolvedValue({
+      priorityTasks: [],
+      meetingSchedules: [
+        {
+          _id: '66cc9bdfa847ea856c7b41d5',
+          proposalId: 'meeting-002:project-review',
+          actionType: AiActionType.SCHEDULE_MEETING,
+          proposedByAgent: {
+            id: operationsAgentId,
+            name: 'Operations Agent',
+            type: AgentType.OPERATIONS,
+          },
+          source,
+          payload: {
+            platform: 'GOOGLE_MEET',
+            title: 'Project review',
+            timezone: 'UTC',
+          },
+          confidence: 0.81,
+          status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+          clarificationQuestions: [
+            {
+              id: 'meeting-time',
+              field: 'startsAt',
+              question: 'What time should the meeting start?',
+              inputType: 'datetime',
+              required: true,
+            },
+            {
+              id: 'invitee-email',
+              field: 'invitees',
+              question: 'What email address should be invited?',
+              inputType: 'email',
+              required: true,
+            },
+          ],
+          clarificationAnswers: {
+            'meeting-time': '2026-09-17T15:00:00Z',
+          },
+        },
+      ],
+      totals: { priorityTasks: 0, meetingSchedules: 1 },
+    });
+
+    const result = await service.getActionCenter(organizationId, source.id, {
+      taskLimit: 4,
+      meetingLimit: 4,
+      status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+      sourceType: AiProposalSourceType.GOOGLE_MEET,
+    });
+
+    expect(result.meetingSchedules[0]).toEqual(
+      expect.objectContaining({
+        clarificationQuestions: [
+          expect.objectContaining({ id: 'meeting-time' }),
+          expect.objectContaining({ id: 'invitee-email' }),
+        ],
+        clarificationAnswers: {
+          'meeting-time': '2026-09-17T15:00:00Z',
+        },
+      }),
     );
   });
 
@@ -205,6 +271,48 @@ describe('AiActionsService analysis ingestion', () => {
         payload: expect.objectContaining({ timezone: 'UTC' }),
         clarificationQuestions: [
           expect.objectContaining({ id: 'meeting-time', required: true }),
+        ],
+      }),
+    );
+  });
+
+  it('turns an AI-assumed meeting time into a clarification', async () => {
+    await service.ingestAnalysis(organizationId, source, {
+      requestId: 'meeting-assumed-time',
+      source,
+      actions: [
+        {
+          actionId: 'project-review',
+          actionType: AiActionType.SCHEDULE_MEETING,
+          proposedByAgent: {
+            id: operationsAgentId,
+            name: 'Operations Agent',
+            type: AgentType.OPERATIONS,
+          },
+          payload: {
+            platform: 'GOOGLE_MEET',
+            title: 'Project review',
+            startsAt: '2026-09-16T00:00:00Z',
+          },
+          confidence: 0.81,
+        },
+      ],
+      analysis: {
+        ...analysis,
+        summary:
+          'A follow-up meeting was requested, but no exact meeting time was provided.',
+      },
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+        payload: expect.not.objectContaining({ startsAt: expect.anything() }),
+        clarificationQuestions: [
+          expect.objectContaining({
+            field: 'startsAt',
+            id: 'meeting-start-time',
+          }),
         ],
       }),
     );
