@@ -21,7 +21,7 @@ import {
 } from '../../common/types/request-context.type';
 import { OutlookCalendarAuthService } from './outlook-calendar-auth.service';
 
-@ApiTags('Outlook Calendar Connection')
+@ApiTags('Connections')
 @ApiBearerAuth()
 @Controller('calendar/outlook')
 export class OutlookCalendarController {

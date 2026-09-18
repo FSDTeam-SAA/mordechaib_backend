@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model } from 'mongoose';
 import path from 'path';
@@ -17,8 +21,31 @@ import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-trans
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { GetCallIntelligenceQueryDto } from './dto/get-call-intelligence-query.dto';
+import {
+  CallIntelligenceItemKind,
+  ListCallIntelligenceQueryDto,
+} from './dto/list-call-intelligence-query.dto';
 
 type LeanRecord = Record<string, unknown> & { _id: unknown };
+
+type CallIntelligenceListItem = {
+  source: AiProposalSource;
+  kind: CallIntelligenceItemKind;
+  title: string;
+  platform?: string;
+  status?: unknown;
+  aiStatus?: unknown;
+  direction?: unknown;
+  fromNumber?: unknown;
+  toNumber?: unknown;
+  occurredAt?: unknown;
+  durationSeconds?: unknown;
+  botName?: unknown;
+  transcriptAvailable: boolean;
+  audioAvailable: boolean;
+  createdAt?: unknown;
+  detailsPath: string;
+};
 
 @Injectable()
 export class CallIntelligenceService {
@@ -40,6 +67,130 @@ export class CallIntelligenceService {
     private readonly sourceAnalyses: SourceAnalysesRepository,
     private readonly aiActions: AiActionsService,
   ) {}
+
+  async list(organizationId: string, query: ListCallIntelligenceQueryDto) {
+    const includeCalls =
+      (!query.kind || query.kind === CallIntelligenceItemKind.CALL) &&
+      (!query.sourceType ||
+        query.sourceType === AiProposalSourceType.CALL_TRANSCRIPT);
+    const includeGoogleMeet =
+      (!query.kind || query.kind === CallIntelligenceItemKind.MEETING) &&
+      (!query.sourceType ||
+        query.sourceType === AiProposalSourceType.GOOGLE_MEET);
+    const includeZoom =
+      (!query.kind || query.kind === CallIntelligenceItemKind.MEETING) &&
+      (!query.sourceType ||
+        query.sourceType === AiProposalSourceType.ZOOM_MEETING);
+    const offset = (query.page - 1) * query.limit;
+    const sourceLimit = offset + query.limit;
+
+    const [
+      recordings,
+      meetings,
+      legacyZoomMeetings,
+      callTotal,
+      meetingTotal,
+      legacyZoomTotal,
+    ] = await Promise.all([
+      includeCalls
+        ? this.listDocuments(
+            this.callRecordings,
+            { organizationId },
+            sourceLimit,
+          )
+        : Promise.resolve([]),
+      includeGoogleMeet || includeZoom
+        ? this.listDocuments(
+            this.meetingBots,
+            {
+              organizationId,
+              ...(includeGoogleMeet && includeZoom
+                ? {}
+                : {
+                    platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
+                  }),
+            },
+            sourceLimit,
+          )
+        : Promise.resolve([]),
+      includeZoom
+        ? this.listLegacyZoomDocuments(organizationId, sourceLimit)
+        : Promise.resolve([]),
+      includeCalls
+        ? this.countDocuments(this.callRecordings, { organizationId })
+        : Promise.resolve(0),
+      includeGoogleMeet || includeZoom
+        ? this.countDocuments(this.meetingBots, {
+            organizationId,
+            ...(includeGoogleMeet && includeZoom
+              ? {}
+              : { platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM' }),
+          })
+        : Promise.resolve(0),
+      includeZoom
+        ? this.countLegacyZoomDocuments(organizationId)
+        : Promise.resolve(0),
+    ]);
+
+    const callSids = recordings
+      .map((recording) => recording.callSid)
+      .filter((value): value is string => typeof value === 'string');
+    const platformMeetingIds = meetings
+      .map((meeting) => this.stringMetadataValue(meeting, 'platformMeetingId'))
+      .filter((value): value is string => Boolean(value));
+    const [calls, connectedMeetings] = await Promise.all([
+      callSids.length
+        ? this.callLogs
+            .find({ organizationId, callSid: { $in: callSids } })
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+      platformMeetingIds.length
+        ? this.platformMeetings
+            .find({ organizationId, _id: { $in: platformMeetingIds } })
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+    ]);
+    const callsBySid = new Map(
+      (calls as unknown as LeanRecord[]).map((call) => [call.callSid, call]),
+    );
+    const connectedMeetingsById = new Map(
+      (connectedMeetings as unknown as LeanRecord[]).map((meeting) => [
+        String(meeting._id),
+        meeting,
+      ]),
+    );
+
+    const items = [
+      ...recordings.map((recording) =>
+        this.callListItem(recording, callsBySid.get(recording.callSid)),
+      ),
+      ...meetings.map((meeting) =>
+        this.meetingListItem(
+          meeting,
+          connectedMeetingsById.get(
+            this.stringMetadataValue(meeting, 'platformMeetingId') || '',
+          ),
+          false,
+        ),
+      ),
+      ...legacyZoomMeetings.map((meeting) =>
+        this.meetingListItem(meeting, undefined, true),
+      ),
+    ]
+      .sort((left, right) => this.listItemTime(right) - this.listItemTime(left))
+      .slice(offset, offset + query.limit);
+    const total = callTotal + meetingTotal + legacyZoomTotal;
+
+    return {
+      items,
+      total,
+      page: query.page,
+      limit: query.limit,
+      pages: Math.ceil(total / query.limit),
+    };
+  }
 
   async getDetails(
     organizationId: string,
@@ -116,7 +267,10 @@ export class CallIntelligenceService {
     };
   }
 
-  createReport(details: Awaited<ReturnType<CallIntelligenceService['getDetails']>>, format: 'html' | 'json') {
+  createReport(
+    details: Awaited<ReturnType<CallIntelligenceService['getDetails']>>,
+    format: 'html' | 'json',
+  ) {
     if (format === 'json') {
       return {
         content: Buffer.from(JSON.stringify(details, null, 2), 'utf8'),
@@ -146,6 +300,150 @@ export class CallIntelligenceService {
       return this.getCallMedia(organizationId, source, includeTranscript);
     }
     return this.getMeetingMedia(organizationId, source, includeTranscript);
+  }
+
+  private listDocuments<T>(
+    model: Model<T>,
+    filter: Record<string, unknown>,
+    limit: number,
+  ): Promise<LeanRecord[]> {
+    return model
+      .find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .lean()
+      .exec() as unknown as Promise<LeanRecord[]>;
+  }
+
+  private countDocuments<T>(model: Model<T>, filter: Record<string, unknown>) {
+    return model.countDocuments(filter).exec();
+  }
+
+  private listLegacyZoomDocuments(
+    organizationId: string,
+    limit: number,
+  ): Promise<LeanRecord[]> {
+    return this.legacyZoomMeetings
+      .aggregate([
+        { $match: { organizationId } },
+        {
+          $lookup: {
+            from: 'meeting_bots',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'modernMeeting',
+          },
+        },
+        { $match: { modernMeeting: { $eq: [] } } },
+        { $unset: 'modernMeeting' },
+        { $sort: { createdAt: -1, _id: -1 } },
+        { $limit: limit },
+      ])
+      .exec() as unknown as Promise<LeanRecord[]>;
+  }
+
+  private async countLegacyZoomDocuments(organizationId: string) {
+    const result = await this.legacyZoomMeetings
+      .aggregate([
+        { $match: { organizationId } },
+        {
+          $lookup: {
+            from: 'meeting_bots',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'modernMeeting',
+          },
+        },
+        { $match: { modernMeeting: { $eq: [] } } },
+        { $count: 'total' },
+      ])
+      .exec();
+    return result[0]?.total || 0;
+  }
+
+  private callListItem(
+    recording: LeanRecord,
+    call?: LeanRecord,
+  ): CallIntelligenceListItem {
+    const source: AiProposalSource = {
+      type: AiProposalSourceType.CALL_TRANSCRIPT,
+      id: String(recording._id),
+    };
+    const fromNumber = call?.fromNumber;
+    const toNumber = call?.toNumber;
+    return {
+      source,
+      kind: CallIntelligenceItemKind.CALL,
+      title:
+        typeof fromNumber === 'string' && typeof toNumber === 'string'
+          ? `${fromNumber} to ${toNumber}`
+          : `Call ${String(recording.recordingSid || recording._id)}`,
+      status: call?.status ?? recording.recordingStatus,
+      aiStatus: recording.aiStatus,
+      direction: call?.direction,
+      fromNumber,
+      toNumber,
+      occurredAt: call?.startedAt ?? recording.createdAt,
+      durationSeconds: call?.durationSeconds ?? recording.recordingDuration,
+      transcriptAvailable: recording.aiStatus === 'COMPLETED',
+      audioAvailable: Boolean(recording.localFilePath),
+      createdAt: recording.createdAt,
+      detailsPath: this.detailsPath(source),
+    };
+  }
+
+  private meetingListItem(
+    meeting: LeanRecord,
+    connectedMeeting?: LeanRecord,
+    legacy = false,
+  ): CallIntelligenceListItem {
+    const platform = legacy ? 'ZOOM' : String(meeting.platform || 'ZOOM');
+    const source: AiProposalSource = {
+      type:
+        platform === 'GOOGLE_MEET'
+          ? AiProposalSourceType.GOOGLE_MEET
+          : AiProposalSourceType.ZOOM_MEETING,
+      id: String(meeting._id),
+    };
+    return {
+      source,
+      kind: CallIntelligenceItemKind.MEETING,
+      title:
+        (typeof connectedMeeting?.title === 'string' &&
+          connectedMeeting.title) ||
+        (typeof meeting.botName === 'string' && meeting.botName) ||
+        `${platform === 'GOOGLE_MEET' ? 'Google Meet' : 'Zoom'} meeting`,
+      platform,
+      status: meeting.status,
+      occurredAt:
+        meeting.transcriptCompletedAt || meeting.joinAt || meeting.createdAt,
+      durationSeconds:
+        typeof connectedMeeting?.durationMinutes === 'number'
+          ? connectedMeeting.durationMinutes * 60
+          : undefined,
+      botName: meeting.botName,
+      transcriptAvailable: Boolean(
+        meeting.transcriptId || meeting.transcriptCompletedAt,
+      ),
+      audioAvailable: !legacy && Boolean(meeting.recordingId),
+      createdAt: meeting.createdAt,
+      detailsPath: this.detailsPath(source),
+    };
+  }
+
+  private stringMetadataValue(record: LeanRecord, key: string) {
+    if (!record.metadata || typeof record.metadata !== 'object') return;
+    const value = (record.metadata as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  private detailsPath(source: AiProposalSource) {
+    return `/api/v1/call-intelligence/${source.id}/details?sourceType=${source.type}`;
+  }
+
+  private listItemTime(item: CallIntelligenceListItem) {
+    const date = new Date(String(item.createdAt || item.occurredAt || 0));
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
   }
 
   private async getCallMedia(
@@ -197,9 +495,7 @@ export class CallIntelligenceService {
     includeTranscript: boolean,
   ) {
     const platform =
-      source.type === AiProposalSourceType.GOOGLE_MEET
-        ? 'GOOGLE_MEET'
-        : 'ZOOM';
+      source.type === AiProposalSourceType.GOOGLE_MEET ? 'GOOGLE_MEET' : 'ZOOM';
     const meeting = await this.meetingBots
       .findOne({ _id: source.id, organizationId, platform })
       .lean()

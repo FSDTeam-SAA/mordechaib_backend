@@ -10,7 +10,12 @@ import {
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -29,7 +34,7 @@ import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 import { ZoomAuthService } from './zoom-auth.service';
 
-@ApiTags('Zoom Connection & Manual Bots')
+@ApiTags('Connections')
 @ApiBearerAuth()
 @Controller('zoom-meetings')
 export class ZoomMeetingsController {
@@ -39,6 +44,7 @@ export class ZoomMeetingsController {
   ) {}
 
   @Post()
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   @ApiOperation({
     summary: 'Send a Recall bot to an existing Zoom meeting URL',
@@ -59,6 +65,7 @@ export class ZoomMeetingsController {
   }
 
   @Get()
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   list(
     @CurrentOrg() organization: RequestOrganization,
@@ -122,6 +129,7 @@ export class ZoomMeetingsController {
   }
 
   @Get(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   get(
     @CurrentOrg() organization: RequestOrganization,
@@ -131,6 +139,7 @@ export class ZoomMeetingsController {
   }
 
   @Get(':id/transcript')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   @ApiOperation({ summary: 'Get a Zoom meeting bot transcript' })
   getTranscript(
@@ -145,6 +154,7 @@ export class ZoomMeetingsController {
   }
 
   @Get(':id/audio')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   @ApiOperation({ summary: 'Get a temporary Zoom meeting audio URL' })
   getAudio(
@@ -155,6 +165,7 @@ export class ZoomMeetingsController {
   }
 
   @Patch(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   updateScheduled(
     @CurrentOrg() organization: RequestOrganization,
@@ -170,6 +181,7 @@ export class ZoomMeetingsController {
   }
 
   @Delete(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   cancel(
     @CurrentOrg() organization: RequestOrganization,
@@ -179,6 +191,7 @@ export class ZoomMeetingsController {
   }
 
   @Post(':id/leave')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   leave(
     @CurrentOrg() organization: RequestOrganization,
