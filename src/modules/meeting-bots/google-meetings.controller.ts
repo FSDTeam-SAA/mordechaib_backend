@@ -10,7 +10,12 @@ import {
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -29,7 +34,7 @@ import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 import { GoogleMeetAuthService } from './google-meet-auth.service';
 
-@ApiTags('Google Meet Connection & Manual Bots')
+@ApiTags('Connections')
 @ApiBearerAuth()
 @Controller('google-meetings')
 export class GoogleMeetingsController {
@@ -93,6 +98,7 @@ export class GoogleMeetingsController {
   }
 
   @Post()
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   @ApiOperation({
     summary: 'Send a Recall bot to an existing Google Meet URL',
@@ -113,6 +119,7 @@ export class GoogleMeetingsController {
   }
 
   @Get()
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   list(
     @CurrentOrg() organization: RequestOrganization,
@@ -126,6 +133,7 @@ export class GoogleMeetingsController {
   }
 
   @Get(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   get(
     @CurrentOrg() organization: RequestOrganization,
@@ -135,6 +143,7 @@ export class GoogleMeetingsController {
   }
 
   @Patch(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   updateScheduled(
     @CurrentOrg() organization: RequestOrganization,
@@ -150,6 +159,7 @@ export class GoogleMeetingsController {
   }
 
   @Delete(':id')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   cancel(
     @CurrentOrg() organization: RequestOrganization,
@@ -163,6 +173,7 @@ export class GoogleMeetingsController {
   }
 
   @Post(':id/leave')
+  @ApiExcludeEndpoint()
   @UseGuards(OrganizationGuard)
   leave(
     @CurrentOrg() organization: RequestOrganization,

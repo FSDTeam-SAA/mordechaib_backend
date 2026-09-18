@@ -2,12 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeController,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,6 +36,7 @@ import {
 } from './dto/get-action-center-query.dto';
 
 @ApiTags('AI Action Center')
+@ApiExcludeController()
 @ApiBearerAuth()
 @Controller(['ai-actions/sources', 'call-intelligence'])
 @UseGuards(OrganizationGuard, RolesGuard)
@@ -38,6 +45,7 @@ export class SourceActionCenterController {
   constructor(private readonly service: AiActionsService) {}
 
   @Get(':sourceId/action-center')
+  @Header('Deprecation', 'true')
   @ApiOperation({
     summary: 'Get source-specific priority task and meeting proposals',
     description:
@@ -57,6 +65,7 @@ export class SourceActionCenterController {
 }
 
 @ApiTags('AI Action Proposals')
+@ApiExcludeController()
 @ApiBearerAuth()
 @Controller('ai-actions/proposals')
 @UseGuards(OrganizationGuard, RolesGuard)
@@ -65,6 +74,7 @@ export class AiActionsController {
   constructor(private readonly service: AiActionsService) {}
 
   @Get()
+  @Header('Deprecation', 'true')
   @ApiOperation({ summary: 'List organization AI action proposals' })
   list(
     @CurrentOrg() organization: RequestOrganization,
@@ -74,6 +84,7 @@ export class AiActionsController {
   }
 
   @Get(':id')
+  @Header('Deprecation', 'true')
   @ApiOperation({ summary: 'Get an AI action proposal' })
   get(
     @CurrentOrg() organization: RequestOrganization,
@@ -83,6 +94,7 @@ export class AiActionsController {
   }
 
   @Post(':id/action')
+  @Header('Deprecation', 'true')
   @ApiOperation({
     summary: 'Approve, reject, or retry an AI action proposal',
     description:

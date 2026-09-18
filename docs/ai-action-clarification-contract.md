@@ -37,21 +37,21 @@ Automatic execution without approval is not implemented.
 
 ### Main Backend calls AI Backend
 
-| Method and AI Backend route | When | Required raw response |
-| --- | --- | --- |
-| `POST /api/v1/ai/jobs/analyze-source` | A meeting/call transcript or user message is ready | `{ requestId, source, actions, analysis }` |
-| `POST /api/v1/ai/actions/refine` | A clarification answer was submitted | `{ action }` |
-| `POST /api/v1/ai/agents/events` | An agent was created, changed, disabled, or activated | `{ eventId, accepted: true }` |
+| Method and AI Backend route           | When                                                  | Required raw response                      |
+| ------------------------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| `POST /api/v1/ai/jobs/analyze-source` | A meeting/call transcript or user message is ready    | `{ requestId, source, actions, analysis }` |
+| `POST /api/v1/ai/actions/refine`      | A clarification answer was submitted                  | `{ action }`                               |
+| `POST /api/v1/ai/agents/events`       | An agent was created, changed, disabled, or activated | `{ eventId, accepted: true }`              |
 
 ### AI Backend calls Main Backend
 
-| Method and Main Backend route | When | Response shape |
-| --- | --- | --- |
+| Method and Main Backend route                         | When                                        | Response shape                                                          |
+| ----------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
 | `GET /api/v1/ai-internal/agents?limit=100&cursor=...` | Startup and periodic catalog reconciliation | Main Backend envelope: `{ success: true, data: { items, nextCursor } }` |
 
 The catalog read is the only Main Backend route the AI Backend currently needs
 to call. The AI Backend must not call `/tasks`, `/meetings`, `/calendar/events`,
-or `/ai-actions/proposals`.
+or `/call-intelligence/proposals`.
 
 ### Frontend calls Main Backend
 
@@ -83,13 +83,13 @@ Content-Type: application/json
 
 ## 4. Source triggers and canonical IDs
 
-| Source type | Trigger in current code | Canonical `source.id` |
-| --- | --- | --- |
-| `GOOGLE_MEET` | Recall `transcript.done` is stored | Main Backend `meeting_bots._id` |
-| `ZOOM_MEETING` | Recall `transcript.done` is stored | Main Backend meeting document `_id`; legacy Zoom can use `zoom_meetings._id` |
-| `CALL_TRANSCRIPT` | Twilio recording is stored, transcribed, and queued | Main Backend `call_recordings._id` |
-| `CALL_AUDIO` | Supported by the contract only when explicitly queued | Main Backend `call_recordings._id` |
-| `USER_MESSAGE` | Frontend message is stored and queued | Main Backend `messages._id` |
+| Source type       | Trigger in current code                               | Canonical `source.id`                                                        |
+| ----------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GOOGLE_MEET`     | Recall `transcript.done` is stored                    | Main Backend `meeting_bots._id`                                              |
+| `ZOOM_MEETING`    | Recall `transcript.done` is stored                    | Main Backend meeting document `_id`; legacy Zoom can use `zoom_meetings._id` |
+| `CALL_TRANSCRIPT` | Twilio recording is stored, transcribed, and queued   | Main Backend `call_recordings._id`                                           |
+| `CALL_AUDIO`      | Supported by the contract only when explicitly queued | Main Backend `call_recordings._id`                                           |
+| `USER_MESSAGE`    | Frontend message is stored and queued                 | Main Backend `messages._id`                                                  |
 
 Provider IDs such as Twilio `CallSid`, `RecordingSid`, Recall recording ID,
 Zoom meeting number, or Google event ID must never replace the canonical
@@ -489,52 +489,52 @@ person's display name in `invitees`.
 
 ### 6.5 Top-level response rules
 
-| Field | Rule |
-| --- | --- |
-| `requestId` | Required, maximum 200 chars; exactly equals request `jobId` |
-| `source.type` | Exactly equals request `source.type` |
-| `source.id` | Exactly equals request `source.id` |
-| `actions` | Required array; may be empty when no supported action exists |
-| `analysis` | Required even when `actions` is empty |
+| Field         | Rule                                                         |
+| ------------- | ------------------------------------------------------------ |
+| `requestId`   | Required, maximum 200 chars; exactly equals request `jobId`  |
+| `source.type` | Exactly equals request `source.type`                         |
+| `source.id`   | Exactly equals request `source.id`                           |
+| `actions`     | Required array; may be empty when no supported action exists |
+| `analysis`    | Required even when `actions` is empty                        |
 
 The response must not contain `job_id`, `submitted_proposals`,
 `backend_result`, or a Main Backend callback result.
 
 ### 6.6 Analysis rules
 
-| Field | Rule |
-| --- | --- |
-| `summary` | Optional trimmed string, maximum 10,000 chars |
-| `overallConfidence` | Optional finite number `0..1`; if absent and actions exist, Main Backend uses their mean confidence |
-| `sentimentAnalysis.score.positive` | Required finite number `0..100` |
-| `sentimentAnalysis.score.neutral` | Required finite number `0..100` |
-| `sentimentAnalysis.score.negative` | Required finite number `0..100` |
-| Sentiment sum | Must equal `100`, tolerance `0.01` |
-| `customerIntelligence.healthScore` | Required finite number `0..100` |
-| `customerIntelligence.riskLevel` | Required non-empty string; Main Backend uppercases it |
-| `patternDetection` | Required object; supported optional scores are `valueProposition`, `pricingObjection`, `budgetApproval`, `marketTrends`, `followUpRequests`, each `0..100` |
-| `classifiedSegments` | Optional, maximum 500 items with unique IDs |
-| Segment category | `OBJECTION`, `COMMITMENT`, or `ACTION_ITEM` |
-| Segment `id` / `text` | Required; maximum 128 / 5,000 chars |
-| Segment time | Optional non-negative seconds; end cannot precede start |
-| Segment confidence | Optional finite number `0..1` |
+| Field                              | Rule                                                                                                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `summary`                          | Optional trimmed string, maximum 10,000 chars                                                                                                              |
+| `overallConfidence`                | Optional finite number `0..1`; if absent and actions exist, Main Backend uses their mean confidence                                                        |
+| `sentimentAnalysis.score.positive` | Required finite number `0..100`                                                                                                                            |
+| `sentimentAnalysis.score.neutral`  | Required finite number `0..100`                                                                                                                            |
+| `sentimentAnalysis.score.negative` | Required finite number `0..100`                                                                                                                            |
+| Sentiment sum                      | Must equal `100`, tolerance `0.01`                                                                                                                         |
+| `customerIntelligence.healthScore` | Required finite number `0..100`                                                                                                                            |
+| `customerIntelligence.riskLevel`   | Required non-empty string; Main Backend uppercases it                                                                                                      |
+| `patternDetection`                 | Required object; supported optional scores are `valueProposition`, `pricingObjection`, `budgetApproval`, `marketTrends`, `followUpRequests`, each `0..100` |
+| `classifiedSegments`               | Optional, maximum 500 items with unique IDs                                                                                                                |
+| Segment category                   | `OBJECTION`, `COMMITMENT`, or `ACTION_ITEM`                                                                                                                |
+| Segment `id` / `text`              | Required; maximum 128 / 5,000 chars                                                                                                                        |
+| Segment time                       | Optional non-negative seconds; end cannot precede start                                                                                                    |
+| Segment confidence                 | Optional finite number `0..1`                                                                                                                              |
 
 Omitted pattern score means "not evaluated or insufficient evidence". Zero
 means "evaluated and not detected".
 
 ### 6.7 Action rules
 
-| Field | Rule |
-| --- | --- |
-| `actionId` | Required trimmed string, maximum 128 chars, unique in this response, stable on every retry |
-| `actionType` | Exactly `CREATE_TASK` or `SCHEDULE_MEETING` |
-| `proposedByAgent.id` | Active Main Backend agent MongoDB ObjectId from synchronized catalog |
-| `proposedByAgent.name` | Required catalog display name, maximum 200 chars |
-| `proposedByAgent.type` | One of the allowed catalog types |
-| `payload` | One complete action object; rules are in section 7 |
-| `confidence` | Required finite number `0..1` |
-| `evidence` | Optional array; every item requires `text` (maximum 5,000 chars) |
-| `clarificationQuestions` | Optional, maximum 10 items with unique IDs |
+| Field                    | Rule                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `actionId`               | Required trimmed string, maximum 128 chars, unique in this response, stable on every retry |
+| `actionType`             | Exactly `CREATE_TASK` or `SCHEDULE_MEETING`                                                |
+| `proposedByAgent.id`     | Active Main Backend agent MongoDB ObjectId from synchronized catalog                       |
+| `proposedByAgent.name`   | Required catalog display name, maximum 200 chars                                           |
+| `proposedByAgent.type`   | One of the allowed catalog types                                                           |
+| `payload`                | One complete action object; rules are in section 7                                         |
+| `confidence`             | Required finite number `0..1`                                                              |
+| `evidence`               | Optional array; every item requires `text` (maximum 5,000 chars)                           |
+| `clarificationQuestions` | Optional, maximum 10 items with unique IDs                                                 |
 
 Each clarification question has:
 
@@ -573,21 +573,21 @@ estimatedDurationMinutes, stakeholderIds, dependencies,
 requiredAttachments, reminder, subtasks, tags
 ```
 
-| Field | Required/rules |
-| --- | --- |
-| `title` | Required string, `1..200` chars |
-| `description` | Optional string, max 10,000 |
-| `assignedToUserId` | Optional string, max 100; if supplied, must be a MongoDB user ID in this organization |
-| `department` | Optional: `SALES`, `FINANCE`, `OPERATIONS`, `SUPPORT`, `DESIGN`, `MARKETING`, `OTHER` |
-| `priority` | Optional: `LOW`, `MEDIUM`, `HIGH` |
-| `dueDate` | Optional strict ISO-8601 datetime |
-| `estimatedDurationMinutes` | Optional integer `0..525600` |
-| `stakeholderIds` | Optional unique string array, max 100 items |
-| `dependencies` | Optional max 100; `{ title: string(1..200), isComplete?: boolean }` |
-| `requiredAttachments` | Optional max 100; `{ name: string(1..200), isComplete?: boolean }` |
-| `reminder` | Optional; `{ enabled?: boolean, minutesBeforeDue?: integer(0..40320) }` |
-| `subtasks` | Optional max 100; `{ title: string(1..200), isComplete?: boolean, dueDate?: ISO-8601 }` |
-| `tags` | Optional unique string array, max 50 items, max 50 chars each |
+| Field                      | Required/rules                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `title`                    | Required string, `1..200` chars                                                         |
+| `description`              | Optional string, max 10,000                                                             |
+| `assignedToUserId`         | Optional string, max 100; if supplied, must be a MongoDB user ID in this organization   |
+| `department`               | Optional: `SALES`, `FINANCE`, `OPERATIONS`, `SUPPORT`, `DESIGN`, `MARKETING`, `OTHER`   |
+| `priority`                 | Optional: `LOW`, `MEDIUM`, `HIGH`                                                       |
+| `dueDate`                  | Optional strict ISO-8601 datetime                                                       |
+| `estimatedDurationMinutes` | Optional integer `0..525600`                                                            |
+| `stakeholderIds`           | Optional unique string array, max 100 items                                             |
+| `dependencies`             | Optional max 100; `{ title: string(1..200), isComplete?: boolean }`                     |
+| `requiredAttachments`      | Optional max 100; `{ name: string(1..200), isComplete?: boolean }`                      |
+| `reminder`                 | Optional; `{ enabled?: boolean, minutesBeforeDue?: integer(0..40320) }`                 |
+| `subtasks`                 | Optional max 100; `{ title: string(1..200), isComplete?: boolean, dueDate?: ISO-8601 }` |
+| `tags`                     | Optional unique string array, max 50 items, max 50 chars each                           |
 
 Do not send `status`, uploaded `attachments`, or `aiAssistance`; those fields
 exist in the general task DTO but are deliberately excluded from AI proposal
@@ -603,18 +603,18 @@ platform, title, agenda, startsAt, durationMinutes, timezone, invitees,
 reminderMinutesBeforeStart, sendBot, botName
 ```
 
-| Field | Required/rules |
-| --- | --- |
-| `platform` | Required: `ZOOM` or `GOOGLE_MEET` |
-| `title` | Required string, `1..200` chars |
-| `agenda` | Optional string, max 2,000 |
-| `startsAt` | Required when no clarification remains; strict absolute ISO-8601 ending in `Z` or an explicit `+/-HH:MM` offset |
-| `durationMinutes` | Optional integer `1..1440` |
-| `timezone` | Required when no clarification remains; valid IANA timezone, max 100 chars |
-| `invitees` | Optional unique valid-email array, max 100; values are trimmed and lowercased |
-| `reminderMinutesBeforeStart` | Optional integer `0..40320` |
-| `sendBot` | Optional boolean; defaults to `true` |
-| `botName` | Optional string, max 100 |
+| Field                        | Required/rules                                                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `platform`                   | Required: `ZOOM` or `GOOGLE_MEET`                                                                               |
+| `title`                      | Required string, `1..200` chars                                                                                 |
+| `agenda`                     | Optional string, max 2,000                                                                                      |
+| `startsAt`                   | Required when no clarification remains; strict absolute ISO-8601 ending in `Z` or an explicit `+/-HH:MM` offset |
+| `durationMinutes`            | Optional integer `1..1440`                                                                                      |
+| `timezone`                   | Required when no clarification remains; valid IANA timezone, max 100 chars                                      |
+| `invitees`                   | Optional unique valid-email array, max 100; values are trimmed and lowercased                                   |
+| `reminderMinutesBeforeStart` | Optional integer `0..40320`                                                                                     |
+| `sendBot`                    | Optional boolean; defaults to `true`                                                                            |
+| `botName`                    | Optional string, max 100                                                                                        |
 
 Do not send `idempotencyKey` or `metadata`; those general meeting-create fields
 are excluded from AI proposals.
@@ -652,7 +652,7 @@ typed fields. The final refined payload is strictly whitelisted.
 ### 8.1 Explicit frontend answer: Frontend -> Main Backend
 
 ```http
-POST {MAIN_BACKEND_URL}/api/v1/ai-actions/proposals/:proposalMongoId/clarifications
+POST {MAIN_BACKEND_URL}/api/v1/call-intelligence/proposals/:proposalMongoId/clarifications
 Authorization: Bearer <OWNER-or-ADMIN-token>
 Content-Type: application/json
 ```
@@ -863,14 +863,17 @@ Execution failure:       EXECUTING -> FAILED -> EXECUTING (manual retry)
 
 Frontend routes, all OWNER/ADMIN authenticated:
 
-| Route | Body/use |
-| --- | --- |
-| `GET /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION&page=1&limit=20` | List proposals needing answers |
-| `GET /api/v1/ai-actions/proposals?status=PENDING&page=1&limit=20` | List ready proposals |
-| `GET /api/v1/ai-actions/proposals/:id` | Proposal detail |
-| `POST /api/v1/ai-actions/proposals/:id/clarifications` | `{ "questionId": "...", "answer": "..." }` |
-| `POST /api/v1/ai-actions/proposals/:id/action` | `{ "action": "APPROVE" }`, `{ "action": "REJECT", "reason": "..." }`, or `{ "action": "RETRY" }` |
-| `GET /api/v1/ai-actions/sources/:sourceId/action-center?sourceType=GOOGLE_MEET&status=NEEDS_CLARIFICATION` | Compact task/meeting cards with clarification questions and submitted answers |
+| Canonical route                                                                                     | Body/use                                                                                |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `GET /api/v1/call-intelligence/proposals?status=NEEDS_CLARIFICATION&page=1&limit=20`                | List proposals needing answers                                                          |
+| `GET /api/v1/call-intelligence/proposals?status=PENDING&page=1&limit=20`                            | List ready proposals                                                                    |
+| `GET /api/v1/call-intelligence/proposals/:id`                                                       | Proposal detail                                                                         |
+| `POST /api/v1/call-intelligence/proposals/:id/clarifications`                                      | Submit one clarification answer and queue AI refinement                                 |
+| `POST /api/v1/call-intelligence/proposals/:id/action`                                               | Submit `APPROVE`, `REJECT`, or `RETRY`                                                   |
+| `GET /api/v1/call-intelligence/:sourceId/details?sourceType=GOOGLE_MEET&status=NEEDS_CLARIFICATION` | Call/meeting intelligence with compact proposal cards, questions, and answers           |
+
+The previous `/api/v1/ai-actions/...` endpoints remain temporary deprecated
+compatibility aliases and are hidden from Swagger.
 
 Approval success returns the Main Backend envelope containing both the final
 proposal and target:
@@ -918,14 +921,14 @@ implemented in the current code.
 
 AI Backend should use:
 
-| Status | Meaning to Main Backend |
-| --- | --- |
-| `200` | Valid raw JSON response |
-| `400` / `422` | Permanent request/contract problem; queue does not keep retrying |
-| `401` / `403` | Shared-secret problem; permanent until configuration is fixed |
-| `408` | Temporary timeout; retryable |
-| `429` | Temporary capacity/rate limit; retryable |
-| `500` / `502` / `503` / `504` | Temporary server/dependency failure; retryable |
+| Status                        | Meaning to Main Backend                                          |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `200`                         | Valid raw JSON response                                          |
+| `400` / `422`                 | Permanent request/contract problem; queue does not keep retrying |
+| `401` / `403`                 | Shared-secret problem; permanent until configuration is fixed    |
+| `408`                         | Temporary timeout; retryable                                     |
+| `429`                         | Temporary capacity/rate limit; retryable                         |
+| `500` / `502` / `503` / `504` | Temporary server/dependency failure; retryable                   |
 
 Main Backend frontend/API errors use:
 
@@ -945,26 +948,26 @@ These are the legacy/common shapes that do not match the reviewed Main
 Backend contract. The AI Backend implementation and its tests must remove or
 adapt them.
 
-| Mismatch | Required fix |
-| --- | --- |
-| Response uses `job_id` | Return camel-case `requestId` equal to request `jobId` |
-| Response uses `analysis.tasks` or `submitted_proposals` | Return top-level `actions`; never post proposals back |
-| AI calls a Main Backend proposal/task/meeting write route | Remove the callback; return proposal JSON only |
-| AI ignores inline `context` or tries to fetch old source-context routes | Analyze the supplied `context` |
-| Missing `POST /api/v1/ai/actions/refine` | Implement it with the exact request/response above |
-| AI returns tool names such as `tasks.create_task` or `calendar.create_event` | Map to `CREATE_TASK` or `SCHEDULE_MEETING` |
-| AI returns email/CRM actions | Keep narrative-only for this MVP; do not add them to `actions` |
-| Agent ID is `operations-agent`, an agent name, or AI-generated | Use the synchronized active MongoDB ObjectId |
-| Refinement assigns a new agent | Preserve the stored agent snapshot |
-| Refinement guesses `actionId` or always returns `001` | Recover and preserve it from `proposalId` |
-| Meeting uses natural-language `startsAt` | Resolve to an absolute ISO instant or ask clarification |
-| Meeting guesses midnight when only a date is known | Omit `startsAt` and ask for time |
-| Meeting hard-codes `Asia/Dhaka`, UTC, or server timezone | Use explicit source timezone, then `effectiveTimezone` |
-| `invitees` contains `Hassan` or another display name | Use valid email addresses only, or ask clarification |
-| AI response has `{ success, data }` wrapper | Return raw JSON from AI routes |
-| Agent catalog bootstrap reads top-level `items` | Read Main Backend `data.items` and `data.nextCursor` |
-| Ready payload contains unsupported DTO fields | Apply the exact whitelist in section 7 |
-| Empty actions are returned while catalog bootstrap failed | Return retryable `503`; empty actions are for a genuine no-action result |
+| Mismatch                                                                     | Required fix                                                             |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Response uses `job_id`                                                       | Return camel-case `requestId` equal to request `jobId`                   |
+| Response uses `analysis.tasks` or `submitted_proposals`                      | Return top-level `actions`; never post proposals back                    |
+| AI calls a Main Backend proposal/task/meeting write route                    | Remove the callback; return proposal JSON only                           |
+| AI ignores inline `context` or tries to fetch old source-context routes      | Analyze the supplied `context`                                           |
+| Missing `POST /api/v1/ai/actions/refine`                                     | Implement it with the exact request/response above                       |
+| AI returns tool names such as `tasks.create_task` or `calendar.create_event` | Map to `CREATE_TASK` or `SCHEDULE_MEETING`                               |
+| AI returns email/CRM actions                                                 | Keep narrative-only for this MVP; do not add them to `actions`           |
+| Agent ID is `operations-agent`, an agent name, or AI-generated               | Use the synchronized active MongoDB ObjectId                             |
+| Refinement assigns a new agent                                               | Preserve the stored agent snapshot                                       |
+| Refinement guesses `actionId` or always returns `001`                        | Recover and preserve it from `proposalId`                                |
+| Meeting uses natural-language `startsAt`                                     | Resolve to an absolute ISO instant or ask clarification                  |
+| Meeting guesses midnight when only a date is known                           | Omit `startsAt` and ask for time                                         |
+| Meeting hard-codes `Asia/Dhaka`, UTC, or server timezone                     | Use explicit source timezone, then `effectiveTimezone`                   |
+| `invitees` contains `Hassan` or another display name                         | Use valid email addresses only, or ask clarification                     |
+| AI response has `{ success, data }` wrapper                                  | Return raw JSON from AI routes                                           |
+| Agent catalog bootstrap reads top-level `items`                              | Read Main Backend `data.items` and `data.nextCursor`                     |
+| Ready payload contains unsupported DTO fields                                | Apply the exact whitelist in section 7                                   |
+| Empty actions are returned while catalog bootstrap failed                    | Return retryable `503`; empty actions are for a genuine no-action result |
 
 ## 13. Acceptance tests
 
