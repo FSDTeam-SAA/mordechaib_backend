@@ -188,6 +188,8 @@ export class AiActionsService {
         status: query.status,
         actionType: query.actionType,
         proposedByAgentId: query.proposedByAgentId?.trim(),
+        sourceId: query.sourceId,
+        sourceType: query.sourceType,
       },
     );
     return {

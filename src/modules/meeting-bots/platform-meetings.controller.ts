@@ -40,7 +40,7 @@ class ProvisionMeetingBotDto {
   botName?: string;
 }
 
-@ApiTags('Connected Meetings')
+@ApiTags('Meetings')
 @ApiBearerAuth()
 @Controller('meetings')
 @UseGuards(OrganizationGuard)

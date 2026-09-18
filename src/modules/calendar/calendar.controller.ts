@@ -19,7 +19,6 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { RequestUser } from '../../common/types/request-context.type';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
 import { ListCalendarEventsQueryDto } from './dto/list-calendar-events-query.dto';
-import { SetDefaultCalendarDto } from './dto/set-default-calendar.dto';
 import { UpdateCalendarEventDto } from './dto/update-calendar-event.dto';
 import { CalendarService } from './calendar.service';
 
@@ -29,23 +28,6 @@ import { CalendarService } from './calendar.service';
 @UseGuards(OrganizationGuard)
 export class CalendarController {
   constructor(private readonly calendarService: CalendarService) {}
-
-  @Get('connections')
-  @ApiOperation({ summary: 'List Google and Outlook calendar connections' })
-  connections(@CurrentOrg() org: { id: string }) {
-    return this.calendarService.listConnections(org.id);
-  }
-
-  @Patch('default')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Select the organization default calendar' })
-  setDefault(
-    @CurrentOrg() org: { id: string },
-    @Body() dto: SetDefaultCalendarDto,
-  ) {
-    return this.calendarService.setDefault(org.id, dto.provider);
-  }
 
   @Post('events')
   @UseGuards(RolesGuard)
