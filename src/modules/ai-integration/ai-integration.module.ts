@@ -61,6 +61,6 @@ function redisConnection(urlValue: string) {
     AiActionClarificationWorkflowService,
   ],
   controllers: [AiActionClarificationsController],
-  exports: [AiJobsQueue],
+  exports: [AiJobsQueue, AiActionClarificationWorkflowService],
 })
 export class AiIntegrationModule {}

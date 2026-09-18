@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CalendarController } from './calendar.controller';
+import { CalendarConnectionsController } from './calendar-connections.controller';
 import { CalendarService } from './calendar.service';
 import { CalendarRepository } from './calendar.repository';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider';
@@ -9,7 +10,7 @@ import { CalendarEventsRepository } from './calendar-events.repository';
 
 @Module({
   imports: [ConfigModule],
-  controllers: [CalendarController],
+  controllers: [CalendarController, CalendarConnectionsController],
   providers: [
     CalendarService,
     CalendarRepository,

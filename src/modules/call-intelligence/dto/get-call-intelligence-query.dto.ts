@@ -31,25 +31,25 @@ export class GetCallIntelligenceQueryDto {
   @IsEnum(AiActionProposalStatus)
   status: AiActionProposalStatus = AiActionProposalStatus.PENDING;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 20, default: 4 })
+  @ApiPropertyOptional({ type: Number, minimum: 1, maximum: 20, default: 4 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(20)
-  taskLimit = 4;
+  taskLimit: number = 4;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 20, default: 4 })
+  @ApiPropertyOptional({ type: Number, minimum: 1, maximum: 20, default: 4 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(20)
-  meetingLimit = 4;
+  meetingLimit: number = 4;
 
-  @ApiPropertyOptional({ default: false })
+  @ApiPropertyOptional({ type: Boolean, default: false })
   @Transform(({ value }) => value === true || value === 'true')
   @IsOptional()
   @IsBoolean()
-  includeTranscript = false;
+  includeTranscript: boolean = false;
 }
 
 export class DownloadCallIntelligenceReportQueryDto extends GetCallIntelligenceQueryDto {

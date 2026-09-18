@@ -26,6 +26,7 @@ describe('AiActionsService analysis ingestion', () => {
     findActiveAgent: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
+    list: jest.fn(),
     getActionCenter: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
@@ -74,6 +75,32 @@ describe('AiActionsService analysis ingestion', () => {
       {} as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
     );
+  });
+
+  it('filters the canonical proposal list by source identity', async () => {
+    repository.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      pages: 1,
+    });
+
+    await service.list(organizationId, {
+      page: 1,
+      limit: 20,
+      status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+      sourceId: source.id,
+      sourceType: source.type,
+    });
+
+    expect(repository.list).toHaveBeenCalledWith(organizationId, 1, 20, {
+      status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+      actionType: undefined,
+      proposedByAgentId: undefined,
+      sourceId: source.id,
+      sourceType: source.type,
+    });
   });
 
   it('includes clarification questions and answers in action center cards', async () => {
