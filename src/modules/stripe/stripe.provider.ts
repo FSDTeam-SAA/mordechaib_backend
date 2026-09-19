@@ -72,6 +72,12 @@ export class StripeProvider {
     });
   }
 
+  // Account deletion is different from a normal voluntary cancellation:
+  // no future billing may remain after the workspace has been erased.
+  cancelSubscriptionImmediately(stripeSubscriptionId: string) {
+    return this.client.subscriptions.cancel(stripeSubscriptionId);
+  }
+
   // Screen 3 — no charges while paused; Stripe resumes billing on its own
   // at resumesAt (behavior 'void' means no invoices are generated at all
   // during the pause, as opposed to generating and marking them uncollectible).

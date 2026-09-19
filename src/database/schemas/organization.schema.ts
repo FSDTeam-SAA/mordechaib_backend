@@ -8,6 +8,10 @@ export type OrganizationDocument = HydratedDocument<Organization>;
 
 @Schema({ timestamps: true, collection: 'organizations' })
 export class Organization {
+  // Added by Mongoose's timestamps schema option.
+  createdAt?: Date;
+  updatedAt?: Date;
+
   @Prop({ required: true, trim: true })
   name!: string;
 

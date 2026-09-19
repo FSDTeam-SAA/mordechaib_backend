@@ -62,9 +62,17 @@ export type AiAnalysisAction = {
   clarificationQuestions?: AiClarificationQuestionInput[];
 };
 
+export type AiAssistantMessage = {
+  responseId: string;
+  content: string;
+  agent: { id: string; name: string; type: AgentType };
+  runId?: string;
+};
+
 export type AiAnalysisResult = {
   requestId: string;
   source: { type: AiProposalSourceType; id: string };
+  assistantMessage?: AiAssistantMessage;
   actions: AiAnalysisAction[];
   analysis: AiAnalysisSummary;
 };

@@ -13,12 +13,16 @@ import { AuthProfileController } from './auth-profile.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { ProfileAvatarStorageService } from './profile-avatar-storage.service';
+import { AccountDeletionService } from './account-deletion.service';
+import { StripeModule } from '../stripe/stripe.module';
 
 @Module({
   imports: [
     ConfigModule,
     OrganizationsModule,
     AuditLogsModule,
+    StripeModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -35,6 +39,8 @@ import { JwtStrategy } from './jwt.strategy';
     AuthSessionsRepository,
     AuthTokensRepository,
     JwtStrategy,
+    ProfileAvatarStorageService,
+    AccountDeletionService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

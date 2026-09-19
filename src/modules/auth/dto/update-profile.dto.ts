@@ -1,5 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
+  IsDateString,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
@@ -13,6 +15,14 @@ const PHONE_PATTERN = /^\+?[1-9]\d{7,14}$/;
 const LANGUAGE_PATTERN = /^[a-z]{2}(?:-[A-Z]{2})?$/;
 
 export class UpdateProfileDto {
+  @Transform(trimString)
+  @IsDateString(
+    {},
+    { message: 'expectedUpdatedAt must be an ISO-8601 datetime' },
+  )
+  @IsNotEmpty()
+  expectedUpdatedAt!: string;
+
   @Transform(trimString)
   @IsString()
   @MinLength(1)
@@ -49,7 +59,11 @@ export class UpdateProfileDto {
   @IsOptional()
   language?: string | null;
 
-  @Transform(trimString)
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') return value;
+    const avatarUrl = value.trim();
+    return avatarUrl === '' ? undefined : avatarUrl;
+  })
   @IsUrl({ require_protocol: true })
   @MaxLength(500)
   @IsOptional()

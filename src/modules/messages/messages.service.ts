@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import crypto from 'crypto';
 import { createReadStream } from 'fs';
-import { unlink } from 'fs/promises';
+import { readFile, unlink } from 'fs/promises';
 import path from 'path';
 import { Types } from 'mongoose';
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
@@ -43,8 +43,13 @@ type UploadedAttachment = {
   originalName: string;
   mimeType: string;
   checksumSha256: string;
+  processingStatus: MessageProcessingStatus;
+  extractedText?: string;
+  processingError?: string;
   stored: StoredMessageAttachment;
 };
+
+const MAX_EXTRACTED_TEXT_CHARACTERS = 100_000;
 
 @Injectable()
 export class MessagesService {
@@ -139,6 +144,7 @@ export class MessagesService {
         for (const { file, category } of validatedFiles) {
           const originalName = this.safeOriginalName(file.originalname);
           const checksumSha256 = await this.checksum(file.path);
+          const extraction = await this.extractPlainText(file);
           const stored = await this.storage.store({
             organizationId,
             conversationId,
@@ -154,6 +160,7 @@ export class MessagesService {
             originalName,
             mimeType: file.mimetype,
             checksumSha256,
+            ...extraction,
             stored,
           });
         }
@@ -176,6 +183,9 @@ export class MessagesService {
             originalName: attachment.originalName,
             mimeType: attachment.mimeType,
             checksumSha256: attachment.checksumSha256,
+            processingStatus: attachment.processingStatus,
+            extractedText: attachment.extractedText,
+            processingError: attachment.processingError,
             ...attachment.stored,
           })),
         );
@@ -441,6 +451,7 @@ export class MessagesService {
           checksumSha256: attachmentData.checksumSha256,
           status: attachmentData.status,
           processingStatus: attachmentData.processingStatus,
+          processingError: attachmentData.processingError,
           createdAt: attachmentData.createdAt,
         };
       }),
@@ -499,6 +510,34 @@ export class MessagesService {
     });
   }
 
+  private async extractPlainText(file: Express.Multer.File): Promise<{
+    processingStatus: MessageProcessingStatus;
+    extractedText?: string;
+    processingError?: string;
+  }> {
+    if (!['text/plain', 'text/csv'].includes(file.mimetype.toLowerCase())) {
+      return { processingStatus: MessageProcessingStatus.NOT_REQUESTED };
+    }
+    try {
+      const content = (await readFile(file.path, 'utf8'))
+        .replace(/\0/g, '')
+        .slice(0, MAX_EXTRACTED_TEXT_CHARACTERS)
+        .trim();
+      return {
+        processingStatus: MessageProcessingStatus.COMPLETED,
+        ...(content ? { extractedText: content } : {}),
+      };
+    } catch (error) {
+      return {
+        processingStatus: MessageProcessingStatus.FAILED,
+        processingError: (error instanceof Error
+          ? error.message
+          : 'Text extraction failed'
+        ).slice(0, 500),
+      };
+    }
+  }
+
   private async cleanupStored(attachments: UploadedAttachment[]) {
     const results = await Promise.allSettled(
       attachments.map((attachment) =>
@@ -554,5 +593,4 @@ export class MessagesService {
       error.code === 11000
     );
   }
-
 }
