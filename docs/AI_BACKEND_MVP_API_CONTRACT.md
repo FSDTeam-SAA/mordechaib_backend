@@ -685,7 +685,7 @@ POST {AI_SERVICE_URL}/api/v1/ai/actions/refine
 Main Backend calls it after the CEO submits:
 
 ```http
-POST /api/v1/ai-actions/proposals/:id/clarifications
+POST /api/v1/call-intelligence/proposals/:id/clarifications
 ```
 
 Request:
@@ -785,12 +785,11 @@ Frontend calls Main Backend, not AI Backend:
 ```text
 GET  /api/v1/call-intelligence/:sourceId/details?sourceType=GOOGLE_MEET
 GET  /api/v1/call-intelligence/:sourceId/report?sourceType=GOOGLE_MEET&format=html
-GET  /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION
-GET  /api/v1/ai-actions/proposals/:id
-POST /api/v1/ai-actions/proposals/:id/clarifications
-GET  /api/v1/ai-actions/proposals?status=PENDING
-POST /api/v1/ai-actions/proposals/:id/approve
-POST /api/v1/ai-actions/proposals/:id/reject
+GET  /api/v1/call-intelligence/proposals?status=NEEDS_CLARIFICATION
+GET  /api/v1/call-intelligence/proposals/:id
+POST /api/v1/call-intelligence/proposals/:id/clarifications
+GET  /api/v1/call-intelligence/proposals?status=PENDING
+POST /api/v1/call-intelligence/proposals/:id/action
 ```
 
 The details endpoint returns metadata, audio availability/download path,

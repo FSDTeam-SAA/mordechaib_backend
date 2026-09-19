@@ -15,6 +15,8 @@ export type AiActionProposalListFilters = {
   status?: AiActionProposalStatus;
   actionType?: AiActionType;
   proposedByAgentId?: string;
+  sourceId?: string;
+  sourceType?: AiProposalSourceType;
 };
 
 export type AiActionCenterFilters = {
@@ -72,6 +74,8 @@ export class AiActionsRepository {
       ...(filters.proposedByAgentId
         ? { 'proposedByAgent.id': filters.proposedByAgentId }
         : {}),
+      ...(filters.sourceId ? { 'source.id': filters.sourceId } : {}),
+      ...(filters.sourceType ? { 'source.type': filters.sourceType } : {}),
     };
     const [items, total] = await Promise.all([
       this.model
@@ -309,6 +313,24 @@ export class AiActionsRepository {
             clarificationAnswers,
           },
         },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  restoreClarificationAfterRefinementFailure(
+    organizationId: string,
+    id: string,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          status: AiActionProposalStatus.ANALYZING,
+        },
+        { $set: { status: AiActionProposalStatus.NEEDS_CLARIFICATION } },
         { new: true, runValidators: true },
       )
       .lean()

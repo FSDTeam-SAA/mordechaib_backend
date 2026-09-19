@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job, UnrecoverableError } from 'bullmq';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
@@ -22,6 +23,7 @@ import {
 } from '../ai-actions/dto/ai-analysis-result.dto';
 import { AiSourceContextService } from '../ai-internal/ai-source-context.service';
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
+import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
 
 type MessageAnalysisContext = {
   organizationId: string;
@@ -47,6 +49,8 @@ export class AiJobsProcessor extends WorkerHost {
     private readonly jobs: AiJobsQueue,
     private readonly actions: AiActionsService,
     private readonly sourceContext: AiSourceContextService,
+    private readonly config: ConfigService,
+    private readonly clarificationWorkflow: AiActionClarificationWorkflowService,
   ) {
     super();
   }
@@ -71,7 +75,11 @@ export class AiJobsProcessor extends WorkerHost {
         error instanceof Error ? error.stack : undefined,
       );
       if (error instanceof AiServiceHttpError && !error.retryable) {
+        await this.recoverFailedRefinement(job, error);
         throw new UnrecoverableError(error.message);
+      }
+      if (error instanceof UnrecoverableError || this.isFinalAttempt(job)) {
+        await this.recoverFailedRefinement(job, error);
       }
       throw error;
     }
@@ -110,10 +118,6 @@ export class AiJobsProcessor extends WorkerHost {
       if (sourceType === 'USER_MESSAGE') {
         const clarification = this.singleClarification(context);
         if (clarification && context.message?.content?.trim()) {
-          const proposal = (await this.actions.get(
-            organizationId,
-            String(clarification._id),
-          )) as unknown as { requestId: string; [key: string]: unknown };
           const questions = Array.isArray(clarification.clarificationQuestions)
             ? clarification.clarificationQuestions
             : [];
@@ -122,32 +126,18 @@ export class AiJobsProcessor extends WorkerHost {
               !clarification.clarificationAnswers?.[item.id],
           );
           if (question) {
-            const refined = await this.aiService.request<{
-              action: AiAnalysisAction;
-            }>('/api/v1/ai/actions/refine', {
-              requestId: proposal.requestId,
-              proposal,
-              clarification: {
-                questionId: question.id,
-                answer: context.message.content.trim(),
-              },
-            });
-            if (!refined?.action) {
-              throw new UnrecoverableError(
-                'AI service returned an invalid clarification response',
-              );
-            }
-            const refinedProposal = await this.actions.applyClarificationResult(
+            const proposal = await this.clarificationWorkflow.submitAnswer({
               organizationId,
-              String(clarification._id),
-              refined.action,
-            );
+              proposalId: String(clarification._id),
+              questionId: question.id,
+              answer: context.message.content.trim(),
+            });
             await this.sourceContext.markMessageProcessed(
               organizationId,
               sourceId,
               'COMPLETED',
             );
-            return { refinedProposal };
+            return { clarificationSubmitted: proposal };
           }
         }
       }
@@ -166,22 +156,28 @@ export class AiJobsProcessor extends WorkerHost {
       const boundedContext = { ...context };
       delete boundedContext.requesterUserId;
       const requestId = `source-${sourceType.toLowerCase()}-${sourceId}`;
+      const requestBody = {
+        schemaVersion: '1.0',
+        jobId: requestId,
+        idempotencyKey: requestId,
+        organizationId,
+        source: { type: sourceType, id: sourceId },
+        context: {
+          ...boundedContext,
+          organization,
+          ...(requester ? { requester } : {}),
+          effectiveTimezone,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+      if (this.config.get<boolean>('aiService.logAnalyzeSourceRequestBody')) {
+        this.logger.log(
+          `AI analyze-source request body: ${JSON.stringify(requestBody)}`,
+        );
+      }
       const analysisResult = await this.aiService.request<AiAnalysisResult>(
         '/api/v1/ai/jobs/analyze-source',
-        {
-          schemaVersion: '1.0',
-          jobId: requestId,
-          idempotencyKey: requestId,
-          organizationId,
-          source: { type: sourceType, id: sourceId },
-          context: {
-            ...boundedContext,
-            organization,
-            ...(requester ? { requester } : {}),
-            effectiveTimezone,
-          },
-          generatedAt: new Date().toISOString(),
-        },
+        requestBody,
       );
       if (!analysisResult || !Array.isArray(analysisResult.actions)) {
         throw new UnrecoverableError(
@@ -262,6 +258,25 @@ export class AiJobsProcessor extends WorkerHost {
       job.data.organizationId,
       job.data.proposalId,
       result.action,
+    );
+  }
+
+  private isFinalAttempt(job: Job) {
+    const attempts =
+      typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;
+    return job.attemptsMade + 1 >= attempts;
+  }
+
+  private async recoverFailedRefinement(job: Job, error: unknown) {
+    if (job.name !== AI_REFINE_ACTION_JOB) return;
+    const data = job.data as Partial<RefineActionJob>;
+    if (!data.organizationId || !data.proposalId) return;
+    await this.clarificationWorkflow.recoverAfterFinalFailure(
+      data.organizationId,
+      data.proposalId,
+    );
+    this.logger.warn(
+      `AI clarification refinement restored for retry: proposalId=${data.proposalId}, reason=${error instanceof Error ? error.message : 'unknown error'}`,
     );
   }
 

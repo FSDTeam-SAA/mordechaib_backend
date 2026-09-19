@@ -17,6 +17,7 @@ import { CallTranscriptionService } from './call-transcription.service';
 import { AiActionsModule } from '../ai-actions/ai-actions.module';
 import { AiSourceContextModule } from '../ai-internal/ai-internal.module';
 import { AiActionClarificationsController } from './ai-action-clarifications.controller';
+import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -57,8 +58,9 @@ function redisConnection(urlValue: string) {
     AiJobsQueue,
     AiJobsProcessor,
     CallTranscriptionService,
+    AiActionClarificationWorkflowService,
   ],
   controllers: [AiActionClarificationsController],
-  exports: [AiJobsQueue],
+  exports: [AiJobsQueue, AiActionClarificationWorkflowService],
 })
 export class AiIntegrationModule {}

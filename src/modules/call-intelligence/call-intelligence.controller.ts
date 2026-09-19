@@ -1,19 +1,34 @@
 import { createReadStream } from 'fs';
-import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { RequestOrganization } from '../../common/types/request-context.type';
+import {
+  RequestOrganization,
+  RequestUser,
+} from '../../common/types/request-context.type';
+import { CallIntelligenceDeletionService } from './call-intelligence-deletion.service';
 import { CallIntelligenceService } from './call-intelligence.service';
 import {
   DownloadCallAudioQueryDto,
   DownloadCallIntelligenceReportQueryDto,
   GetCallIntelligenceQueryDto,
 } from './dto/get-call-intelligence-query.dto';
+import { DeleteCallIntelligenceQueryDto } from './dto/delete-call-intelligence-query.dto';
+import { ListCallIntelligenceQueryDto } from './dto/list-call-intelligence-query.dto';
 
 @ApiTags('Call Intelligence')
 @ApiBearerAuth()
@@ -21,7 +36,23 @@ import {
 @UseGuards(OrganizationGuard, RolesGuard)
 @Roles(UserRole.OWNER, UserRole.ADMIN)
 export class CallIntelligenceController {
-  constructor(private readonly intelligence: CallIntelligenceService) {}
+  constructor(
+    private readonly intelligence: CallIntelligenceService,
+    private readonly deletion: CallIntelligenceDeletionService,
+  ) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List all call and meeting intelligence sources',
+    description:
+      'Returns one organization-scoped, newest-first list of Twilio call recordings, Google Meet sessions, and Zoom sessions. Each item contains the source type and id required by the details endpoint.',
+  })
+  list(
+    @CurrentOrg() organization: RequestOrganization,
+    @Query() query: ListCallIntelligenceQueryDto,
+  ) {
+    return this.intelligence.list(organization.id, query);
+  }
 
   @Get(':sourceId/details')
   @ApiOperation({
@@ -35,6 +66,26 @@ export class CallIntelligenceController {
     @Query() query: GetCallIntelligenceQueryDto,
   ) {
     return this.intelligence.getDetails(organization.id, sourceId, query);
+  }
+
+  @Delete(':sourceId/details')
+  @ApiOperation({
+    summary: 'Delete a completed call or meeting intelligence source',
+    description:
+      'Deletes the source media record, transcript, analysis, and proposals. Existing Tasks and provider Meetings created from approved proposals are retained and unlinked. Active or processing sources cannot be deleted.',
+  })
+  deleteDetails(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('sourceId') sourceId: string,
+    @Query() query: DeleteCallIntelligenceQueryDto,
+  ) {
+    return this.deletion.delete(
+      organization.id,
+      user.id,
+      sourceId,
+      query.sourceType,
+    );
   }
 
   @Get(':sourceId/report')

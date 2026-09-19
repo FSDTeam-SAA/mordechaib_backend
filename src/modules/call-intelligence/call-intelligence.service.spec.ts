@@ -1,7 +1,11 @@
-import { AiActionProposalStatus, AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
+import {
+  AiActionProposalStatus,
+  AiProposalSourceType,
+} from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { CallIntelligenceService } from './call-intelligence.service';
+import { CallIntelligenceItemKind } from './dto/list-call-intelligence-query.dto';
 
 const queryResult = (value: unknown) => ({
   select: jest.fn().mockReturnThis(),
@@ -9,7 +13,122 @@ const queryResult = (value: unknown) => ({
   exec: jest.fn().mockResolvedValue(value),
 });
 
+const listQueryResult = (value: unknown) => ({
+  sort: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  lean: jest.fn().mockReturnThis(),
+  exec: jest.fn().mockResolvedValue(value),
+});
+
+const countQueryResult = (value: number) => ({
+  exec: jest.fn().mockResolvedValue(value),
+});
+
 describe('CallIntelligenceService', () => {
+  it('lists call and meeting sources together with details links', async () => {
+    const callRecording = {
+      _id: '66cc9bdfa847ea856c7b4101',
+      callSid: 'CA123',
+      recordingSid: 'RE123',
+      recordingStatus: 'completed',
+      recordingDuration: 75,
+      aiStatus: 'COMPLETED',
+      localFilePath: 'recordings/RE123.wav',
+      createdAt: new Date('2026-09-17T10:00:00.000Z'),
+    };
+    const meeting = {
+      _id: '66cc9bdfa847ea856c7b4102',
+      platform: 'GOOGLE_MEET',
+      botName: 'Noltra AI Notetaker',
+      status: 'COMPLETED',
+      recordingId: 'recording-1',
+      transcriptId: 'transcript-1',
+      createdAt: new Date('2026-09-17T09:00:00.000Z'),
+      metadata: { platformMeetingId: '66cc9bdfa847ea856c7b4103' },
+    };
+    const callRecordings = {
+      find: jest.fn().mockReturnValue(listQueryResult([callRecording])),
+      countDocuments: jest.fn().mockReturnValue(countQueryResult(1)),
+    };
+    const meetingBots = {
+      find: jest.fn().mockReturnValue(listQueryResult([meeting])),
+      countDocuments: jest.fn().mockReturnValue(countQueryResult(1)),
+    };
+    const legacyZoomMeetings = {
+      aggregate: jest
+        .fn()
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) }),
+    };
+    const callLogs = {
+      find: jest.fn().mockReturnValue(
+        queryResult([
+          {
+            callSid: 'CA123',
+            direction: 'OUTBOUND',
+            status: 'COMPLETED',
+            fromNumber: '+10000000000',
+            toNumber: '+12222222222',
+            startedAt: new Date('2026-09-17T09:59:00.000Z'),
+            durationSeconds: 75,
+          },
+        ]),
+      ),
+    };
+    const platformMeetings = {
+      find: jest.fn().mockReturnValue(
+        queryResult([
+          {
+            _id: '66cc9bdfa847ea856c7b4103',
+            title: 'Project review',
+            durationMinutes: 30,
+          },
+        ]),
+      ),
+    };
+    const service = new CallIntelligenceService(
+      meetingBots as never,
+      {} as never,
+      legacyZoomMeetings as never,
+      {} as never,
+      callRecordings as never,
+      callLogs as never,
+      platformMeetings as never,
+      {} as never,
+      {} as never,
+    );
+
+    const result = await service.list('66cc9bdfa847ea856c7b4199', {
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ total: 2, page: 1, limit: 20, pages: 1 }),
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        kind: CallIntelligenceItemKind.CALL,
+        source: {
+          type: AiProposalSourceType.CALL_TRANSCRIPT,
+          id: callRecording._id,
+        },
+        transcriptAvailable: true,
+        audioAvailable: true,
+        detailsPath: `/api/v1/call-intelligence/${callRecording._id}/details?sourceType=CALL_TRANSCRIPT`,
+      }),
+      expect.objectContaining({
+        kind: CallIntelligenceItemKind.MEETING,
+        title: 'Project review',
+        source: {
+          type: AiProposalSourceType.GOOGLE_MEET,
+          id: meeting._id,
+        },
+        detailsPath: `/api/v1/call-intelligence/${meeting._id}/details?sourceType=GOOGLE_MEET`,
+      }),
+    ]);
+  });
+
   it('aggregates call metadata, lightweight transcript state, analysis and actions', async () => {
     const recordingQuery = queryResult({
       _id: '66cc9bdfa847ea856c7b41d2',
@@ -67,7 +186,10 @@ describe('CallIntelligenceService', () => {
 
     expect(result).toEqual(
       expect.objectContaining({
-        metadata: expect.objectContaining({ kind: 'CALL', durationSeconds: 75 }),
+        metadata: expect.objectContaining({
+          kind: 'CALL',
+          durationSeconds: 75,
+        }),
         transcript: expect.objectContaining({ included: false }),
         analysis: expect.objectContaining({ summary: 'Follow-up requested.' }),
         extensions: { crm: null },

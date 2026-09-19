@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Get,
   Headers,
   HttpCode,
   HttpStatus,
@@ -21,7 +20,6 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @ApiTags('Authentication')
@@ -75,19 +73,6 @@ export class AuthController {
   @Post('logout-all')
   logoutAll(@CurrentUser() user: RequestUser) {
     return this.service.logoutAll(user.id);
-  }
-
-  @Get('me')
-  getMe(@CurrentUser() user: RequestUser) {
-    return this.service.getMe(user.id);
-  }
-
-  @Patch('me')
-  updateProfile(
-    @CurrentUser() user: RequestUser,
-    @Body() dto: UpdateProfileDto,
-  ) {
-    return this.service.updateProfile(user.id, dto);
   }
 
   @Public()
