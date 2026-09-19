@@ -1,0 +1,11 @@
+export enum AgentActivityStatus {
+  STARTED = 'STARTED',
+  SUCCEEDED = 'SUCCEEDED',
+  FAILED = 'FAILED',
+  SKIPPED = 'SKIPPED',
+}
+
+export enum AgentOperationType {
+  SOURCE_ANALYSIS = 'SOURCE_ANALYSIS',
+  EXECUTIVE_BRIEFING = 'EXECUTIVE_BRIEFING',
+}

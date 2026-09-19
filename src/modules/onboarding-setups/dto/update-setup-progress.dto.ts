@@ -1,10 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { IntegrationSetupStatus } from '../../../common/enums/integration-setup-status.enum';
 
 export class SetupSectionUpdateDto {

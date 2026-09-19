@@ -11,6 +11,9 @@ import { SetupType } from '../../common/enums/setup-type.enum';
 export type OnboardingSetupDocument = HydratedDocument<OnboardingSetup>;
 
 export class SelectedSetupPackage {
+  @Prop({ trim: true, uppercase: true })
+  code?: string;
+
   @Prop({ required: true, trim: true })
   name!: string;
 
@@ -77,6 +80,14 @@ export class SetupMeeting {
 
   @Prop({ trim: true })
   meetingLink?: string;
+
+  /*
+   * Future platform-host automation fields:
+   * platform?: MeetingPlatform;
+   * platformMeetingId?: string;
+   *
+   * Enable only after a platform onboarding-host account is configurable.
+   */
 
   @Prop({ enum: ['GOOGLE_CALENDAR', 'OUTLOOK_CALENDAR', 'MANUAL'] })
   calendarProvider?: string;
@@ -208,8 +219,13 @@ export class OnboardingSetup {
   @Prop({ index: true })
   assignedAdminId?: string;
 
-  @Prop({ required: true, enum: Object.values(PlanType) })
-  packageType!: PlanType;
+  // Legacy subscription-plan classification. New setups use setupPackageId
+  // instead, because setup packages are an independent admin-managed catalog.
+  @Prop({ enum: Object.values(PlanType) })
+  packageType?: PlanType;
+
+  @Prop({ index: true })
+  setupPackageId?: string;
 
   @Prop({ required: true, enum: Object.values(SetupType) })
   setupType!: SetupType;

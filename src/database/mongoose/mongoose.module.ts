@@ -47,6 +47,10 @@ import {
   SubscriptionPlanSchema,
 } from '../schemas/subscription-plan.schema';
 import {
+  SetupPackage,
+  SetupPackageSchema,
+} from '../schemas/setup-package.schema';
+import {
   OrganizationSubscription,
   OrganizationSubscriptionSchema,
 } from '../schemas/organization-subscription.schema';
@@ -143,6 +147,7 @@ import {
       { name: TwilioPhoneNumber.name, schema: TwilioPhoneNumberSchema },
       { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
       { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
+      { name: SetupPackage.name, schema: SetupPackageSchema },
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },
       { name: Invoice.name, schema: InvoiceSchema },
       { name: CancellationRequest.name, schema: CancellationRequestSchema },

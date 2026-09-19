@@ -33,14 +33,15 @@ The Main Backend is partially ready, but it cannot yet support the complete UI.
 | Submit a user message for background analysis | Ready | Preserve current queue flow |
 | Create Task/Meeting proposals from AI actions | Ready | Preserve current proposal logic |
 | Clarify, approve, reject, or retry proposals | Ready | Reuse Call Intelligence proposal routes |
-| Persist and return an AI chat reply | Missing orchestration | Validate `assistantMessage`, store idempotently, expose through current message list |
-| Build organization facts for chat | Partial | Add permission-aware fact snapshot builder |
-| Read attachment contents | Transport only | Add extraction/transcription pipeline or report unavailable |
+| Persist and return an AI chat reply | Phase 1 implemented | `assistantMessage` is validated, stored idempotently, and exposed through the current message list |
+| Build organization facts for chat | Phase 1 MVP implemented | Permission-aware Task, Meeting, Calendar, Proposal, and source-analysis facts are bounded and source-referenced |
+| Read attachment contents | Partial | Plain text and CSV are extracted; other formats explicitly report unavailable unless secure download is enabled |
 | Analyze call transcripts | Implemented but deployment-dependent | Enable and verify transcription configuration |
-| Generate Executive Briefings | Missing | Add briefing module, queue, storage, and public APIs |
+| Generate Executive Briefings | Phase 2 implemented | Briefing persistence, facts, queue, validation, polling, and public APIs are available |
 | Customer Intelligence | Missing domain model | Add only when a real customer/account source exists |
-| Finance, vendor, support, ROI, AI quality | Missing or partial | Report `UNAVAILABLE` until authoritative modules exist |
-| Agent runtime health/activity | Missing | Do not reuse catalog `ACTIVE` as runtime health |
+| Finance, vendor, support, ROI | Missing or partial | Report `UNAVAILABLE` until authoritative modules exist |
+| AI runtime health/activity | Phase 3A implemented | Source-analysis and briefing workers emit measured activity, latency, and outcome telemetry |
+| CEO strategic notes | Phase 3A implemented | Organization-scoped CRUD plus active-note briefing facts are available |
 | Email draft/send action | Not supported | Keep suggestion-only for MVP |
 
 ## Existing public routes to reuse
@@ -286,10 +287,11 @@ Do not assume the AI Backend can analyze raw call audio. The normal path is:
 Twilio recording -> Main Backend transcription -> CALL_TRANSCRIPT analysis
 ```
 
-## Gap 6: add Executive Briefing persistence
+## Gap 6: Executive Briefing persistence
 
-No Chief of Staff briefing model, repository, service, queue, controller, or
-worker currently exists.
+Phase 2 implementation status: completed. The dedicated Chief of Staff module
+now contains the briefing model, repository, service, queue, controller, and
+worker described below.
 
 Add a dedicated Main Backend module. A recommended persistence record is:
 
@@ -339,6 +341,9 @@ briefing for another user.
 
 ## Gap 7: build the Executive Briefing fact snapshot
 
+Phase 2 implementation status: completed for current authoritative domains.
+Unavailable business domains remain explicitly unavailable.
+
 Main Backend owns fact collection and availability classification. AI Backend
 must receive a closed, authorized snapshot and must not query Main Backend
 databases.
@@ -371,7 +376,7 @@ Current realistic availability is:
 | Meetings | Available | Build from meeting/calendar records |
 | Action proposals | Available | Build from AI action proposals |
 | Source analyses | Partial | Label source-scoped analysis as partial |
-| Agent activity | Unavailable | Requires runtime telemetry |
+| Agent activity | Available | Built from persisted source-analysis and briefing worker telemetry |
 | Sales | Unavailable/partial | Use only an authoritative sales module if present |
 | Customers | Unavailable | Requires account/customer identity and history |
 | Support | Unavailable | Requires support/ticket source |
@@ -380,13 +385,16 @@ Current realistic availability is:
 | Marketing | Partial | Use only persisted, organization-owned campaign facts |
 | Product/design | Partial | Use Tasks only when labels are explicit and truthful |
 | ROI | Unavailable | Requires agreed formulas and source facts |
-| AI quality | Unavailable | Requires measured eval/health telemetry |
-| Strategic notes | Unavailable | Requires a persisted CEO notes source |
+| AI quality | Partial | Runtime success, failure, running count, and latency are measured; model accuracy/eval scores remain unavailable |
+| Strategic notes | Available | Built from persisted, organization-scoped CEO notes active for the briefing period/type |
 
 Never fabricate design values to fill unavailable cards. The AI response
 contract supports `UNAVAILABLE` sections.
 
 ## Gap 8: add briefing generation orchestration
+
+Phase 2 implementation status: completed using the background briefing queue
+and the canonical AI Backend route.
 
 Briefings should use a background job because fact collection and AI generation
 can exceed a normal request latency budget.
@@ -431,6 +439,9 @@ Runtime response validation must verify:
 - response size and item counts are bounded.
 
 ## Gap 9: add public Chief of Staff briefing APIs
+
+Phase 2 implementation status: completed under the `Chief of Staff` Swagger
+group.
 
 Recommended Main Backend routes:
 
@@ -557,7 +568,10 @@ Rules:
 - briefing content is a snapshot and must not pretend its embedded status is
   live after execution.
 
-## Gap 11: add agent runtime activity only if the UI needs it
+## Gap 11: agent runtime activity and measured health
+
+Phase 3A implementation status: completed for source-analysis and Executive
+Briefing background jobs.
 
 The current Agent `ACTIVE` status describes catalog availability. It does not
 prove uptime, workload, success, or recent activity.
@@ -577,8 +591,16 @@ failureCode / failureMessage
 latency and optional token/cost metadata
 ```
 
-Until this exists, send `agentActivity.availability=UNAVAILABLE`. Do not infer
-runtime health from catalog status.
+The implementation persists this projection in `agent_activities` and exposes:
+
+```http
+GET /api/v1/chief-of-staff/insights/agent-activity
+GET /api/v1/chief-of-staff/insights/ai-health
+```
+
+`ai-health` is a runtime reliability summary derived from completed activity;
+it is not a model-accuracy or hallucination score. Catalog `ACTIVE` remains
+separate and must not be presented as runtime health.
 
 ## Gap 12: Customer Intelligence is a separate domain gap
 
@@ -639,6 +661,9 @@ audit, and send confirmation. It is outside this MVP.
 
 ### Phase 1: complete chat MVP
 
+Implementation status: completed for the current MVP contract. Rich document,
+image, audio, and video extraction remains future work.
+
 1. Add runtime validation for the updated analyze-source response.
 2. Persist `assistantMessage` idempotently.
 3. Return it through existing conversation message APIs.
@@ -646,6 +671,8 @@ audit, and send confirmation. It is outside this MVP.
 5. Add attachment extraction status and honest unavailable behavior.
 
 ### Phase 2: Executive Briefings MVP
+
+Implementation status: completed for the current AI contract.
 
 1. Add briefing schema, repository, service, and indexes.
 2. Add authorized fact snapshot builder and availability map.
@@ -656,35 +683,42 @@ audit, and send confirmation. It is outside this MVP.
 
 ### Phase 3: richer business intelligence
 
-Add authoritative customer, finance, vendor, support, ROI, AI-quality, and
-agent-telemetry sources one domain at a time. Change a section from
-`UNAVAILABLE` only when the source and permission model are real.
+Phase 3A implementation status: completed.
+
+Phase 3A adds source-analysis/briefing runtime telemetry, measured AI runtime
+health, organization-scoped CEO strategic notes, and all three sources in the
+Executive Briefing facts snapshot. Strategic-note APIs and insight APIs are
+documented in `CHIEF_OF_STAFF_PHASE_3A_TEST_GUIDE.md`.
+
+Later Phase 3 work should add authoritative customer, finance, vendor,
+support, ROI, and model-evaluation sources one domain at a time. Change a
+section from `UNAVAILABLE` only when the source and permission model are real.
 
 ## Main Backend acceptance checklist
 
 ### Chat
 
-- [ ] One user message creates at most one AI reply per `aiResponseId`.
-- [ ] Retrying the job does not duplicate replies, proposals, or message counts.
-- [ ] AI messages reference the original user message and correct conversation.
-- [ ] Malformed or mismatched AI responses are rejected and observable.
-- [ ] Task/Meeting cards come from structured proposals, not prose parsing.
-- [ ] Clarification questions remain available through existing proposal data.
-- [ ] The message list returns the stored AI reply without a new reply route.
-- [ ] Attachment-only requests never claim unread content was analyzed.
+- [x] One user message creates at most one AI reply per `aiResponseId`.
+- [x] Retrying the job does not duplicate replies, proposals, or message counts.
+- [x] AI messages reference the original user message and correct conversation.
+- [x] Malformed or mismatched AI responses are rejected and observable.
+- [x] Task/Meeting cards come from structured proposals, not prose parsing.
+- [x] Clarification questions remain available through existing proposal data.
+- [x] The message list returns the stored AI reply without a new reply route.
+- [x] Attachment-only requests explicitly identify unavailable file content.
 
 ### Briefings
 
-- [ ] Generation is asynchronous and returns a polling identifier.
-- [ ] Periods use the requester timezone and `[start, end)` boundaries.
-- [ ] Facts are organization- and permission-scoped before leaving Main Backend.
-- [ ] Cache identity includes requester scope and canonical input hash.
-- [ ] Every required section ID is stored once and in the required order.
-- [ ] Missing domains are represented as `UNAVAILABLE`, not fake zero values.
-- [ ] Every factual metric and item has valid source references.
-- [ ] Executable cards contain a real existing proposal ID.
-- [ ] Recommendation-only cards cannot invoke an action route.
-- [ ] Failed jobs return a terminal error state instead of loading forever.
+- [x] Generation is asynchronous and returns a polling identifier.
+- [x] Periods use the requester timezone and `[start, end)` boundaries.
+- [x] Facts are organization- and permission-scoped before leaving Main Backend.
+- [x] Cache identity includes requester scope and canonical input hash.
+- [x] Every required section ID is stored once and in the required order.
+- [x] Missing domains are represented as `UNAVAILABLE`, not fake zero values.
+- [x] Every factual metric and item has valid source references.
+- [x] Executable cards contain a real existing proposal ID.
+- [x] Recommendation-only cards cannot contain executable proposal fields.
+- [x] Failed jobs return a terminal error state instead of loading forever.
 
 ### Regression and security
 
@@ -697,6 +731,14 @@ agent-telemetry sources one domain at a time. Change a section from
 - [ ] Cross-organization message, source, proposal, and briefing access fails.
 - [ ] Logs and stored snapshots contain no provider tokens or storage secrets.
 - [ ] Call transcription deployment settings are verified before production.
+
+### Phase 3A
+
+- [x] Source-analysis and briefing jobs persist organization-scoped runtime activity.
+- [x] Telemetry write failures do not fail the underlying AI workflow.
+- [x] Runtime health uses measured outcomes and latency, not Agent catalog status.
+- [x] CEO strategic notes support organization-scoped create, list, update, and soft delete.
+- [x] Active strategic notes, agent activity, and AI runtime health enter briefing facts with source references.
 
 ## Final implementation boundary
 

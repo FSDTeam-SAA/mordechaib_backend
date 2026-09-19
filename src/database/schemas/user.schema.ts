@@ -7,6 +7,10 @@ export type UserDocument = HydratedDocument<User>;
 
 @Schema({ timestamps: true, collection: 'users' })
 export class User {
+  // Added by Mongoose's timestamps schema option.
+  createdAt?: Date;
+  updatedAt?: Date;
+
   @Prop({ required: true, index: true })
   organizationId!: string;
 
