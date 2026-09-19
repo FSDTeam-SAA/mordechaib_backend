@@ -9,6 +9,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { AuthSessionsRepository } from './auth-sessions.repository';
 import { AuthTokensRepository } from './auth-tokens.repository';
 import { AuthController } from './auth.controller';
+import { AuthProfileController } from './auth-profile.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
@@ -27,7 +28,7 @@ import { JwtStrategy } from './jwt.strategy';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AuthProfileController],
   providers: [
     AuthService,
     AuthRepository,

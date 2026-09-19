@@ -33,23 +33,23 @@ documented AI routes.
 
 The blocking differences are:
 
-| Priority | Area | Current AI behavior/documentation | Required behavior |
-| --- | --- | --- | --- |
-| Blocker | Analyze response | Returns `job_id`, `analysis`, and `submitted_proposals` | Return top-level `requestId` and `actions` exactly as described below |
-| Blocker | Proposal persistence | `submitted_proposals` indicates the AI service posts proposals back to Main Backend | Do not call any Main Backend write API; return actions in the HTTP response only |
-| Blocker | Source input | AI documentation does not define or consume the inline `context` object | Analyze the supplied bounded context; do not fetch a removed Main Backend context route |
-| Blocker | Clarification | No documented `POST /api/v1/ai/actions/refine` endpoint | Implement the refinement endpoint and return one revised action |
-| Blocker | Action vocabulary | AI returns tool recommendations such as `email.draft_message` and `calendar.create_event` | Return only `CREATE_TASK` or `SCHEDULE_MEETING` in `actions` for this MVP |
-| Required | Meeting date/time | AI can return natural language such as `September 15` | Return a complete future ISO-8601 `startsAt`, or a clarification question; never return a natural-language date in an executable payload |
+| Priority | Area                 | Current AI behavior/documentation                                                         | Required behavior                                                                                                                        |
+| -------- | -------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Blocker  | Analyze response     | Returns `job_id`, `analysis`, and `submitted_proposals`                                   | Return top-level `requestId` and `actions` exactly as described below                                                                    |
+| Blocker  | Proposal persistence | `submitted_proposals` indicates the AI service posts proposals back to Main Backend       | Do not call any Main Backend write API; return actions in the HTTP response only                                                         |
+| Blocker  | Source input         | AI documentation does not define or consume the inline `context` object                   | Analyze the supplied bounded context; do not fetch a removed Main Backend context route                                                  |
+| Blocker  | Clarification        | No documented `POST /api/v1/ai/actions/refine` endpoint                                   | Implement the refinement endpoint and return one revised action                                                                          |
+| Blocker  | Action vocabulary    | AI returns tool recommendations such as `email.draft_message` and `calendar.create_event` | Return only `CREATE_TASK` or `SCHEDULE_MEETING` in `actions` for this MVP                                                                |
+| Required | Meeting date/time    | AI can return natural language such as `September 15`                                     | Return a complete future ISO-8601 `startsAt`, or a clarification question; never return a natural-language date in an executable payload |
 
 ## Ownership and security
 
-| Component | Owner | Responsibility |
-| --- | --- | --- |
-| Meeting/Recall webhook, transcript storage, queue and proposal database | Main Backend | Receives a transcript and controls persistence |
-| Transcript interpretation, action extraction and follow-up questions | AI Backend | Produces safe recommendation JSON only |
-| Draft/clarification/approval UI | Frontend | Presents Main Backend data and sends CEO decisions to Main Backend |
-| Creating Tasks and provider Meetings | Main Backend | Performs the side effect after final CEO approval |
+| Component                                                               | Owner        | Responsibility                                                     |
+| ----------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------ |
+| Meeting/Recall webhook, transcript storage, queue and proposal database | Main Backend | Receives a transcript and controls persistence                     |
+| Transcript interpretation, action extraction and follow-up questions    | AI Backend   | Produces safe recommendation JSON only                             |
+| Draft/clarification/approval UI                                         | Frontend     | Presents Main Backend data and sends CEO decisions to Main Backend |
+| Creating Tasks and provider Meetings                                    | Main Backend | Performs the side effect after final CEO approval                  |
 
 All Main Backend-to-AI Backend requests use:
 
@@ -231,15 +231,15 @@ The response must be a raw JSON object, not `{ "success": true, "data": ... }`.
 
 For every action, Main Backend requires:
 
-| Field | Rules |
-| --- | --- |
-| `actionId` | Non-empty, maximum 128 characters, unique and stable inside the same `requestId`. Reuse it unchanged on retries. |
-| `actionType` | Exactly `CREATE_TASK` or `SCHEDULE_MEETING`. |
-| `proposedByAgent.id` / `.name` / `.type` | Stable ID, display name, and valid agent type. Use IDs such as `sales-agent`, not presentation-only names. |
-| `payload` | JSON object. It is validated before a draft becomes executable. |
-| `confidence` | Number from `0` to `1`. |
-| `evidence` | Optional; every item needs `text` (max 5,000 chars). `segmentId`, `speaker`, `startTimeSeconds`, and `endTimeSeconds` are optional. |
-| `clarificationQuestions` | Optional maximum 10 items. Each needs unique `id` (max 128), `field` (max 200), and `question` (max 2,000). |
+| Field                                    | Rules                                                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `actionId`                               | Non-empty, maximum 128 characters, unique and stable inside the same `requestId`. Reuse it unchanged on retries.                    |
+| `actionType`                             | Exactly `CREATE_TASK` or `SCHEDULE_MEETING`.                                                                                        |
+| `proposedByAgent.id` / `.name` / `.type` | Stable ID, display name, and valid agent type. Use IDs such as `sales-agent`, not presentation-only names.                          |
+| `payload`                                | JSON object. It is validated before a draft becomes executable.                                                                     |
+| `confidence`                             | Number from `0` to `1`.                                                                                                             |
+| `evidence`                               | Optional; every item needs `text` (max 5,000 chars). `segmentId`, `speaker`, `startTimeSeconds`, and `endTimeSeconds` are optional. |
+| `clarificationQuestions`                 | Optional maximum 10 items. Each needs unique `id` (max 128), `field` (max 200), and `question` (max 2,000).                         |
 
 If `clarificationQuestions` is non-empty, Main Backend stores the proposal as
 `NEEDS_CLARIFICATION` and permits an incomplete payload. If it is empty, the
@@ -272,11 +272,11 @@ reminder, subtasks, tags
 
 Important values:
 
-| Field | Valid values / format |
-| --- | --- |
-| `priority` | `LOW`, `MEDIUM`, `HIGH` |
-| `department` | `SALES`, `FINANCE`, `OPERATIONS`, `SUPPORT`, `DESIGN`, `MARKETING`, `OTHER` |
-| `dueDate` | Strict ISO-8601 datetime, for example `2026-09-15T10:00:00.000Z` |
+| Field              | Valid values / format                                                            |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `priority`         | `LOW`, `MEDIUM`, `HIGH`                                                          |
+| `department`       | `SALES`, `FINANCE`, `OPERATIONS`, `SUPPORT`, `DESIGN`, `MARKETING`, `OTHER`      |
+| `dueDate`          | Strict ISO-8601 datetime, for example `2026-09-15T10:00:00.000Z`                 |
 | `assignedToUserId` | Optional MongoDB user ID belonging to the same organization. Do not guess an ID. |
 
 Unknown fields are rejected for a ready proposal. For an unknown task owner or
@@ -312,16 +312,16 @@ Recommended complete payload:
 }
 ```
 
-| Field | Rules |
-| --- | --- |
-| `platform` | Exactly `ZOOM` or `GOOGLE_MEET` |
-| `title` | Required, 1-200 characters |
-| `startsAt` | Required for ready proposal; absolute ISO-8601 with `Z` or an explicit offset, normalized to UTC before persistence, and in the future when approved |
-| `timezone` | Required for a ready proposal; valid IANA timezone, for example `America/New_York` |
-| `durationMinutes` | Optional integer `1-1440`; backend default is used if omitted |
-| `invitees` | Optional valid email addresses, maximum 100 |
-| `reminderMinutesBeforeStart` | Optional integer `0-40320` |
-| `sendBot` | Optional boolean, defaults to `true` |
+| Field                        | Rules                                                                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platform`                   | Exactly `ZOOM` or `GOOGLE_MEET`                                                                                                                      |
+| `title`                      | Required, 1-200 characters                                                                                                                           |
+| `startsAt`                   | Required for ready proposal; absolute ISO-8601 with `Z` or an explicit offset, normalized to UTC before persistence, and in the future when approved |
+| `timezone`                   | Required for a ready proposal; valid IANA timezone, for example `America/New_York`                                                                   |
+| `durationMinutes`            | Optional integer `1-1440`; backend default is used if omitted                                                                                        |
+| `invitees`                   | Optional valid email addresses, maximum 100                                                                                                          |
+| `reminderMinutesBeforeStart` | Optional integer `0-40320`                                                                                                                           |
+| `sendBot`                    | Optional boolean, defaults to `true`                                                                                                                 |
 
 Do not put `"September 15"`, `"3 PM"`, or any other natural-language value
 in `startsAt`. If the date or time is uncertain, place only known values in
@@ -448,7 +448,11 @@ must become either a clarification draft:
 {
   "actionId": "meeting-next-project-review",
   "actionType": "SCHEDULE_MEETING",
-  "proposedByAgent": { "id": "operations-agent", "name": "Operations Agent", "type": "OPERATIONS" },
+  "proposedByAgent": {
+    "id": "operations-agent",
+    "name": "Operations Agent",
+    "type": "OPERATIONS"
+  },
   "payload": {
     "platform": "GOOGLE_MEET",
     "title": "Project progress and next-stage meeting",
@@ -467,13 +471,13 @@ must become either a clarification draft:
 
 or a ready meeting action only after the AI has an unambiguous full datetime.
 
-| Existing AI tool/type | Main Backend MVP handling |
-| --- | --- |
-| `tasks.create_task`, `regular_task` | Convert to `CREATE_TASK` |
-| `calendar.create_event`, `meeting` | Convert to `SCHEDULE_MEETING` only when payload satisfies this document; otherwise ask a clarification |
-| `email.draft_message`, `follow_up_email` | Do not include in `actions` yet. Return it in AI narrative/internal analysis only. |
-| CRM update, lead/deal update | Do not include in `actions` yet. CRM action support is out of this MVP. |
-| `submitted_proposals` | Remove. It belongs to the old callback design. |
+| Existing AI tool/type                    | Main Backend MVP handling                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `tasks.create_task`, `regular_task`      | Convert to `CREATE_TASK`                                                                               |
+| `calendar.create_event`, `meeting`       | Convert to `SCHEDULE_MEETING` only when payload satisfies this document; otherwise ask a clarification |
+| `email.draft_message`, `follow_up_email` | Do not include in `actions` yet. Return it in AI narrative/internal analysis only.                     |
+| CRM update, lead/deal update             | Do not include in `actions` yet. CRM action support is out of this MVP.                                |
+| `submitted_proposals`                    | Remove. It belongs to the old callback design.                                                         |
 
 ## 5. Frontend contract and observable states
 
@@ -512,19 +516,20 @@ GET /api/v1/call-intelligence/:sourceId/audio?sourceType=CALL_TRANSCRIPT
 Meeting audio continues to use the `audio.downloadPath` returned by the
 details endpoint.
 
-| Main Backend route | Use |
-| --- | --- |
-| `GET /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION` | List questions requiring CEO input |
-| `GET /api/v1/ai-actions/proposals?status=PENDING` | List complete drafts ready for final approval |
-| `GET /api/v1/ai-actions/proposals/:id` | Open a proposal preview, evidence, questions and status |
-| `POST /api/v1/ai-actions/proposals/:id/clarifications` | Send `{ "questionId": "...", "answer": "..." }` |
-| `POST /api/v1/ai-actions/proposals/:id/approve` | Execute exactly one ready Task or Meeting |
-| `GET /api/v1/ai-actions/sources/:sourceId/action-center?status=PENDING` | Show compact task/meeting cards after the draft is ready |
+| Main Backend canonical route                                         | Use                                                                                |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/v1/call-intelligence/proposals?status=NEEDS_CLARIFICATION` | List questions requiring CEO input                                                 |
+| `GET /api/v1/call-intelligence/proposals?status=PENDING`             | List complete drafts ready for final approval                                      |
+| `GET /api/v1/call-intelligence/proposals/:id`                        | Open a proposal preview, evidence, questions and status                            |
+| `POST /api/v1/call-intelligence/proposals/:id/clarifications`       | Submit one clarification answer and queue AI refinement                            |
+| `POST /api/v1/call-intelligence/proposals/:id/action`                | Submit `APPROVE`, `REJECT`, or `RETRY`                                              |
+| `GET /api/v1/call-intelligence/:sourceId/details?sourceType=GOOGLE_MEET&status=PENDING` | Show call/meeting intelligence and compact proposal cards after the draft is ready |
 
-Important: Action Center defaults to `PENDING`, so it does not show
-`NEEDS_CLARIFICATION` proposals. The frontend must use the proposal list/detail
-route for CEO questions, then refresh or poll until the refinement changes the
-status to `PENDING` or again to `NEEDS_CLARIFICATION`.
+For a clarification, send `questionId` and `answer` to the clarification
+route. Then refresh or poll the proposal list until refinement changes the
+status to `PENDING` or again to `NEEDS_CLARIFICATION`. For chat sources, filter
+the proposal list with `sourceId` and `sourceType=USER_MESSAGE` instead of
+using the call/meeting details route.
 
 Each proposal also contains the source-level AI analysis snapshot returned by
 the AI service. This is how frontend proposal details access sentiment,
@@ -611,8 +616,8 @@ Backend to execute Main Backend side effects.
 5. Confirm proposal drafts were saved:
 
    ```http
-   GET /api/v1/ai-actions/proposals?status=PENDING&page=1&limit=20
-   GET /api/v1/ai-actions/proposals?status=NEEDS_CLARIFICATION&page=1&limit=20
+   GET /api/v1/call-intelligence/proposals?status=PENDING&page=1&limit=20
+   GET /api/v1/call-intelligence/proposals?status=NEEDS_CLARIFICATION&page=1&limit=20
    ```
 
 6. For a complete task proposal, open its detail and call approve. Verify a
@@ -620,10 +625,13 @@ Backend to execute Main Backend side effects.
 7. For an incomplete meeting proposal, submit an answer:
 
    ```http
-   POST /api/v1/ai-actions/proposals/:proposalId/clarifications
+   POST /api/v1/call-intelligence/proposals/:proposalId/clarifications
    Content-Type: application/json
 
-   { "questionId": "meeting-start-time", "answer": "3:00 PM" }
+   {
+     "questionId": "meeting-start-time",
+     "answer": "3:00 PM"
+   }
    ```
 
 8. Verify AI receives `POST /api/v1/ai/actions/refine`, then poll proposal

@@ -22,7 +22,7 @@ import { ListMeetingBotsQueryDto } from './dto/list-meeting-bots-query.dto';
 import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
 
-@ApiTags('Meeting Bots (Manual URL)')
+@ApiTags('Meetings')
 @ApiBearerAuth()
 @Controller('meeting-bots')
 @UseGuards(OrganizationGuard)

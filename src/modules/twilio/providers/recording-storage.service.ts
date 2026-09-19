@@ -67,6 +67,32 @@ export class RecordingStorageService {
     }
   }
 
+  async deleteRecording(filePath: string) {
+    const storageRoot = path.resolve(
+      this.config.get<string>('RECORDING_STORAGE_DIR', './storage/recordings'),
+    );
+    const target = path.resolve(filePath);
+    const relative = path.relative(storageRoot, target);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error(
+        'Recording path is outside the configured storage directory',
+      );
+    }
+    try {
+      await fs.unlink(target);
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return;
+      }
+      throw error;
+    }
+  }
+
   private getExtensionFromUrl(url: string): string {
     const cleaned = url.split('?')[0].toLowerCase();
     if (cleaned.endsWith('.wav')) return '.wav';

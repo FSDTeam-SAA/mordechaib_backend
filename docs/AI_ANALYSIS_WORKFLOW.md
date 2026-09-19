@@ -246,15 +246,18 @@ Return one updated action:
 All routes use a CEO/Owner/Admin bearer token. The frontend never calls the
 AI service directly.
 
-| Method | Route                                                | Purpose                                                                      |
-| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/ai-actions/proposals`                       | List drafts and ready proposals. Filter by `status`, `actionType`, or agent. |
-| `GET`  | `/api/v1/ai-actions/proposals/:id`                   | Read one proposal and its clarification questions.                           |
-| `POST` | `/api/v1/ai-actions/proposals/:id/clarifications`    | Submit `{ "questionId": "...", "answer": "..." }`.                           |
-| `POST` | `/api/v1/ai-actions/proposals/:id/approve`           | Approve a ready proposal and execute it once.                                |
-| `POST` | `/api/v1/ai-actions/proposals/:id/reject`            | Reject a proposal.                                                           |
-| `POST` | `/api/v1/ai-actions/proposals/:id/retry`             | Retry an approved execution that failed.                                     |
-| `GET`  | `/api/v1/ai-actions/sources/:sourceId/action-center` | Return UI-ready pending task and meeting proposals for one source.           |
+| Method | Canonical route                                  | Purpose                                                                                                 |
+| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/call-intelligence/proposals`            | List proposals. Filter by status, action type, agent, `sourceId`, or `sourceType`.                      |
+| `GET`  | `/api/v1/call-intelligence/proposals/:id`        | Read one proposal and its clarification questions.                                                      |
+| `POST` | `/api/v1/call-intelligence/proposals/:id/clarifications` | Submit one clarification answer and queue AI refinement.                                                |
+| `POST` | `/api/v1/call-intelligence/proposals/:id/action` | Submit `APPROVE`, `REJECT`, or `RETRY`.                                                                 |
+| `GET`  | `/api/v1/call-intelligence/:sourceId/details`    | For call/meeting sources, return media, analysis, proposal cards, clarification questions, and answers. |
+| `DELETE` | `/api/v1/call-intelligence/:sourceId/details` | Delete a completed/failed/cancelled source and its intelligence artifacts; retain and unlink created Tasks/Meetings. |
+
+The previous `/api/v1/ai-actions/...` routes remain temporary compatibility
+aliases. They are hidden from Swagger and return the HTTP `Deprecation: true`
+header. New frontend code must use the canonical Call Intelligence routes.
 
 Proposal statuses:
 
@@ -268,6 +271,7 @@ ANALYZING → NEEDS_CLARIFICATION → PENDING → APPROVED
 
 ## Execution boundary
 
-Only `POST /ai-actions/proposals/:id/approve` can execute a task or provider
-meeting. The approving CEO/Admin becomes the created-by user. No AI request
-can bypass this boundary.
+Only `POST /call-intelligence/proposals/:id/action` with
+`{ "action": "APPROVE" }`
+can execute a task or provider meeting. The approving CEO/Admin becomes the
+created-by user. No AI request can bypass this boundary.
