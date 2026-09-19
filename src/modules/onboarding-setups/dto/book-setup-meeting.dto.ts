@@ -1,7 +1,5 @@
-import { Type } from 'class-transformer';
 import {
   IsDateString,
-  IsEnum,
   IsOptional,
   IsString,
   MaxLength,
@@ -20,16 +18,7 @@ export class BookSetupMeetingDto {
   timezone?: string;
 
   @IsOptional()
-  @IsEnum(['GOOGLE_CALENDAR', 'OUTLOOK_CALENDAR', 'MANUAL'])
-  calendarProvider?: string;
-
-  @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string;
-
-  @IsOptional()
-  @Type(() => String)
-  @IsString()
-  meetingLink?: string;
 }

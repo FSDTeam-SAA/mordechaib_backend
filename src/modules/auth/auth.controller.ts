@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Headers,
   HttpCode,
   HttpStatus,
@@ -19,8 +20,10 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @ApiTags('Authentication')
 @ApiBearerAuth()
@@ -75,6 +78,16 @@ export class AuthController {
     return this.service.logoutAll(user.id);
   }
 
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
+  @Delete('me')
+  deleteAccount(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.service.deleteAccount(user.id, dto);
+  }
+
   @Public()
   @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
   @HttpCode(HttpStatus.OK)
@@ -104,13 +117,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('verify-email')
   verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.service.verifyEmail(dto.token);
+    return this.service.verifyEmail(dto.email, dto.code);
   }
 
+  @Public()
   @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
   @HttpCode(HttpStatus.OK)
   @Post('resend-verification')
-  resendVerification(@CurrentUser() user: RequestUser) {
-    return this.service.resendEmailVerification(user.id);
+  resendVerification(@Body() dto: ResendEmailVerificationDto) {
+    return this.service.resendEmailVerification(dto.email);
   }
 }

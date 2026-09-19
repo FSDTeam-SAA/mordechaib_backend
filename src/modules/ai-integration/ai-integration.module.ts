@@ -18,6 +18,15 @@ import { AiActionsModule } from '../ai-actions/ai-actions.module';
 import { AiSourceContextModule } from '../ai-internal/ai-internal.module';
 import { AiActionClarificationsController } from './ai-action-clarifications.controller';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
+import { Agent, AgentSchema } from '../../database/schemas/agent.schema';
+import {
+  Conversation,
+  ConversationSchema,
+} from '../../database/schemas/conversation.schema';
+import { Message, MessageSchema } from '../../database/schemas/message.schema';
+import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
+import { AiChatReplyService } from './ai-chat-reply.service';
+import { AiTelemetryModule } from '../ai-telemetry/ai-telemetry.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -38,9 +47,13 @@ function redisConnection(urlValue: string) {
     ConfigModule,
     forwardRef(() => AiActionsModule),
     AiSourceContextModule,
+    AiTelemetryModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: CallRecording.name, schema: CallRecordingSchema },
+      { name: Agent.name, schema: AgentSchema },
+      { name: Conversation.name, schema: ConversationSchema },
+      { name: Message.name, schema: MessageSchema },
     ]),
     BullModule.forRootAsync({
       imports: [ConfigModule],
@@ -59,8 +72,10 @@ function redisConnection(urlValue: string) {
     AiJobsProcessor,
     CallTranscriptionService,
     AiActionClarificationWorkflowService,
+    AiAnalysisResponseValidator,
+    AiChatReplyService,
   ],
   controllers: [AiActionClarificationsController],
-  exports: [AiJobsQueue, AiActionClarificationWorkflowService],
+  exports: [AiServiceClient, AiJobsQueue, AiActionClarificationWorkflowService],
 })
 export class AiIntegrationModule {}

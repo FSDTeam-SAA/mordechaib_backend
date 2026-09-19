@@ -41,6 +41,22 @@ import {
 } from '../../database/schemas/ai-action-proposal.schema';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import {
+  TaskItem,
+  TaskItemSchema,
+} from '../../database/schemas/task-item.schema';
+import {
+  ManagedCalendarEvent,
+  ManagedCalendarEventSchema,
+} from '../../database/schemas/managed-calendar-event.schema';
+import {
+  PlatformMeeting,
+  PlatformMeetingSchema,
+} from '../../database/schemas/platform-meeting.schema';
+import {
+  AiSourceAnalysis,
+  AiSourceAnalysisSchema,
+} from '../../database/schemas/ai-source-analysis.schema';
 
 @Module({
   imports: [
@@ -57,6 +73,13 @@ import { User, UserSchema } from '../../database/schemas/user.schema';
       { name: MessageAttachment.name, schema: MessageAttachmentSchema },
       { name: AiActionProposal.name, schema: AiActionProposalSchema },
       { name: User.name, schema: UserSchema },
+      { name: TaskItem.name, schema: TaskItemSchema },
+      {
+        name: ManagedCalendarEvent.name,
+        schema: ManagedCalendarEventSchema,
+      },
+      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
+      { name: AiSourceAnalysis.name, schema: AiSourceAnalysisSchema },
     ]),
   ],
   providers: [AiSourceContextService, CloudinaryMessageAttachmentStorage],

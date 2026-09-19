@@ -36,7 +36,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       !session ||
       !user ||
       session.userId !== String(user._id) ||
-      user.status !== UserStatus.ACTIVE
+      user.status !== UserStatus.ACTIVE ||
+      !user.emailVerifiedAt
     ) {
       throw new UnauthorizedException('Session is no longer valid');
     }

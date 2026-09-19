@@ -5,7 +5,7 @@ import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
 import { Organization } from '../../database/schemas/organization.schema';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 
-type UpdateOnboardingInput = UpdateOnboardingDto & {
+type UpdateOnboardingInput = Omit<UpdateOnboardingDto, 'expectedUpdatedAt'> & {
   onboardingStep?: OnboardingStep;
   onboardingCompletedAt?: Date;
   updatedBy?: string;
@@ -51,7 +51,11 @@ export class OrganizationsRepository {
     return this.organizationModel.findByIdAndDelete(id).exec();
   }
 
-  updateOnboarding(id: string, input: UpdateOnboardingInput) {
+  updateOnboarding(
+    id: string,
+    input: UpdateOnboardingInput,
+    expectedUpdatedAt: Date,
+  ) {
     const $set: Record<string, unknown> = {};
     const $unset: Record<string, 1> = {};
 
@@ -86,8 +90,8 @@ export class OrganizationsRepository {
     setOrUnset('updatedBy', input.updatedBy);
 
     return this.organizationModel
-      .findByIdAndUpdate(
-        id,
+      .findOneAndUpdate(
+        { _id: id, updatedAt: expectedUpdatedAt },
         {
           ...(Object.keys($set).length > 0 ? { $set } : {}),
           ...(Object.keys($unset).length > 0 ? { $unset } : {}),

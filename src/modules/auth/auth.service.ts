@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -27,6 +28,10 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ProfileAvatarStorageService } from './profile-avatar-storage.service';
+import { AccountDeletionService } from './account-deletion.service';
+import { DeleteAccountDto } from './dto/delete-account.dto';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
 import { SessionMetadata } from '../../common/types/session-metadata.type';
 
@@ -39,7 +44,6 @@ export class AuthService {
   private readonly emailVerificationExpiresIn: number;
   private readonly bcryptRounds: number;
   private readonly exposeDevelopmentTokens: boolean;
-  private readonly frontendUrl: string;
 
   constructor(
     private readonly repository: AuthRepository,
@@ -49,6 +53,8 @@ export class AuthService {
     private readonly auditLogs: AuditLogsService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly profileAvatarStorage: ProfileAvatarStorageService,
+    private readonly accountDeletion: AccountDeletionService,
   ) {
     this.accessTokenExpiresIn = parseDurationToSeconds(
       config.getOrThrow<string>('jwt.accessExpiresIn'),
@@ -69,9 +75,6 @@ export class AuthService {
     this.exposeDevelopmentTokens = config.getOrThrow<boolean>(
       'auth.exposeDevelopmentTokens',
     );
-    this.frontendUrl = config
-      .getOrThrow<string>('mail.frontendUrl')
-      .replace(/\/$/, '');
 
     if (
       !Number.isInteger(this.bcryptRounds) ||
@@ -82,7 +85,7 @@ export class AuthService {
     }
   }
 
-  async register(dto: RegisterDto, metadata: SessionMetadata) {
+  async register(dto: RegisterDto, metadata: SessionMetadata = {}) {
     if (await this.repository.findByEmail(dto.email)) {
       throw new ConflictException('An account with this email already exists');
     }
@@ -114,16 +117,12 @@ export class AuthService {
       throw error;
     }
 
-    const [session, emailVerificationToken] = await Promise.all([
+    const [session, emailVerificationCode] = await Promise.all([
       this.issueSession(user, dto.rememberMe, metadata),
-      this.issueOneTimeToken(
-        String(user._id),
-        AuthTokenType.EMAIL_VERIFICATION,
-        this.emailVerificationExpiresIn,
-      ),
+      this.issueEmailVerificationCode(String(user._id)),
     ]);
     const emailVerificationTemplate = this.getEmailVerificationTemplate(
-      emailVerificationToken,
+      emailVerificationCode,
     );
     const emailVerificationSent = await sendEmail(this.config, {
       to: user.email,
@@ -134,8 +133,9 @@ export class AuthService {
       user: this.toUserResponse(user),
       organization,
       ...session,
+      requiresEmailVerification: true,
       emailVerificationSent,
-      ...(this.exposeDevelopmentTokens ? { emailVerificationToken } : {}),
+      ...(this.exposeDevelopmentTokens ? { emailVerificationCode } : {}),
     };
   }
 
@@ -149,6 +149,12 @@ export class AuthService {
     const validPassword = await bcrypt.compare(dto.password, user.passwordHash);
     if (!validPassword || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException({
+        message: 'Email verification is required before login',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
     }
 
     await this.repository.updateLastLogin(String(user._id));
@@ -191,6 +197,13 @@ export class AuthService {
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Account is unavailable');
     }
+    if (!user.emailVerifiedAt) {
+      await this.sessionsRepository.revoke(
+        String(session._id),
+        'EMAIL_NOT_VERIFIED',
+      );
+      throw new UnauthorizedException('Email verification is required');
+    }
 
     return this.issueSession(
       user,
@@ -210,13 +223,53 @@ export class AuthService {
     return { message: 'All sessions have been revoked' };
   }
 
+  async deleteAccount(userId: string, dto: DeleteAccountDto) {
+    const user = await this.repository.findByIdWithPassword(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (!(await bcrypt.compare(dto.password, user.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException(
+        'Only the organization owner can permanently delete the workspace',
+      );
+    }
+
+    await this.accountDeletion.deleteOrganizationWorkspace({
+      organizationId: user.organizationId,
+      ownerUserId: userId,
+    });
+    return {
+      message: 'Account and organization data deleted permanently',
+      deleted: true,
+    };
+  }
+
   async getMe(userId: string) {
     const user = await this.repository.findById(userId);
     if (!user) throw new NotFoundException('User not found');
     return this.toUserResponse(user);
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto) {
+  async updateProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+    avatar?: Express.Multer.File,
+  ) {
+    const expectedUpdatedAt = new Date(dto.expectedUpdatedAt);
+    const currentUser = await this.repository.findById(userId);
+    if (!currentUser) throw new NotFoundException('User not found');
+    if (!this.hasExpectedUpdatedAt(currentUser.updatedAt, expectedUpdatedAt)) {
+      throw new ConflictException(
+        'Your profile was updated elsewhere. Refresh it and try again.',
+      );
+    }
+
+    if (avatar && dto.avatarUrl !== undefined) {
+      throw new BadRequestException(
+        'Send either avatar or avatarUrl, not both',
+      );
+    }
     const set: Record<string, unknown> = {};
     const unset: Record<string, ''> = {};
 
@@ -239,6 +292,10 @@ export class AuthService {
       }
     }
 
+    if (avatar) {
+      set.avatarUrl = await this.profileAvatarStorage.upload(userId, avatar);
+    }
+
     if (typeof dto.timezone === 'string') {
       assertValidTimezone(dto.timezone);
     }
@@ -247,11 +304,16 @@ export class AuthService {
       throw new BadRequestException('No profile changes were provided');
     }
 
-    const user = await this.repository.updateProfile(userId, {
-      set,
-      unset,
-    });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.repository.updateProfile(
+      userId,
+      { set, unset },
+      expectedUpdatedAt,
+    );
+    if (!user) {
+      throw new ConflictException(
+        'Your profile was updated elsewhere. Refresh it and try again.',
+      );
+    }
 
     await this.auditLogs.create({
       organizationId: user.organizationId,
@@ -344,44 +406,67 @@ export class AuthService {
     return { message: 'Password changed successfully. Please sign in again.' };
   }
 
-  async verifyEmail(token: string) {
-    const authToken = await this.tokensRepository.consume(
-      this.hashToken(token),
+  async verifyEmail(email: string, code: string) {
+    const user = await this.repository.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException(
+        'Invalid or expired email verification code',
+      );
+    }
+    if (user.emailVerifiedAt) {
+      return {
+        message: 'Email is already verified',
+        user: this.toUserResponse(user),
+      };
+    }
+    const userId = String(user._id);
+    const authToken = await this.tokensRepository.consumeForUser(
+      userId,
+      this.hashEmailVerificationCode(userId, code),
       AuthTokenType.EMAIL_VERIFICATION,
     );
     if (!authToken) {
-      throw new UnauthorizedException('Invalid or expired verification token');
+      throw new UnauthorizedException(
+        'Invalid or expired email verification code',
+      );
     }
 
-    const user = await this.repository.markEmailVerified(authToken.userId);
-    if (!user) throw new UnauthorizedException('Invalid verification token');
+    const verifiedUser = await this.repository.markEmailVerified(
+      authToken.userId,
+    );
+    if (!verifiedUser) {
+      throw new UnauthorizedException(
+        'Invalid or expired email verification code',
+      );
+    }
     return {
       message: 'Email verified successfully',
-      user: this.toUserResponse(user),
+      user: this.toUserResponse(verifiedUser),
     };
   }
 
-  async resendEmailVerification(userId: string) {
-    const user = await this.repository.findById(userId);
-    if (!user) throw new NotFoundException('User not found');
-    if (user.emailVerifiedAt) return { message: 'Email is already verified' };
-
-    const emailVerificationToken = await this.issueOneTimeToken(
-      userId,
-      AuthTokenType.EMAIL_VERIFICATION,
-      this.emailVerificationExpiresIn,
-    );
-    const emailVerificationTemplate = this.getEmailVerificationTemplate(
-      emailVerificationToken,
-    );
-    const emailVerificationSent = await sendEmail(this.config, {
-      to: user.email,
-      ...emailVerificationTemplate,
-    });
+  async resendEmailVerification(email: string) {
+    const user = await this.repository.findByEmail(email);
+    let emailVerificationCode: string | undefined;
+    let emailVerificationSent = false;
+    if (user && !user.emailVerifiedAt && user.status === UserStatus.ACTIVE) {
+      emailVerificationCode = await this.issueEmailVerificationCode(
+        String(user._id),
+      );
+      const emailVerificationTemplate = this.getEmailVerificationTemplate(
+        emailVerificationCode,
+      );
+      emailVerificationSent = await sendEmail(this.config, {
+        to: user.email,
+        ...emailVerificationTemplate,
+      });
+    }
     return {
-      message: 'Email verification instructions have been created',
-      emailVerificationSent,
-      ...(this.exposeDevelopmentTokens ? { emailVerificationToken } : {}),
+      message:
+        'If the account exists and is not verified, a new verification code has been sent',
+      ...(this.exposeDevelopmentTokens && emailVerificationCode
+        ? { emailVerificationSent, emailVerificationCode }
+        : {}),
     };
   }
 
@@ -426,9 +511,11 @@ export class AuthService {
     };
   }
 
-  private getEmailVerificationTemplate(token: string) {
-    const url = `${this.frontendUrl}/verify-email?token=${encodeURIComponent(token)}`;
-    return getEmailVerificationTemplate(url);
+  private getEmailVerificationTemplate(code: string) {
+    return getEmailVerificationTemplate(
+      code,
+      Math.max(1, Math.ceil(this.emailVerificationExpiresIn / 60)),
+    );
   }
 
   private getPasswordResetTemplate(token: string) {
@@ -443,7 +530,7 @@ export class AuthService {
     await this.tokensRepository.invalidateActive(userId, type);
     const token =
       type === AuthTokenType.PASSWORD_RESET
-        ? randomInt(0, 1_000_000).toString().padStart(6, '0')
+        ? this.generateSixDigitCode()
         : this.generateOpaqueToken();
     await this.tokensRepository.create({
       userId,
@@ -452,6 +539,29 @@ export class AuthService {
       expiresAt: new Date(Date.now() + expiresIn * 1000),
     });
     return token;
+  }
+
+  private async issueEmailVerificationCode(userId: string) {
+    await this.tokensRepository.invalidateActive(
+      userId,
+      AuthTokenType.EMAIL_VERIFICATION,
+    );
+    const code = this.generateSixDigitCode();
+    await this.tokensRepository.create({
+      userId,
+      type: AuthTokenType.EMAIL_VERIFICATION,
+      tokenHash: this.hashEmailVerificationCode(userId, code),
+      expiresAt: new Date(Date.now() + this.emailVerificationExpiresIn * 1000),
+    });
+    return code;
+  }
+
+  private generateSixDigitCode() {
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
+  }
+
+  private hashEmailVerificationCode(userId: string, code: string) {
+    return this.hashToken(`${userId}:${code}`);
   }
 
   private toUserResponse(user: UserDocument) {
@@ -471,7 +581,12 @@ export class AuthService {
       emailVerified: Boolean(user.emailVerifiedAt),
       emailVerifiedAt: user.emailVerifiedAt,
       lastLoginAt: user.lastLoginAt,
+      updatedAt: user.updatedAt,
     };
+  }
+
+  private hasExpectedUpdatedAt(actual: Date | undefined, expected: Date) {
+    return actual?.getTime() === expected.getTime();
   }
 
   private generateOpaqueToken() {

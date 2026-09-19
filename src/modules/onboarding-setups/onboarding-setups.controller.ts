@@ -22,7 +22,6 @@ import { CreateOnboardingSetupDto } from './dto/create-onboarding-setup.dto';
 import { CreateOnboardingPaymentSessionDto } from './dto/create-onboarding-payment-session.dto';
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
 import { UpdateOnboardingSetupDto } from './dto/update-onboarding-setup.dto';
-import { UpdateSetupPaymentDto } from './dto/update-setup-payment.dto';
 import { UpdateSetupProgressDto } from './dto/update-setup-progress.dto';
 import { OnboardingSetupsService } from './onboarding-setups.service';
 
@@ -79,15 +78,6 @@ export class OnboardingSetupsController {
     @Body() dto: CreateOnboardingPaymentSessionDto,
   ) {
     return this.service.createPaymentCheckoutSession(id, user, dto);
-  }
-
-  @Patch(':id/payment')
-  updatePaymentStatus(
-    @Param('id') id: string,
-    @CurrentUser() user: RequestUser,
-    @Body() dto: UpdateSetupPaymentDto,
-  ) {
-    return this.service.updatePaymentStatus(id, user, dto);
   }
 
   @Patch(':id/progress')
