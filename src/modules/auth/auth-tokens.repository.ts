@@ -43,4 +43,20 @@ export class AuthTokensRepository {
       )
       .exec();
   }
+
+  consumeForUser(userId: string, tokenHash: string, type: AuthTokenType) {
+    return this.tokenModel
+      .findOneAndUpdate(
+        {
+          userId,
+          tokenHash,
+          type,
+          consumedAt: { $exists: false },
+          expiresAt: { $gt: new Date() },
+        },
+        { consumedAt: new Date() },
+        { new: true },
+      )
+      .exec();
+  }
 }

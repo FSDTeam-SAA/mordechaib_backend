@@ -278,6 +278,16 @@ export class PlatformMeetingsService {
     };
   }
 
+  /*
+   * Future onboarding-host flow (intentionally disabled):
+   * Resolve a platform-managed onboarding host account, then call create()
+   * with that host organization instead of the customer's organization.
+   *
+   * Do not reactivate this with the customer organizationId: its connections
+   * belong to the customer, whereas onboarding meetings must be created from
+   * the Noltra platform host account.
+   */
+
   createFromAiProposal(
     organizationId: string,
     userId: string,

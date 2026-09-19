@@ -17,13 +17,14 @@ import {
   TranscribeCallJob,
 } from './ai-jobs.queue';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
-import {
-  AiAnalysisAction,
-  AiAnalysisResult,
-} from '../ai-actions/dto/ai-analysis-result.dto';
+import { AiAnalysisAction } from '../ai-actions/dto/ai-analysis-result.dto';
 import { AiSourceContextService } from '../ai-internal/ai-source-context.service';
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
+import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
+import { AiChatReplyService } from './ai-chat-reply.service';
+import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
+import { AgentOperationType } from '../../common/enums/agent-activity.enum';
 
 type MessageAnalysisContext = {
   organizationId: string;
@@ -51,6 +52,9 @@ export class AiJobsProcessor extends WorkerHost {
     private readonly sourceContext: AiSourceContextService,
     private readonly config: ConfigService,
     private readonly clarificationWorkflow: AiActionClarificationWorkflowService,
+    private readonly responseValidator: AiAnalysisResponseValidator,
+    private readonly chatReplies: AiChatReplyService,
+    private readonly activity: AgentActivityService,
   ) {
     super();
   }
@@ -87,6 +91,14 @@ export class AiJobsProcessor extends WorkerHost {
 
   private async analyzeSource(job: Job<AnalyzeSourceJob>) {
     const { organizationId, sourceType, sourceId } = job.data;
+    const activityId = await this.activity.start({
+      organizationId,
+      operationType: AgentOperationType.SOURCE_ANALYSIS,
+      jobId: String(job.id || `source-${sourceType}-${sourceId}`),
+      attempt: job.attemptsMade + 1,
+      sourceType,
+      sourceId,
+    });
     this.logger.log(
       `AI source analysis started: jobId=${String(job.id)}, attempt=${job.attemptsMade + 1}, source=${sourceType}:${sourceId}`,
     );
@@ -95,6 +107,7 @@ export class AiJobsProcessor extends WorkerHost {
       context = (await this.sourceContext.sourceContext(
         sourceType,
         sourceId,
+        organizationId,
       )) as unknown as MessageAnalysisContext & Record<string, unknown>;
       this.logger.log(
         `AI source context prepared: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
@@ -109,6 +122,9 @@ export class AiJobsProcessor extends WorkerHost {
           sourceId,
           'COMPLETED',
         );
+        await this.activity.skip(activityId, {
+          metadata: { reason: 'superseded-by-newer-message' },
+        });
         return {
           skipped: true,
           reason: 'superseded-by-newer-message',
@@ -137,6 +153,9 @@ export class AiJobsProcessor extends WorkerHost {
               sourceId,
               'COMPLETED',
             );
+            await this.activity.skip(activityId, {
+              metadata: { reason: 'clarification-answer-routed' },
+            });
             return { clarificationSubmitted: proposal };
           }
         }
@@ -175,15 +194,18 @@ export class AiJobsProcessor extends WorkerHost {
           `AI analyze-source request body: ${JSON.stringify(requestBody)}`,
         );
       }
-      const analysisResult = await this.aiService.request<AiAnalysisResult>(
+      const rawAnalysisResult = await this.aiService.request<unknown>(
         '/api/v1/ai/jobs/analyze-source',
         requestBody,
       );
-      if (!analysisResult || !Array.isArray(analysisResult.actions)) {
-        throw new UnrecoverableError(
-          'AI service returned an invalid analysis response',
-        );
-      }
+      const analysisResult = await this.responseValidator.validate(
+        rawAnalysisResult,
+        {
+          requestId,
+          sourceType: sourceType as AiProposalSourceType,
+          sourceId,
+        },
+      );
       this.logger.log(
         `AI analysis response accepted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}, actions=${analysisResult.actions.length}`,
       );
@@ -197,6 +219,21 @@ export class AiJobsProcessor extends WorkerHost {
           expectedRequestId: requestId,
         },
       );
+      let assistantReply:
+        Awaited<ReturnType<AiChatReplyService['persist']>> | undefined;
+      if (sourceType === 'USER_MESSAGE' && analysisResult.assistantMessage) {
+        if (!context.conversationId) {
+          throw new UnrecoverableError(
+            'User message context is missing conversationId',
+          );
+        }
+        assistantReply = await this.chatReplies.persist({
+          organizationId,
+          conversationId: context.conversationId,
+          sourceMessageId: sourceId,
+          assistantMessage: analysisResult.assistantMessage,
+        });
+      }
       if (sourceType === 'USER_MESSAGE') {
         await this.sourceContext.markMessageProcessed(
           organizationId,
@@ -207,8 +244,34 @@ export class AiJobsProcessor extends WorkerHost {
       this.logger.log(
         `AI proposals persisted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
       );
-      return ingested;
+      const telemetryAgent =
+        analysisResult.assistantMessage?.agent ||
+        analysisResult.actions[0]?.proposedByAgent;
+      await this.activity.succeed(activityId, {
+        ...(telemetryAgent ? { agent: telemetryAgent } : {}),
+        ...(analysisResult.assistantMessage?.runId
+          ? { runId: analysisResult.assistantMessage.runId }
+          : {}),
+        metadata: {
+          actionCount: analysisResult.actions.length,
+          assistantMessageCreated: Boolean(assistantReply?.created),
+        },
+      });
+      return {
+        proposals: ingested,
+        ...(assistantReply
+          ? {
+              assistantMessageId: String(assistantReply.message._id),
+              assistantMessageCreated: assistantReply.created,
+            }
+          : {}),
+      };
     } catch (error) {
+      await this.activity.fail(activityId, {
+        failureCode: this.analysisFailureCode(error),
+        failureMessage:
+          error instanceof Error ? error.message : 'Source analysis failed',
+      });
       if (sourceType === 'USER_MESSAGE') {
         await this.sourceContext
           .markMessageProcessed(
@@ -221,6 +284,14 @@ export class AiJobsProcessor extends WorkerHost {
       }
       throw error;
     }
+  }
+
+  private analysisFailureCode(error: unknown) {
+    if (error instanceof AiServiceHttpError) {
+      return error.retryable ? 'AI_SERVICE_UNAVAILABLE' : 'AI_SERVICE_REJECTED';
+    }
+    if (error instanceof UnrecoverableError) return 'UNRECOVERABLE_ERROR';
+    return 'SOURCE_ANALYSIS_FAILED';
   }
 
   private singleClarification(context: MessageAnalysisContext) {

@@ -8,21 +8,23 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sendEmail } from '../../common/helpers/mailer.helper';
-import { getOnboardingSetupMeetingTemplate } from '../../common/templates/onboarding-setup-meeting.template';
+import {
+  getOnboardingSetupMeetingTemplate,
+  getOnboardingSetupOrganizerMeetingConfirmationTemplate,
+} from '../../common/templates/onboarding-setup-meeting.template';
 import {
   AdminNote,
   OnboardingSetup,
   StatusHistoryEntry,
 } from '../../database/schemas/onboarding-setup.schema';
 import { IntegrationSetupStatus } from '../../common/enums/integration-setup-status.enum';
-import { PlanType } from '../../common/enums/plan-type.enum';
 import { SetupFeeType } from '../../common/enums/setup-fee-type.enum';
 import { SetupMeetingStatus } from '../../common/enums/setup-meeting-status.enum';
 import { SetupPaymentStatus } from '../../common/enums/setup-payment-status.enum';
 import { SetupStatus } from '../../common/enums/setup-status.enum';
 import { SetupType } from '../../common/enums/setup-type.enum';
 import { RequestUser } from '../../common/types/request-context.type';
-import { CalendarService } from '../calendar/calendar.service';
+import { SetupPackagesService } from '../setup-packages/setup-packages.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { AddAdminNoteDto } from './dto/add-admin-note.dto';
 import { AssignAdminDto } from './dto/assign-admin.dto';
@@ -32,7 +34,6 @@ import { CreateOnboardingSetupDto } from './dto/create-onboarding-setup.dto';
 import { CreateOnboardingPaymentSessionDto } from './dto/create-onboarding-payment-session.dto';
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
 import { UpdateOnboardingSetupDto } from './dto/update-onboarding-setup.dto';
-import { UpdateSetupPaymentDto } from './dto/update-setup-payment.dto';
 import { UpdateSetupProgressDto } from './dto/update-setup-progress.dto';
 import { SetupProgressHelper } from '../../common/helpers/setup-progress.helper';
 import { OnboardingSetupsRepository } from './onboarding-setups.repository';
@@ -89,9 +90,9 @@ export class OnboardingSetupsService {
 
   constructor(
     private readonly repository: OnboardingSetupsRepository,
-    private readonly calendarService: CalendarService,
     private readonly stripeProvider: StripeProvider,
     private readonly config: ConfigService,
+    private readonly setupPackagesService: SetupPackagesService,
   ) {}
 
   async create(user: RequestUser, dto: CreateOnboardingSetupDto) {
@@ -104,14 +105,17 @@ export class OnboardingSetupsService {
       );
     }
 
-    const defaults = this.resolvePackageDefaults(dto);
+    const selectedPackage = await this.setupPackagesService.findActiveById(
+      dto.setupPackageId,
+    );
+    const defaults = this.resolvePackageDefaults(selectedPackage);
     const setup = await this.repository.create({
       organizationId: user.organizationId,
       organizerId: user.id,
       createdBy: user.id,
       ...defaults,
-      packageType: dto.packageType,
-      selectedSetupPackage: this.buildSelectedPackage(dto),
+      setupPackageId: String(selectedPackage._id),
+      selectedSetupPackage: this.buildSelectedPackage(selectedPackage),
       progress: this.buildInitialProgress(),
     });
 
@@ -122,7 +126,7 @@ export class OnboardingSetupsService {
       'Onboarding setup created',
     );
 
-    if (setup.packageType === PlanType.ENTERPRISE) {
+    if (setup.payment?.required) {
       const checkout = await this.createPaymentCheckoutSession(
         String(setup._id),
         user,
@@ -224,25 +228,13 @@ export class OnboardingSetupsService {
       throw new BadRequestException('startTime must be before endTime');
     }
 
-    let calendarEventId: string | undefined;
-    const meetingLink = dto.meetingLink;
-
-    if (dto.calendarProvider && dto.calendarProvider !== 'MANUAL') {
-      try {
-        const event = (await this.calendarService.createEvent(
-          user.organizationId,
-          user.id,
-          {
-            title: 'Noltra Onboarding & Setup Call',
-            startTime: dto.startTime,
-            endTime: dto.endTime,
-          },
-        )) as { id?: string } | null;
-        calendarEventId = event?.id;
-      } catch {
-        // Fall back to manual meeting link if calendar integration fails
-      }
-    }
+    /*
+     * Future platform-host automation (intentionally disabled):
+     * This booking must use a Noltra platform onboarding-host connection,
+     * not user.organizationId. When that host configuration exists, reuse
+     * PlatformMeetingsService here to create Google Meet/Zoom, save its join
+     * URL, and email it to the customer.
+     */
 
     const nextStatus = this.hasSubmittedRequirements(setup)
       ? SetupStatus.REQUIREMENT_COLLECTED
@@ -255,9 +247,9 @@ export class OnboardingSetupsService {
           'meeting.startTime': start,
           'meeting.endTime': end,
           'meeting.timezone': dto.timezone || setup.meeting.timezone || 'UTC',
-          'meeting.meetingLink': meetingLink || setup.meeting.meetingLink,
-          'meeting.calendarProvider': dto.calendarProvider || 'MANUAL',
-          'meeting.calendarEventId': calendarEventId,
+          'meeting.meetingLink': setup.meeting?.meetingLink,
+          'meeting.calendarProvider': setup.meeting?.calendarProvider || 'MANUAL',
+          'meeting.calendarEventId': setup.meeting?.calendarEventId,
           'meeting.notes': dto.notes,
           'meeting.status': SetupMeetingStatus.SCHEDULED,
           status: nextStatus,
@@ -276,7 +268,24 @@ export class OnboardingSetupsService {
         : 'Setup meeting booked',
     );
 
-    await this.notifySupportTeamOfMeeting(setup, user, start, end, dto);
+    const scheduledMeetingLink =
+      updated?.meeting?.meetingLink || setup.meeting?.meetingLink;
+    await this.notifySupportTeamOfMeeting(
+      setup,
+      user,
+      start,
+      end,
+      dto,
+      scheduledMeetingLink,
+    );
+    await this.notifyOrganizerOfBookedMeeting(
+      setup,
+      user,
+      start,
+      end,
+      dto,
+      scheduledMeetingLink,
+    );
 
     return this.toOrganizerView(updated!);
   }
@@ -287,9 +296,9 @@ export class OnboardingSetupsService {
     dto: CreateOnboardingPaymentSessionDto,
   ) {
     const setup = await this.requireOwnedSetup(id, user);
-    if (setup.packageType !== PlanType.ENTERPRISE || !setup.payment?.required) {
+    if (!setup.payment?.required) {
       throw new BadRequestException(
-        'Stripe payment is only required for Enterprise onboarding setups',
+        'Stripe payment is not required for this onboarding setup',
       );
     }
     if (setup.status !== SetupStatus.PAYMENT_PENDING) {
@@ -299,7 +308,7 @@ export class OnboardingSetupsService {
     }
     if (!setup.payment.amount || setup.payment.amount <= 0) {
       throw new BadRequestException(
-        'A positive Enterprise setup payment amount is required',
+        'A positive setup payment amount is required',
       );
     }
 
@@ -330,69 +339,6 @@ export class OnboardingSetupsService {
     );
 
     return { checkoutUrl: session.url, sessionId: session.id };
-  }
-
-  async updatePaymentStatus(
-    id: string,
-    user: RequestUser,
-    dto: UpdateSetupPaymentDto,
-  ) {
-    const setup = await this.requireOwnedSetup(id, user);
-    if (setup.status !== SetupStatus.PAYMENT_PENDING) {
-      throw new BadRequestException(
-        'Payment can only be confirmed while payment is pending',
-      );
-    }
-
-    if (dto.status === SetupPaymentStatus.PAID && dto.provider !== 'MANUAL') {
-      throw new BadRequestException(
-        'Stripe payments must be confirmed by the Stripe webhook',
-      );
-    }
-
-    const paymentUpdate: Record<string, unknown> = {
-      'payment.status': dto.status,
-      ...(dto.paymentIntentId
-        ? { 'payment.paymentIntentId': dto.paymentIntentId }
-        : {}),
-      ...(dto.checkoutSessionId
-        ? { 'payment.checkoutSessionId': dto.checkoutSessionId }
-        : {}),
-      ...(dto.amount !== undefined ? { 'payment.amount': dto.amount } : {}),
-      ...(dto.provider ? { 'payment.provider': dto.provider } : {}),
-    };
-
-    let nextStatus: SetupStatus = setup.status;
-    if (dto.status === SetupPaymentStatus.PAID) {
-      paymentUpdate['payment.paidAt'] = new Date();
-      nextStatus =
-        setup.meeting?.status === SetupMeetingStatus.SCHEDULED
-          ? SetupStatus.MEETING_SCHEDULED
-          : SetupStatus.PAYMENT_COMPLETED;
-    }
-
-    const updated = await this.repository.update(
-      id,
-      {
-        $set: {
-          ...paymentUpdate,
-          status: nextStatus,
-          updatedBy: user.id,
-        },
-      },
-      user.organizationId,
-    );
-
-    if (nextStatus !== setup.status) {
-      await this.pushStatusHistory(
-        id,
-        nextStatus,
-        user.id,
-        `Payment status updated to ${dto.status}`,
-      );
-    }
-
-    return this.toOrganizerView(updated!);
   }
 
   async updateSelfConnectProgress(
@@ -469,7 +415,7 @@ export class OnboardingSetupsService {
       input.setupId,
       nextStatus,
       'STRIPE_WEBHOOK',
-      'Enterprise onboarding payment confirmed by Stripe',
+      'Onboarding setup payment confirmed by Stripe',
     );
     return updated;
   }
@@ -643,68 +589,37 @@ export class OnboardingSetupsService {
     return this.changeStatus(id, admin, { status: SetupStatus.COMPLETED });
   }
 
-  private resolvePackageDefaults(dto: CreateOnboardingSetupDto) {
-    const integrationSetup = dto.setupType === SetupType.DONE_FOR_YOU;
-    switch (dto.packageType) {
-      case PlanType.STARTER:
-        return {
-          setupType: integrationSetup
-            ? SetupType.DONE_FOR_YOU
-            : SetupType.SELF_CONNECT,
-          setupFeeType: SetupFeeType.FREE,
-          status: integrationSetup
-            ? SetupStatus.MEETING_PENDING
-            : SetupStatus.NOT_STARTED,
-          payment: {
-            required: false,
-            status: SetupPaymentStatus.NOT_REQUIRED,
-            amount: 0,
-          },
-          meeting: {
-            isRequired: integrationSetup,
-            status: integrationSetup
-              ? SetupMeetingStatus.PENDING
-              : SetupMeetingStatus.NOT_REQUIRED,
-          },
-        };
-      case PlanType.GROWTH:
-        return {
-          setupType: integrationSetup
-            ? SetupType.DONE_FOR_YOU
-            : SetupType.SELF_CONNECT,
-          setupFeeType: SetupFeeType.FREE,
-          status: integrationSetup
-            ? SetupStatus.MEETING_PENDING
-            : SetupStatus.NOT_STARTED,
-          payment: {
-            required: false,
-            status: SetupPaymentStatus.NOT_REQUIRED,
-            amount: 0,
-            currency: dto.setupPackageCurrency ?? 'USD',
-          },
-          meeting: {
-            isRequired: integrationSetup,
-            status: integrationSetup
-              ? SetupMeetingStatus.PENDING
-              : SetupMeetingStatus.NOT_REQUIRED,
-          },
-        };
-      case PlanType.ENTERPRISE:
-        return {
-          setupType: SetupType.DONE_FOR_YOU,
-          setupFeeType: SetupFeeType.PAID_ADDON,
-          status: SetupStatus.PAYMENT_PENDING,
-          payment: {
-            required: true,
-            status: SetupPaymentStatus.PENDING,
-            amount: dto.setupPackagePrice ?? 0,
-            currency: dto.setupPackageCurrency ?? 'USD',
-          },
-          meeting: { isRequired: true, status: SetupMeetingStatus.PENDING },
-        };
-      default:
-        throw new BadRequestException('Unsupported package type');
-    }
+  private resolvePackageDefaults(setupPackage: {
+    setupType: SetupType;
+    setupFeeType: SetupFeeType;
+    price: number;
+    currency: string;
+    paymentRequired: boolean;
+    meetingRequired: boolean;
+  }) {
+    return {
+      setupType: setupPackage.setupType,
+      setupFeeType: setupPackage.setupFeeType,
+      status: setupPackage.paymentRequired
+        ? SetupStatus.PAYMENT_PENDING
+        : setupPackage.meetingRequired
+          ? SetupStatus.MEETING_PENDING
+          : SetupStatus.NOT_STARTED,
+      payment: {
+        required: setupPackage.paymentRequired,
+        status: setupPackage.paymentRequired
+          ? SetupPaymentStatus.PENDING
+          : SetupPaymentStatus.NOT_REQUIRED,
+        amount: setupPackage.price,
+        currency: setupPackage.currency,
+      },
+      meeting: {
+        isRequired: setupPackage.meetingRequired,
+        status: setupPackage.meetingRequired
+          ? SetupMeetingStatus.PENDING
+          : SetupMeetingStatus.NOT_REQUIRED,
+      },
+    };
   }
 
   private buildRequirementsUpdate(
@@ -740,13 +655,20 @@ export class OnboardingSetupsService {
     return update;
   }
 
-  private buildSelectedPackage(dto: CreateOnboardingSetupDto) {
+  private buildSelectedPackage(setupPackage: {
+    code: string;
+    name: string;
+    price: number;
+    currency: string;
+    description?: string;
+  }) {
     return {
-      name: dto.setupPackageName || `${dto.packageType} onboarding setup`,
-      price: dto.setupPackagePrice ?? 0,
-      currency: (dto.setupPackageCurrency || 'USD').toUpperCase(),
-      ...(dto.setupPackageDescription
-        ? { description: dto.setupPackageDescription }
+      code: setupPackage.code,
+      name: setupPackage.name,
+      price: setupPackage.price,
+      currency: setupPackage.currency,
+      ...(setupPackage.description
+        ? { description: setupPackage.description }
         : {}),
     };
   }
@@ -829,6 +751,7 @@ export class OnboardingSetupsService {
     start: Date,
     end: Date,
     dto: BookSetupMeetingDto,
+    meetingLink?: string,
   ) {
     const supportEmail = this.config.get<string>('mail.supportEmail');
     if (!supportEmail) {
@@ -843,14 +766,46 @@ export class OnboardingSetupsService {
       organizerEmail: user.email,
       organizationId: setup.organizationId,
       setupId: String(setup._id),
-      packageType: setup.packageType,
+      packageType:
+        setup.selectedSetupPackage?.name ||
+        setup.packageType ||
+        'Onboarding setup',
       startTime: start.toISOString(),
       endTime: end.toISOString(),
       timezone: dto.timezone || setup.meeting?.timezone || 'UTC',
-      meetingLink: dto.meetingLink || setup.meeting?.meetingLink,
+      meetingLink,
     });
 
     await sendEmail(this.config, { to: supportEmail, ...template });
+  }
+
+  private async notifyOrganizerOfBookedMeeting(
+    setup: OnboardingSetup & { _id: unknown },
+    user: RequestUser,
+    start: Date,
+    end: Date,
+    dto: BookSetupMeetingDto,
+    meetingLink?: string,
+  ) {
+    const template = getOnboardingSetupOrganizerMeetingConfirmationTemplate({
+      organizerName: `${user.firstName} ${user.lastName}`.trim(),
+      packageType:
+        setup.selectedSetupPackage?.name ||
+        setup.packageType ||
+        'Onboarding setup',
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      timezone: dto.timezone || setup.meeting?.timezone || 'UTC',
+      meetingLink,
+      hasBookingNote: Boolean(dto.notes?.trim()),
+    });
+
+    const sent = await sendEmail(this.config, { to: user.email, ...template });
+    if (!sent) {
+      this.logger.warn(
+        `Meeting confirmation email could not be sent for setup ${String(setup._id)}`,
+      );
+    }
   }
 
   private defaultPaymentSuccessUrl(id: string) {

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model } from 'mongoose';
 import { CallRecording } from '../../database/schemas/call-recording.schema';
@@ -15,12 +16,17 @@ import { Conversation } from '../../database/schemas/conversation.schema';
 import { Message } from '../../database/schemas/message.schema';
 import { MessageAttachment } from '../../database/schemas/message-attachment.schema';
 import { User } from '../../database/schemas/user.schema';
+import { TaskItem } from '../../database/schemas/task-item.schema';
+import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
+import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
+import { AiSourceAnalysis } from '../../database/schemas/ai-source-analysis.schema';
 import {
   AiActionProposal,
   AiActionProposalStatus,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { MessageAttachmentStatus } from '../../common/enums/message-attachment-status.enum';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 type SourceType =
   | 'CALL_AUDIO'
@@ -56,10 +62,23 @@ export class AiSourceContextService {
     private readonly proposals: Model<AiActionProposal>,
     @InjectModel(User.name)
     private readonly users: Model<User>,
+    @InjectModel(TaskItem.name)
+    private readonly tasks: Model<TaskItem>,
+    @InjectModel(ManagedCalendarEvent.name)
+    private readonly calendarEvents: Model<ManagedCalendarEvent>,
+    @InjectModel(PlatformMeeting.name)
+    private readonly platformMeetings: Model<PlatformMeeting>,
+    @InjectModel(AiSourceAnalysis.name)
+    private readonly sourceAnalyses: Model<AiSourceAnalysis>,
     private readonly attachmentStorage: CloudinaryMessageAttachmentStorage,
+    private readonly config: ConfigService,
   ) {}
 
-  async sourceContext(sourceType: SourceType, sourceId: string) {
+  async sourceContext(
+    sourceType: SourceType,
+    sourceId: string,
+    organizationId: string,
+  ) {
     if (
       ![
         'CALL_AUDIO',
@@ -72,12 +91,12 @@ export class AiSourceContextService {
       throw new BadRequestException('Unsupported AI source type');
     }
     if (sourceType === 'USER_MESSAGE') {
-      return this.messageContext(sourceId);
+      return this.messageContext(sourceId, organizationId);
     }
     if (sourceType === 'CALL_AUDIO' || sourceType === 'CALL_TRANSCRIPT') {
-      return this.callContext(sourceType, sourceId);
+      return this.callContext(sourceType, sourceId, organizationId);
     }
-    return this.meetingContext(sourceType, sourceId);
+    return this.meetingContext(sourceType, sourceId, organizationId);
   }
 
   async markMessageProcessed(
@@ -152,13 +171,20 @@ export class AiSourceContextService {
     };
   }
 
-  private async meetingContext(sourceType: SourceType, sourceId: string) {
+  private async meetingContext(
+    sourceType: SourceType,
+    sourceId: string,
+    organizationId: string,
+  ) {
     if (!isValidObjectId(sourceId)) {
       throw new BadRequestException(
         'Meeting sourceId must be a MongoDB ObjectId',
       );
     }
-    const meeting = await this.meetingBots.findById(sourceId).lean().exec();
+    const meeting = await this.meetingBots
+      .findOne({ _id: sourceId, organizationId })
+      .lean()
+      .exec();
     const expectedPlatform =
       sourceType === 'GOOGLE_MEET' ? 'GOOGLE_MEET' : 'ZOOM';
     if (meeting && meeting.platform === expectedPlatform) {
@@ -174,7 +200,7 @@ export class AiSourceContextService {
 
     if (sourceType === 'ZOOM_MEETING') {
       const legacyMeeting = await this.zoomMeetings
-        .findById(sourceId)
+        .findOne({ _id: sourceId, organizationId })
         .lean()
         .exec();
       if (legacyMeeting) {
@@ -196,14 +222,18 @@ export class AiSourceContextService {
     throw new NotFoundException('Meeting source not found');
   }
 
-  private async callContext(sourceType: SourceType, sourceId: string) {
+  private async callContext(
+    sourceType: SourceType,
+    sourceId: string,
+    organizationId: string,
+  ) {
     const filters: Array<Record<string, string>> = [
       { recordingSid: sourceId },
       { callSid: sourceId },
     ];
     if (isValidObjectId(sourceId)) filters.push({ _id: sourceId });
     const recording = await this.callRecordings
-      .findOne({ $or: filters })
+      .findOne({ organizationId, $or: filters })
       .lean()
       .exec();
     if (!recording) throw new NotFoundException('Call source not found');
@@ -224,7 +254,7 @@ export class AiSourceContextService {
     };
   }
 
-  private async messageContext(sourceId: string) {
+  private async messageContext(sourceId: string, organizationId: string) {
     if (!isValidObjectId(sourceId)) {
       throw new BadRequestException(
         'User message sourceId must be a MongoDB ObjectId',
@@ -233,6 +263,7 @@ export class AiSourceContextService {
     const message = await this.messages
       .findOne({
         _id: sourceId,
+        organizationId,
         deletedAt: { $exists: false },
       })
       .select('+extractedText +transcription')
@@ -262,6 +293,10 @@ export class AiSourceContextService {
       .lean()
       .exec();
     const messageIds = history.map((item) => String(item._id));
+    const attachmentDownloadsEnabled = this.config.get<boolean>(
+      'aiService.attachmentDownloadUrlEnabled',
+      false,
+    );
     const attachments = await this.attachments
       .find({
         organizationId: message.organizationId,
@@ -269,55 +304,57 @@ export class AiSourceContextService {
         status: MessageAttachmentStatus.ACTIVE,
       })
       .select(
-        '+storageKey +storageAssetId +storageResourceType +storageDeliveryType +storageFormat +extractedText +transcription',
+        `+extractedText +transcription${
+          attachmentDownloadsEnabled
+            ? ' +storageKey +storageAssetId +storageResourceType +storageDeliveryType +storageFormat'
+            : ''
+        }`,
       )
       .sort({ createdAt: 1, _id: 1 })
       .lean()
       .exec();
     const attachmentContext = await Promise.all(
-      attachments.map(async (attachment) => {
-        const download = await this.attachmentStorage.getDownload(
-          {
-            storageKey: attachment.storageKey,
-            storageAssetId: attachment.storageAssetId,
-            storageResourceType: attachment.storageResourceType,
-            storageDeliveryType: attachment.storageDeliveryType,
-            storageFormat: attachment.storageFormat,
-          },
-          'inline',
-        );
-        return {
-          id: String(attachment._id),
-          messageId: attachment.messageId,
-          category: attachment.category,
-          originalName: attachment.originalName,
-          mimeType: attachment.mimeType,
-          sizeBytes: attachment.sizeBytes,
-          processingStatus: attachment.processingStatus,
-          extractedText: attachment.extractedText,
-          transcription: attachment.transcription,
-          downloadUrl: download.downloadUrl,
-          downloadUrlExpiresAt: download.expiresAt,
-        };
-      }),
+      attachments.map((attachment) =>
+        this.attachmentData(attachment, attachmentDownloadsEnabled),
+      ),
     );
-    const pendingProposals = await this.proposals
-      .find({
-        organizationId: message.organizationId,
-        conversationId: message.conversationId,
-        status: {
-          $in: [
-            AiActionProposalStatus.NEEDS_CLARIFICATION,
-            AiActionProposalStatus.ANALYZING,
-            AiActionProposalStatus.PENDING,
-          ],
-        },
-      })
-      .select('proposalId actionType status payload clarificationQuestions clarificationAnswers requestId proposedByAgent revision')
-      .sort({ createdAt: -1 })
-      .limit(20)
+    const requester = await this.users
+      .findOne(
+        { _id: message.senderId, organizationId: message.organizationId },
+        { role: 1 },
+      )
       .lean()
       .exec();
+    if (!requester) throw new NotFoundException('Message requester not found');
+    const canReadRestrictedFacts = [UserRole.OWNER, UserRole.ADMIN].includes(
+      requester.role,
+    );
+    const pendingProposals = canReadRestrictedFacts
+      ? await this.proposals
+          .find({
+            organizationId: message.organizationId,
+            conversationId: message.conversationId,
+            status: {
+              $in: [
+                AiActionProposalStatus.NEEDS_CLARIFICATION,
+                AiActionProposalStatus.ANALYZING,
+                AiActionProposalStatus.PENDING,
+              ],
+            },
+          })
+          .select(
+            'proposalId actionType status payload clarificationQuestions clarificationAnswers requestId proposedByAgent revision createdAt updatedAt',
+          )
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .exec()
+      : [];
+    const facts = await this.chatFacts(
+      String(message.organizationId),
+      canReadRestrictedFacts,
+      pendingProposals,
+    );
 
     return {
       organizationId: message.organizationId,
@@ -339,7 +376,217 @@ export class AiSourceContextService {
       },
       attachments: attachmentContext,
       pendingProposals,
+      facts,
     };
+  }
+
+  private async attachmentData(
+    attachment: MessageAttachment & Record<string, unknown>,
+    downloadsEnabled: boolean,
+  ) {
+    const extractedText =
+      typeof attachment.extractedText === 'string' &&
+      attachment.extractedText.trim()
+        ? attachment.extractedText
+        : undefined;
+    const transcription =
+      typeof attachment.transcription === 'string' &&
+      attachment.transcription.trim()
+        ? attachment.transcription
+        : undefined;
+    let download: { downloadUrl: string; expiresAt: Date | string } | undefined;
+    if (downloadsEnabled) {
+      try {
+        download = await this.attachmentStorage.getDownload(
+          {
+            storageKey: attachment.storageKey,
+            storageAssetId: attachment.storageAssetId,
+            storageResourceType: attachment.storageResourceType,
+            storageDeliveryType: attachment.storageDeliveryType,
+            storageFormat: attachment.storageFormat,
+          },
+          'inline',
+        );
+      } catch {
+        download = undefined;
+      }
+    }
+    return {
+      id: String(attachment._id),
+      messageId: attachment.messageId,
+      category: attachment.category,
+      originalName: attachment.originalName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      processingStatus: attachment.processingStatus,
+      ...(typeof attachment.processingError === 'string'
+        ? { processingError: attachment.processingError }
+        : {}),
+      contentAvailability:
+        extractedText || transcription
+          ? 'AVAILABLE'
+          : download
+            ? 'DOWNLOAD_AVAILABLE'
+            : 'UNAVAILABLE',
+      ...(extractedText ? { extractedText } : {}),
+      ...(transcription ? { transcription } : {}),
+      ...(download
+        ? {
+            downloadUrl: download.downloadUrl,
+            downloadUrlExpiresAt: download.expiresAt,
+          }
+        : {
+            contentUnavailableReason:
+              typeof attachment.processingError === 'string'
+                ? attachment.processingError
+                : 'No extracted text or transcription is available',
+          }),
+    };
+  }
+
+  private async chatFacts(
+    organizationId: string,
+    canReadRestrictedFacts: boolean,
+    pendingProposals: Array<Record<string, unknown>>,
+  ) {
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const to = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const [tasks, calendarEvents, meetings, analyses] = await Promise.all([
+      this.tasks
+        .find({ organizationId })
+        .select(
+          'title description status priority department assignedToUserId dueDate tags createdAt updatedAt',
+        )
+        .sort({ updatedAt: -1, _id: -1 })
+        .limit(20)
+        .lean()
+        .exec(),
+      this.calendarEvents
+        .find({ organizationId, startsAt: { $gte: from, $lt: to } })
+        .select(
+          'title meetingType urgency startsAt endsAt timezone status createdAt updatedAt',
+        )
+        .sort({ startsAt: 1, _id: 1 })
+        .limit(20)
+        .lean()
+        .exec(),
+      canReadRestrictedFacts
+        ? this.platformMeetings
+            .find({ organizationId, startsAt: { $gte: from, $lt: to } })
+            .select(
+              'title agenda platform startsAt endsAt durationMinutes timezone status createdAt updatedAt',
+            )
+            .sort({ startsAt: 1, _id: 1 })
+            .limit(20)
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+      canReadRestrictedFacts
+        ? this.sourceAnalyses
+            .find({ organizationId })
+            .select(
+              'source summary overallConfidence sentimentAnalysis customerIntelligence patternDetection createdAt updatedAt',
+            )
+            .sort({ updatedAt: -1, _id: -1 })
+            .limit(10)
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+    ]);
+
+    return {
+      tasks: {
+        availability: 'AVAILABLE',
+        items: tasks.map((task) =>
+          this.factItem('TASK', task, {
+            title: task.title,
+            description: this.boundedText(task.description, 2000),
+            status: task.status,
+            priority: task.priority,
+            department: task.department,
+            assignedToUserId: task.assignedToUserId,
+            dueDate: task.dueDate,
+            tags: Array.isArray(task.tags) ? task.tags.slice(0, 20) : [],
+          }),
+        ),
+      },
+      meetings: {
+        availability: canReadRestrictedFacts ? 'AVAILABLE' : 'UNAVAILABLE',
+        items: meetings.map((meeting) =>
+          this.factItem('PLATFORM_MEETING', meeting, {
+            title: meeting.title,
+            agenda: this.boundedText(meeting.agenda, 2000),
+            platform: meeting.platform,
+            startsAt: meeting.startsAt,
+            endsAt: meeting.endsAt,
+            durationMinutes: meeting.durationMinutes,
+            timezone: meeting.timezone,
+            status: meeting.status,
+          }),
+        ),
+      },
+      calendarEvents: {
+        availability: 'AVAILABLE',
+        items: calendarEvents.map((event) =>
+          this.factItem('CALENDAR_EVENT', event, {
+            title: event.title,
+            meetingType: event.meetingType,
+            urgency: event.urgency,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+            timezone: event.timezone,
+            status: event.status,
+          }),
+        ),
+      },
+      actionProposals: {
+        availability: canReadRestrictedFacts ? 'AVAILABLE' : 'UNAVAILABLE',
+        items: pendingProposals.map((proposal) =>
+          this.factItem('AI_ACTION_PROPOSAL', proposal, {
+            proposalId: proposal.proposalId,
+            actionType: proposal.actionType,
+            status: proposal.status,
+            payload: proposal.payload,
+            clarificationQuestions: proposal.clarificationQuestions,
+            clarificationAnswers: proposal.clarificationAnswers,
+            proposedByAgent: proposal.proposedByAgent,
+            revision: proposal.revision,
+          }),
+        ),
+      },
+      sourceAnalyses: {
+        availability: canReadRestrictedFacts ? 'PARTIAL' : 'UNAVAILABLE',
+        items: analyses.map((analysis) =>
+          this.factItem('AI_SOURCE_ANALYSIS', analysis, {
+            source: analysis.source,
+            summary: this.boundedText(analysis.summary, 2000),
+            overallConfidence: analysis.overallConfidence,
+            sentimentAnalysis: analysis.sentimentAnalysis,
+            customerIntelligence: analysis.customerIntelligence,
+            patternDetection: analysis.patternDetection,
+          }),
+        ),
+      },
+    };
+  }
+
+  private factItem(
+    sourceType: string,
+    source: Record<string, unknown>,
+    data: Record<string, unknown>,
+  ) {
+    return {
+      id: `${sourceType.toLowerCase()}-${String(source._id)}`,
+      sourceType,
+      sourceId: String(source._id),
+      capturedAt: source.updatedAt || source.createdAt,
+      data,
+    };
+  }
+
+  private boundedText(value: unknown, maxLength: number) {
+    return typeof value === 'string' ? value.slice(0, maxLength) : undefined;
   }
 
   private messageData(message: MessageContextRecord) {

@@ -20,6 +20,9 @@ export type CreateMessageAttachmentInput = {
   storageResourceType: string;
   storageDeliveryType: string;
   storageFormat: string;
+  processingStatus?: MessageProcessingStatus;
+  extractedText?: string;
+  processingError?: string;
 };
 
 @Injectable()
@@ -35,7 +38,8 @@ export class MessageAttachmentsRepository {
       inputs.map((input) => ({
         ...input,
         status: MessageAttachmentStatus.ACTIVE,
-        processingStatus: MessageProcessingStatus.NOT_REQUESTED,
+        processingStatus:
+          input.processingStatus || MessageProcessingStatus.NOT_REQUESTED,
       })),
     );
     return attachments.map((attachment) => attachment.toObject());
