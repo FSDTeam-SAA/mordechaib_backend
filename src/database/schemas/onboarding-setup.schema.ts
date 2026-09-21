@@ -54,6 +54,12 @@ export class SetupPayment {
 
   @Prop()
   paidAt?: Date;
+
+  @Prop()
+  failedAt?: Date;
+
+  @Prop({ trim: true, maxlength: 200 })
+  failureCode?: string;
 }
 
 export class SetupMeeting {

@@ -16,6 +16,7 @@ describe('OnboardingSetupsService package catalog integration', () => {
     pushStatusHistory: jest.fn(),
     findById: jest.fn(),
     update: jest.fn(),
+    deleteById: jest.fn(),
   };
   const setupPackagesService = { findActiveById: jest.fn() };
   const stripeProvider = { createOneTimeCheckoutSession: jest.fn() };
@@ -120,6 +121,77 @@ describe('OnboardingSetupsService package catalog integration', () => {
     );
     expect(result).toMatchObject({
       checkoutUrl: 'https://checkout.example.test/session',
+    });
+  });
+
+  it('rolls back a paid setup when Stripe checkout creation fails', async () => {
+    const setup = {
+      _id: 'setup-rollback',
+      status: SetupStatus.PAYMENT_PENDING,
+      payment: { required: true, amount: 199, currency: 'USD' },
+      selectedSetupPackage: { name: 'Enterprise Launch Package' },
+    };
+    repository.findActiveByOrganization.mockResolvedValue(null);
+    repository.create.mockResolvedValue(setup);
+    repository.findById.mockResolvedValue(setup);
+    repository.deleteById.mockResolvedValue(true);
+    setupPackagesService.findActiveById.mockResolvedValue({
+      _id: 'package-enterprise',
+      code: 'ENTERPRISE_SETUP',
+      name: 'Enterprise Launch Package',
+      setupType: SetupType.DONE_FOR_YOU,
+      setupFeeType: SetupFeeType.PAID_ADDON,
+      price: 199,
+      currency: 'USD',
+      paymentRequired: true,
+      meetingRequired: true,
+    });
+    stripeProvider.createOneTimeCheckoutSession.mockRejectedValue(
+      new Error('Stripe is unavailable'),
+    );
+
+    await expect(
+      service.create(user, {
+        setupPackageId: 'package-enterprise',
+        paymentSuccessUrl: 'https://app.example.test/payment/success',
+        paymentCancelUrl: 'https://app.example.test/payment/cancel',
+      }),
+    ).rejects.toThrow('Stripe is unavailable');
+
+    expect(repository.deleteById).toHaveBeenCalledWith('setup-rollback', 'org-1');
+  });
+
+  it('reuses an unpaid setup and returns a new checkout URL instead of 409', async () => {
+    const existing = {
+      _id: 'setup-retry',
+      status: SetupStatus.PAYMENT_PENDING,
+      payment: {
+        required: true,
+        status: 'FAILED',
+        amount: 199,
+        currency: 'USD',
+        provider: 'STRIPE',
+      },
+      selectedSetupPackage: { name: 'Enterprise Launch Package' },
+    };
+    repository.findActiveByOrganization.mockResolvedValue(existing);
+    repository.findById.mockResolvedValue(existing);
+    repository.update.mockResolvedValue(existing);
+    stripeProvider.createOneTimeCheckoutSession.mockResolvedValue({
+      id: 'cs_retry_1',
+      url: 'https://checkout.example.test/retry',
+    });
+
+    const result = await service.create(user, {
+      setupPackageId: 'ignored-while-retrying',
+      paymentSuccessUrl: 'https://app.example.test/payment/success',
+      paymentCancelUrl: 'https://app.example.test/payment/cancel',
+    });
+
+    expect(repository.create).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      checkoutUrl: 'https://checkout.example.test/retry',
+      resumedPayment: true,
     });
   });
 
