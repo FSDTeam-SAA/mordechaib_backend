@@ -63,6 +63,7 @@ export class StripeProvider {
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
       metadata: params.metadata,
+      payment_intent_data: { metadata: params.metadata },
     });
   }
 
