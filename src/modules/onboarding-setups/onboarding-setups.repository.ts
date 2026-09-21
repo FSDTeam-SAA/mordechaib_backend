@@ -41,6 +41,13 @@ export class OnboardingSetupsRepository {
       .exec();
   }
 
+  async deleteById(id: string, organizationId: string) {
+    const result = await this.setupModel
+      .deleteOne({ _id: id, organizationId })
+      .exec();
+    return result.deletedCount === 1;
+  }
+
   findAll(
     query: OnboardingSetupQueryDto,
     extraFilters: FilterQuery<OnboardingSetup> = {},

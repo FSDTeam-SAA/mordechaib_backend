@@ -100,6 +100,26 @@ export class OnboardingSetupsService {
       user.organizationId,
     );
     if (existing) {
+      if (this.canRetryPayment(existing)) {
+        const checkout = await this.createPaymentCheckoutSession(
+          String(existing._id),
+          user,
+          {
+            successUrl:
+              dto.paymentSuccessUrl ||
+              this.defaultPaymentSuccessUrl(String(existing._id)),
+            cancelUrl:
+              dto.paymentCancelUrl ||
+              this.defaultPaymentCancelUrl(String(existing._id)),
+          },
+        );
+        return {
+          ...this.toOrganizerView(existing),
+          checkoutUrl: checkout.checkoutUrl,
+          sessionId: checkout.sessionId,
+          resumedPayment: true,
+        };
+      }
       throw new ConflictException(
         'An active onboarding setup already exists for this organization',
       );
@@ -119,32 +139,47 @@ export class OnboardingSetupsService {
       progress: this.buildInitialProgress(),
     });
 
-    await this.pushStatusHistory(
-      String(setup._id),
-      setup.status,
-      user.id,
-      'Onboarding setup created',
-    );
-
     if (setup.payment?.required) {
-      const checkout = await this.createPaymentCheckoutSession(
-        String(setup._id),
-        user,
-        {
-          successUrl:
-            dto.paymentSuccessUrl ||
-            this.defaultPaymentSuccessUrl(String(setup._id)),
-          cancelUrl:
-            dto.paymentCancelUrl ||
-            this.defaultPaymentCancelUrl(String(setup._id)),
-        },
-      );
+      let checkout: { checkoutUrl?: string | null; sessionId: string };
+      try {
+        await this.pushStatusHistory(
+          String(setup._id),
+          setup.status,
+          user.id,
+          'Onboarding setup created',
+        );
+        checkout = await this.createPaymentCheckoutSession(
+          String(setup._id),
+          user,
+          {
+            successUrl:
+              dto.paymentSuccessUrl ||
+              this.defaultPaymentSuccessUrl(String(setup._id)),
+            cancelUrl:
+              dto.paymentCancelUrl ||
+              this.defaultPaymentCancelUrl(String(setup._id)),
+          },
+        );
+      } catch (error) {
+        await this.rollbackFailedPaidSetupCreation(
+          String(setup._id),
+          user.organizationId,
+        );
+        throw error;
+      }
 
       return {
         ...this.toOrganizerView(setup),
         ...(checkout.checkoutUrl ? { checkoutUrl: checkout.checkoutUrl } : {}),
       };
     }
+
+    await this.pushStatusHistory(
+      String(setup._id),
+      setup.status,
+      user.id,
+      'Onboarding setup created',
+    );
 
     return setup;
   }
@@ -331,8 +366,13 @@ export class OnboardingSetupsService {
       {
         $set: {
           'payment.provider': 'STRIPE',
+          'payment.status': SetupPaymentStatus.PENDING,
           'payment.checkoutSessionId': session.id,
           updatedBy: user.id,
+        },
+        $unset: {
+          'payment.failedAt': 1,
+          'payment.failureCode': 1,
         },
       },
       user.organizationId,
@@ -409,6 +449,10 @@ export class OnboardingSetupsService {
           : {}),
         status: nextStatus,
       },
+      $unset: {
+        'payment.failedAt': 1,
+        'payment.failureCode': 1,
+      },
     });
 
     await this.pushStatusHistory(
@@ -416,6 +460,45 @@ export class OnboardingSetupsService {
       nextStatus,
       'STRIPE_WEBHOOK',
       'Onboarding setup payment confirmed by Stripe',
+    );
+    return updated;
+  }
+
+  async markStripePaymentFailed(input: {
+    setupId: string;
+    checkoutSessionId?: string;
+    paymentIntentId?: string;
+    failureCode?: string;
+  }) {
+    const setup = await this.requireSetup(input.setupId);
+    if (
+      setup.payment?.provider !== 'STRIPE' ||
+      setup.payment.status === SetupPaymentStatus.PAID ||
+      setup.status !== SetupStatus.PAYMENT_PENDING
+    ) {
+      return setup;
+    }
+
+    const updated = await this.repository.update(input.setupId, {
+      $set: {
+        'payment.status': SetupPaymentStatus.FAILED,
+        'payment.failedAt': new Date(),
+        ...(input.checkoutSessionId
+          ? { 'payment.checkoutSessionId': input.checkoutSessionId }
+          : {}),
+        ...(input.paymentIntentId
+          ? { 'payment.paymentIntentId': input.paymentIntentId }
+          : {}),
+        ...(input.failureCode
+          ? { 'payment.failureCode': input.failureCode.slice(0, 200) }
+          : {}),
+      },
+    });
+    await this.pushStatusHistory(
+      input.setupId,
+      SetupStatus.PAYMENT_PENDING,
+      'STRIPE_WEBHOOK',
+      `Onboarding payment failed${input.failureCode ? `: ${input.failureCode}` : ''}; payment can be retried`,
     );
     return updated;
   }
@@ -622,6 +705,47 @@ export class OnboardingSetupsService {
     };
   }
 
+  private canRetryPayment(setup: OnboardingSetup) {
+    return (
+      setup.status === SetupStatus.PAYMENT_PENDING &&
+      setup.payment?.required === true &&
+      [SetupPaymentStatus.PENDING, SetupPaymentStatus.FAILED].includes(
+        setup.payment.status,
+      )
+    );
+  }
+
+  private async rollbackFailedPaidSetupCreation(
+    id: string,
+    organizationId: string,
+  ) {
+    try {
+      if (await this.repository.deleteById(id, organizationId)) return;
+    } catch (error) {
+      this.logger.error(
+        `Could not delete setup ${id} after checkout creation failed: ${this.errorMessage(error)}`,
+      );
+    }
+
+    // A failed hard-delete must never leave an active setup that blocks the
+    // organizer. Mark it terminal so a later POST can start a new setup.
+    await this.repository
+      .update(id, {
+        $set: {
+          status: SetupStatus.CANCELLED,
+          cancelledAt: new Date(),
+          'payment.status': SetupPaymentStatus.FAILED,
+          'payment.failedAt': new Date(),
+          'payment.failureCode': 'CHECKOUT_SESSION_CREATION_FAILED',
+        },
+      }, organizationId)
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Could not mark setup ${id} as cancelled after checkout creation failed: ${this.errorMessage(error)}`,
+        );
+      });
+  }
+
   private buildRequirementsUpdate(
     requirements: UpdateOnboardingSetupDto['requirements'],
   ): Record<string, unknown> {
@@ -806,6 +930,13 @@ export class OnboardingSetupsService {
         `Meeting confirmation email could not be sent for setup ${String(setup._id)}`,
       );
     }
+  }
+
+  private errorMessage(error: unknown) {
+    return (error instanceof Error ? error.message : String(error)).slice(
+      0,
+      500,
+    );
   }
 
   private defaultPaymentSuccessUrl(id: string) {

@@ -183,6 +183,18 @@ export class BillingService {
           event.data.object as Stripe.Checkout.Session,
         );
         break;
+      case 'checkout.session.async_payment_failed':
+      case 'checkout.session.expired':
+        await this.markOnboardingPaymentFailed(
+          event.data.object as Stripe.Checkout.Session,
+          event.type,
+        );
+        break;
+      case 'payment_intent.payment_failed':
+        await this.markOnboardingPaymentIntentFailed(
+          event.data.object as Stripe.PaymentIntent,
+        );
+        break;
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
@@ -260,6 +272,40 @@ export class BillingService {
         typeof session.payment_intent === 'string'
           ? session.payment_intent
           : undefined,
+    });
+    return true;
+  }
+
+  private async markOnboardingPaymentFailed(
+    session: Stripe.Checkout.Session,
+    failureCode: string,
+  ) {
+    const setupId = session.metadata?.onboardingSetupId;
+    if (!setupId || session.mode !== 'payment') return false;
+
+    await this.onboardingSetupsService.markStripePaymentFailed({
+      setupId,
+      checkoutSessionId: session.id,
+      paymentIntentId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : undefined,
+      failureCode,
+    });
+    return true;
+  }
+
+  private async markOnboardingPaymentIntentFailed(
+    paymentIntent: Stripe.PaymentIntent,
+  ) {
+    const setupId = paymentIntent.metadata?.onboardingSetupId;
+    if (!setupId) return false;
+
+    await this.onboardingSetupsService.markStripePaymentFailed({
+      setupId,
+      paymentIntentId: paymentIntent.id,
+      failureCode:
+        paymentIntent.last_payment_error?.code || 'payment_intent.payment_failed',
     });
     return true;
   }
