@@ -87,6 +87,7 @@ describe('AccountDeletionService', () => {
       'sub_123',
     );
     expect(collection).toHaveBeenCalledWith('ai_action_proposals');
+    expect(collection).toHaveBeenCalledWith('notifications');
     expect(collection).toHaveBeenCalledWith('auth_sessions');
     expect(collection).toHaveBeenCalledWith('auth_tokens');
     expect(collection).toHaveBeenCalledWith('notification_preferences');

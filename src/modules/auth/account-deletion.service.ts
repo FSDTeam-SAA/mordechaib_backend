@@ -57,6 +57,7 @@ const ORGANIZATION_COLLECTIONS = [
   'agent_activities',
   'executive_briefings',
   'strategic_notes',
+  'notifications',
 ] as const;
 
 @Injectable()

@@ -43,6 +43,10 @@ import {
   OnboardingSetupSchema,
 } from '../schemas/onboarding-setup.schema';
 import {
+  OnboardingAvailability,
+  OnboardingAvailabilitySchema,
+} from '../schemas/onboarding-availability.schema';
+import {
   SubscriptionPlan,
   SubscriptionPlanSchema,
 } from '../schemas/subscription-plan.schema';
@@ -146,6 +150,10 @@ import {
       { name: TwilioAccount.name, schema: TwilioAccountSchema },
       { name: TwilioPhoneNumber.name, schema: TwilioPhoneNumberSchema },
       { name: OnboardingSetup.name, schema: OnboardingSetupSchema },
+      {
+        name: OnboardingAvailability.name,
+        schema: OnboardingAvailabilitySchema,
+      },
       { name: SubscriptionPlan.name, schema: SubscriptionPlanSchema },
       { name: SetupPackage.name, schema: SetupPackageSchema },
       { name: RevenueSnapshot.name, schema: RevenueSnapshotSchema },

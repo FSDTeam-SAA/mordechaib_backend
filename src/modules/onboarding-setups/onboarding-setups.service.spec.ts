@@ -1,5 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { SetupFeeType } from '../../common/enums/setup-fee-type.enum';
+import { SetupMeetingStatus } from '../../common/enums/setup-meeting-status.enum';
+import { SetupPaymentStatus } from '../../common/enums/setup-payment-status.enum';
 import { SetupStatus } from '../../common/enums/setup-status.enum';
 import { SetupType } from '../../common/enums/setup-type.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -8,6 +10,7 @@ import { SetupPackagesService } from '../setup-packages/setup-packages.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { OnboardingSetupsRepository } from './onboarding-setups.repository';
 import { OnboardingSetupsService } from './onboarding-setups.service';
+import { OnboardingAvailabilityService } from './onboarding-availability.service';
 
 describe('OnboardingSetupsService package catalog integration', () => {
   const repository = {
@@ -17,15 +20,23 @@ describe('OnboardingSetupsService package catalog integration', () => {
     findById: jest.fn(),
     update: jest.fn(),
     deleteById: jest.fn(),
+    bookMeetingIfPending: jest.fn(),
   };
   const setupPackagesService = { findActiveById: jest.fn() };
   const stripeProvider = { createOneTimeCheckoutSession: jest.fn() };
   const config = { get: jest.fn() };
+  const availabilityService = {
+    getAvailableSlots: jest.fn(),
+    resolveBookableSlot: jest.fn(),
+    getAdminAvailability: jest.fn(),
+    upsertAdminAvailability: jest.fn(),
+  };
   const service = new OnboardingSetupsService(
     repository as unknown as OnboardingSetupsRepository,
     stripeProvider as unknown as StripeProvider,
     config as unknown as ConfigService,
     setupPackagesService as unknown as SetupPackagesService,
+    availabilityService as unknown as OnboardingAvailabilityService,
   );
   const user: RequestUser = {
     id: 'user-1',
@@ -193,6 +204,67 @@ describe('OnboardingSetupsService package catalog integration', () => {
       checkoutUrl: 'https://checkout.example.test/retry',
       resumedPayment: true,
     });
+  });
+
+  it('does not create onboarding data for a connections-only package', async () => {
+    repository.findActiveByOrganization.mockResolvedValue(null);
+    setupPackagesService.findActiveById.mockResolvedValue({
+      _id: 'package-self-connect',
+      code: 'SELF_CONNECT',
+      name: 'Self Connect',
+      setupType: SetupType.SELF_CONNECT,
+      setupFeeType: SetupFeeType.INCLUDED_IN_PLAN,
+      price: 0,
+      currency: 'USD',
+      paymentRequired: false,
+      meetingRequired: false,
+    });
+
+    await expect(
+      service.create(user, { setupPackageId: 'package-self-connect' }),
+    ).rejects.toThrow('continue to Connections');
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('hides legacy requirements and connection progress from onboarding responses', async () => {
+    repository.findById.mockResolvedValue({
+      _id: 'setup-legacy',
+      organizationId: 'org-1',
+      status: SetupStatus.MEETING_PENDING,
+      requirements: { calendarProvider: 'GOOGLE_CALENDAR' },
+      progress: { calendarSetup: { status: 'COMPLETED' } },
+    });
+
+    const result = await service.findById('setup-legacy', user);
+
+    expect(result).not.toHaveProperty('requirements');
+    expect(result).not.toHaveProperty('progress');
+    expect(result).toHaveProperty('statusMessage', 'Book your onboarding call');
+  });
+
+  it('returns a conflict when another customer books the slot concurrently', async () => {
+    repository.findById.mockResolvedValue({
+      _id: 'setup-1',
+      organizationId: 'org-1',
+      status: SetupStatus.MEETING_PENDING,
+      payment: { required: false, status: SetupPaymentStatus.NOT_REQUIRED },
+      meeting: {
+        isRequired: true,
+        status: SetupMeetingStatus.PENDING,
+      },
+    });
+    availabilityService.resolveBookableSlot.mockResolvedValue({
+      start: new Date('2099-10-01T03:00:00.000Z'),
+      end: new Date('2099-10-01T04:30:00.000Z'),
+      timezone: 'Asia/Dhaka',
+    });
+    repository.bookMeetingIfPending.mockRejectedValue({ code: 11000 });
+
+    await expect(
+      service.bookMeeting('setup-1', user, {
+        startTime: '2099-10-01T03:00:00.000Z',
+      }),
+    ).rejects.toThrow('slot was just booked');
   });
 
 });
