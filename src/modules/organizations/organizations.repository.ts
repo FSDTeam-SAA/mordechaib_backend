@@ -42,7 +42,7 @@ export class OrganizationsRepository {
   findByIds(ids: string[]) {
     return this.organizationModel
       .find({ _id: { $in: ids } })
-      .select('name')
+      .select('name emailAddress')
       .lean()
       .exec();
   }

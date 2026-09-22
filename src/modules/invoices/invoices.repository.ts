@@ -52,6 +52,14 @@ export class InvoicesRepository {
     return this.invoiceModel.findByIdAndDelete(id).exec();
   }
 
+  findById(id: string) {
+    return this.invoiceModel.findById(id).lean().exec();
+  }
+
+  findByStripeInvoiceId(stripeInvoiceId: string) {
+    return this.invoiceModel.findOne({ stripeInvoiceId }).lean().exec();
+  }
+
   async list(filter: ListInvoicesFilter) {
     const query: Record<string, unknown> = {};
     if (filter.search) {

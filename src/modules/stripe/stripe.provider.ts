@@ -170,10 +170,126 @@ export class StripeProvider {
     });
   }
 
+  async ensureProduct(params: {
+    productId?: string;
+    name: string;
+    description?: string;
+  }): Promise<string> {
+    if (params.productId) {
+      try {
+        const product = await this.client.products.retrieve(params.productId);
+        if (!product.deleted) return product.id;
+      } catch (error) {
+        if (!this.isMissingStripeResource(error)) throw error;
+      }
+    }
+
+    const product = await this.createProduct({
+      name: params.name,
+      description: params.description,
+    });
+    return product.id;
+  }
+
+  async ensureRecurringPrice(params: {
+    priceId?: string;
+    productId: string;
+    unitAmountUsd: number;
+    interval: 'month' | 'year';
+  }): Promise<string> {
+    if (params.priceId) {
+      try {
+        const price = await this.client.prices.retrieve(params.priceId);
+        const priceProductId =
+          typeof price.product === 'string' ? price.product : price.product.id;
+        if (
+          price.active &&
+          priceProductId === params.productId &&
+          price.recurring?.interval === params.interval
+        ) {
+          return price.id;
+        }
+      } catch (error) {
+        if (!this.isMissingStripeResource(error)) throw error;
+      }
+    }
+
+    const price = await this.createPrice({
+      productId: params.productId,
+      unitAmountUsd: params.unitAmountUsd,
+      interval: params.interval,
+    });
+    return price.id;
+  }
+
+  private isMissingStripeResource(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'resource_missing'
+    );
+  }
+
   // Marks a Price inactive so it can no longer be used for new checkouts,
   // without deleting it (Stripe Prices can't be deleted, only archived —
   // and existing subscriptions referencing it are unaffected either way).
   archivePrice(priceId: string) {
     return this.client.prices.update(priceId, { active: false });
+  }
+
+  // --- Add-on helpers ---
+
+  // Creates a new Stripe Checkout Session that includes both the base plan
+  // price and any selected add-on prices as separate recurring line items.
+  createCheckoutSessionWithAddons(params: {
+    planPriceId: string;
+    addonPriceIds: string[];
+    successUrl: string;
+    cancelUrl: string;
+    trialDays?: number;
+    metadata: Record<string, string>;
+  }) {
+    const lineItems = [
+      { price: params.planPriceId, quantity: 1 },
+      ...params.addonPriceIds.map((pid) => ({ price: pid, quantity: 1 })),
+    ];
+    return this.client.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: lineItems,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      subscription_data: {
+        metadata: params.metadata,
+        trial_period_days: params.trialDays || undefined,
+      },
+      metadata: params.metadata,
+    });
+  }
+
+  // Adds a new recurring item (an add-on tier) to an existing subscription.
+  addSubscriptionItem(stripeSubscriptionId: string, priceId: string) {
+    return this.client.subscriptionItems.create({
+      subscription: stripeSubscriptionId,
+      price: priceId,
+      quantity: 1,
+    });
+  }
+
+  // Swaps the price on an existing subscription item (used when replacing
+  // one add-on tier with another in the same category).
+  updateSubscriptionItem(itemId: string, newPriceId: string) {
+    return this.client.subscriptionItems.update(itemId, {
+      price: newPriceId,
+      quantity: 1,
+      proration_behavior: 'create_prorations',
+    });
+  }
+
+  // Removes a subscription item (deletes an add-on from the subscription).
+  deleteSubscriptionItem(itemId: string) {
+    return this.client.subscriptionItems.del(itemId, {
+      proration_behavior: 'create_prorations',
+    });
   }
 }

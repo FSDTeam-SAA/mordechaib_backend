@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SubscriptionPlansService } from './subscription-plans.service';
 import { SubscriptionAnalyticsRepository } from './subscription-analytics.repository';
-import { RevenueOverviewRange } from './dto/revenue-overview-query.dto';
 
 const MONTH_LABELS = [
   'Jan',
@@ -131,21 +130,22 @@ export class SubscriptionAnalyticsService implements OnModuleInit {
   // Renewal note: only "yearly" exists today, kept as an enum/DTO so a
   // future range (e.g. "monthly" showing daily points) is additive, not
   // a breaking change to this response shape.
-  async getRevenueOverview(range: RevenueOverviewRange) {
-    void range; // reserved for when a second range value is added
+  async getRevenueOverview(requestedYear?: number) {
     const now = new Date();
-    const year = now.getUTCFullYear();
-    const currentMonthIndex = now.getUTCMonth();
+    const year = requestedYear ?? now.getUTCFullYear();
 
     const yearStart = new Date(Date.UTC(year, 0, 1));
     const snapshots = await this.repository.findSnapshotsBetween(
       yearStart,
-      now,
+      endOfUtcMonth(year, 11),
     );
 
     const series = [];
-    for (let month = 0; month <= currentMonthIndex; month += 1) {
+    for (let month = 0; month < 12; month += 1) {
       const cutoff = endOfUtcMonth(year, month);
+      const isUpcomingMonth =
+        year > now.getUTCFullYear() ||
+        (year === now.getUTCFullYear() && month > now.getUTCMonth());
       // Latest snapshot at or before the end of this month = that
       // month's closing MRR. null (not 0) means no snapshot existed yet
       // — e.g. months before this feature was deployed.
@@ -154,18 +154,21 @@ export class SubscriptionAnalyticsService implements OnModuleInit {
         .find((snapshot) => snapshot.date <= cutoff);
       series.push({
         month: MONTH_LABELS[month],
-        mrrUsd: snapshotForMonth?.mrrUsd ?? null,
+        mrrUsd: isUpcomingMonth ? 0 : (snapshotForMonth?.mrrUsd ?? 0),
       });
     }
 
-    const totals = await this.repository.getLiveTotals();
-    const currentMrrUsd = totals.mrrUsd;
-    const firstDataPoint = series.find((point) => point.mrrUsd !== null);
+    const currentMrrUsd =
+      year === now.getUTCFullYear()
+        ? (await this.repository.getLiveTotals()).mrrUsd
+        : series[11].mrrUsd;
+    const firstDataPoint = series.find((point) => point.mrrUsd !== 0);
     const growthPercent = firstDataPoint
       ? pctChange(currentMrrUsd, firstDataPoint.mrrUsd)
       : null;
 
     return {
+      year,
       series,
       totals: {
         mrrUsd: currentMrrUsd,

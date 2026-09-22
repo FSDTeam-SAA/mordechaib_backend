@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AddonsModule } from '../addons/addons.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { PackageInquiriesModule } from '../package-inquiries/package-inquiries.module';
@@ -23,6 +24,7 @@ import { SubscriptionsService } from './subscriptions.service';
     StripeModule,
     AuthModule,
     PackageInquiriesModule,
+    AddonsModule,
   ],
   controllers: [
     SubscriptionPlansController,
