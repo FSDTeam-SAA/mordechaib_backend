@@ -24,6 +24,7 @@ import { UpdateCalendarEventDto } from './dto/update-calendar-event.dto';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
+import { SettingsService } from '../settings/settings.service';
 
 type StoredCalendarEvent = ManagedCalendarEvent & {
   _id: unknown;
@@ -39,6 +40,7 @@ export class CalendarService {
     private readonly outlook: OutlookCalendarProvider,
     private readonly config: ConfigService,
     private readonly events: CalendarEventsRepository,
+    private readonly settings: SettingsService,
   ) {}
 
   async listConnections(organizationId: string) {
@@ -100,8 +102,10 @@ export class CalendarService {
     const timezone = input.timezone || this.defaultTimezone;
     this.assertTimezone(timezone);
     const provider = await this.getDefaultProvider(organizationId);
-    const reminderMinutesBeforeStart =
-      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes;
+    const reminderMinutesBeforeStart = await this.resolveReminderMinutes(
+      userId,
+      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
+    );
     const idempotencyHash = this.hash(
       `${organizationId}|CALENDAR_EVENT|${input.idempotencyKey || crypto.randomUUID()}`,
     );
@@ -184,6 +188,11 @@ export class CalendarService {
         'The calendar event could not be saved',
       );
     }
+  }
+
+  async resolveReminderMinutes(userId: string, requestedMinutes: number) {
+    const preferences = await this.settings.getNotifications(userId);
+    return preferences.meetingReminders ? requestedMinutes : 0;
   }
 
   async listEvents(organizationId: string, query: ListCalendarEventsQueryDto) {

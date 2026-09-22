@@ -63,11 +63,14 @@ export class MessageAttachment {
   })
   processingStatus!: MessageProcessingStatus;
 
-  @Prop({ select: false })
+  @Prop({ select: false, maxlength: 100_000 })
   extractedText?: string;
 
   @Prop({ select: false })
   transcription?: string;
+
+  @Prop({ maxlength: 500 })
+  processingError?: string;
 
   @Prop()
   deletedAt?: Date;

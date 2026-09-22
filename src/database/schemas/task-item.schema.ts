@@ -131,6 +131,9 @@ export class TaskItem {
   })
   status!: TaskStatus;
 
+  @Prop({ index: true })
+  completedAt?: Date;
+
   @Prop()
   dueDate?: Date;
 

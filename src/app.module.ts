@@ -32,6 +32,10 @@ import { AiActionsModule } from './modules/ai-actions/ai-actions.module';
 import { AiIntegrationModule } from './modules/ai-integration/ai-integration.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { CallIntelligenceModule } from './modules/call-intelligence/call-intelligence.module';
+import { ChiefOfStaffModule } from './modules/chief-of-staff/chief-of-staff.module';
+import { SetupPackagesModule } from './modules/setup-packages/setup-packages.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OrganizerDashboardModule } from './modules/organizer-dashboard/organizer-dashboard.module';
 
 @Module({
   imports: [
@@ -66,6 +70,10 @@ import { CallIntelligenceModule } from './modules/call-intelligence/call-intelli
     AiIntegrationModule,
     AgentsModule,
     CallIntelligenceModule,
+    ChiefOfStaffModule,
+    SetupPackagesModule,
+    NotificationsModule,
+    OrganizerDashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -190,6 +190,48 @@ describe('MessagesService', () => {
     });
   });
 
+  it('extracts bounded plain text before the attachment is uploaded', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'messages-test-'));
+    const temporaryPath = path.join(directory, 'notes.txt');
+    await writeFile(temporaryPath, Buffer.from('  project notes\0  '));
+    const file = {
+      path: temporaryPath,
+      originalname: 'notes.txt',
+      mimetype: 'text/plain',
+      size: (await readFile(temporaryPath)).byteLength,
+    } as Express.Multer.File;
+    storage.store.mockResolvedValue({
+      storageProvider: 'CLOUDINARY',
+      storageKey: 'messages/notes',
+      storageResourceType: 'raw',
+      storageDeliveryType: 'authenticated',
+      storageFormat: 'txt',
+      sizeBytes: file.size,
+    });
+    attachments.createMany.mockImplementation(
+      (inputs: Array<Record<string, unknown>>) =>
+        Promise.resolve(
+          inputs.map((input) => ({
+            _id: attachmentId,
+            ...input,
+            status: MessageAttachmentStatus.ACTIVE,
+          })),
+        ),
+    );
+
+    await service.create(organizationId, userId, {}, [file]);
+
+    expect(attachments.createMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        extractedText: 'project notes',
+        processingStatus: MessageProcessingStatus.COMPLETED,
+      }),
+    ]);
+    await expect(readFile(temporaryPath)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('rejects empty messages before creating a conversation', async () => {
     await expect(
       service.create(organizationId, userId, { content: '   ' }),

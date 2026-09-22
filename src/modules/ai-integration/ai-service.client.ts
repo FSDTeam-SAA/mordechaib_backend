@@ -24,7 +24,11 @@ export class AiServiceClient {
     return this.config.get<boolean>('aiService.automationEnabled', false);
   }
 
-  async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  async request<T>(
+    path: string,
+    body: Record<string, unknown>,
+    options: { timeoutMs?: number } = {},
+  ): Promise<T> {
     const baseUrl = this.config.get<string>('aiService.baseUrl');
     const secret = this.config.get<string>('aiService.sharedSecret');
     if (!this.enabled || !baseUrl || !secret) {
@@ -49,17 +53,17 @@ export class AiServiceClient {
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(
-          this.config.get<number>('aiService.timeoutMs', 30_000),
+          options.timeoutMs ||
+            this.config.get<number>('aiService.timeoutMs', 30_000),
         ),
       });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'AI service is unavailable';
-      this.logger.error(`AI request connection failed: ${requestLabel}: ${message}`);
-      throw new AiServiceHttpError(
-        message,
-        true,
+      this.logger.error(
+        `AI request connection failed: ${requestLabel}: ${message}`,
       );
+      throw new AiServiceHttpError(message, true);
     }
 
     const responseBody = await response.text();
@@ -94,9 +98,7 @@ export class AiServiceClient {
     const jobId = typeof body.jobId === 'string' ? body.jobId : undefined;
     const requestId =
       typeof body.requestId === 'string' ? body.requestId : undefined;
-    const source = body.source as
-      | { type?: unknown; id?: unknown }
-      | undefined;
+    const source = body.source as { type?: unknown; id?: unknown } | undefined;
     const sourceLabel =
       source && typeof source.type === 'string' && typeof source.id === 'string'
         ? `, source=${source.type}:${source.id}`

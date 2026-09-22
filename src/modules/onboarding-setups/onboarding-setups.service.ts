@@ -1,86 +1,48 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sendEmail } from '../../common/helpers/mailer.helper';
-import { getOnboardingSetupMeetingTemplate } from '../../common/templates/onboarding-setup-meeting.template';
+import {
+  getOnboardingSetupMeetingTemplate,
+  getOnboardingSetupOrganizerMeetingConfirmationTemplate,
+} from '../../common/templates/onboarding-setup-meeting.template';
 import {
   AdminNote,
   OnboardingSetup,
   StatusHistoryEntry,
 } from '../../database/schemas/onboarding-setup.schema';
-import { IntegrationSetupStatus } from '../../common/enums/integration-setup-status.enum';
-import { PlanType } from '../../common/enums/plan-type.enum';
 import { SetupFeeType } from '../../common/enums/setup-fee-type.enum';
 import { SetupMeetingStatus } from '../../common/enums/setup-meeting-status.enum';
 import { SetupPaymentStatus } from '../../common/enums/setup-payment-status.enum';
 import { SetupStatus } from '../../common/enums/setup-status.enum';
 import { SetupType } from '../../common/enums/setup-type.enum';
 import { RequestUser } from '../../common/types/request-context.type';
-import { CalendarService } from '../calendar/calendar.service';
+import { SetupPackagesService } from '../setup-packages/setup-packages.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { AddAdminNoteDto } from './dto/add-admin-note.dto';
 import { AssignAdminDto } from './dto/assign-admin.dto';
 import { BookSetupMeetingDto } from './dto/book-setup-meeting.dto';
-import { ChangeSetupStatusDto } from './dto/change-setup-status.dto';
 import { CreateOnboardingSetupDto } from './dto/create-onboarding-setup.dto';
 import { CreateOnboardingPaymentSessionDto } from './dto/create-onboarding-payment-session.dto';
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
-import { UpdateOnboardingSetupDto } from './dto/update-onboarding-setup.dto';
-import { UpdateSetupPaymentDto } from './dto/update-setup-payment.dto';
-import { UpdateSetupProgressDto } from './dto/update-setup-progress.dto';
-import { SetupProgressHelper } from '../../common/helpers/setup-progress.helper';
+import { OnboardingAvailableSlotsQueryDto } from './dto/onboarding-available-slots-query.dto';
+import { UpsertOnboardingAvailabilityDto } from './dto/upsert-onboarding-availability.dto';
+import { OnboardingAvailabilityService } from './onboarding-availability.service';
 import { OnboardingSetupsRepository } from './onboarding-setups.repository';
 
-const STATUS_MESSAGES: Record<SetupStatus, string> = {
+const STATUS_MESSAGES: Partial<Record<SetupStatus, string>> = {
   [SetupStatus.NOT_STARTED]: 'Setup has not started yet',
   [SetupStatus.PAYMENT_PENDING]: 'Complete payment to continue',
-  [SetupStatus.PAYMENT_COMPLETED]: 'Choose your setup meeting time',
+  [SetupStatus.PAYMENT_COMPLETED]: 'Payment complete—book your onboarding call',
   [SetupStatus.MEETING_PENDING]: 'Book your onboarding call',
   [SetupStatus.MEETING_SCHEDULED]: 'Your setup call is scheduled',
-  [SetupStatus.REQUIREMENT_COLLECTED]:
-    'Our team is reviewing your requirements',
-  [SetupStatus.SETUP_IN_PROGRESS]: 'Your Noltra setup is in progress',
-  [SetupStatus.TESTING]: 'We are testing your setup',
-  [SetupStatus.COMPLETED]: 'Your AI workforce is ready',
+  [SetupStatus.COMPLETED]: 'Your onboarding call is complete',
   [SetupStatus.CANCELLED]: 'Setup was cancelled',
-};
-
-const ALLOWED_TRANSITIONS: Record<SetupStatus, SetupStatus[]> = {
-  [SetupStatus.NOT_STARTED]: [
-    SetupStatus.PAYMENT_PENDING,
-    SetupStatus.MEETING_PENDING,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.PAYMENT_PENDING]: [
-    SetupStatus.PAYMENT_COMPLETED,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.PAYMENT_COMPLETED]: [
-    SetupStatus.MEETING_PENDING,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.MEETING_PENDING]: [
-    SetupStatus.MEETING_SCHEDULED,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.MEETING_SCHEDULED]: [
-    SetupStatus.REQUIREMENT_COLLECTED,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.REQUIREMENT_COLLECTED]: [
-    SetupStatus.SETUP_IN_PROGRESS,
-    SetupStatus.CANCELLED,
-  ],
-  [SetupStatus.SETUP_IN_PROGRESS]: [SetupStatus.TESTING, SetupStatus.CANCELLED],
-  [SetupStatus.TESTING]: [SetupStatus.COMPLETED, SetupStatus.CANCELLED],
-  [SetupStatus.COMPLETED]: [],
-  [SetupStatus.CANCELLED]: [],
 };
 
 @Injectable()
@@ -89,9 +51,10 @@ export class OnboardingSetupsService {
 
   constructor(
     private readonly repository: OnboardingSetupsRepository,
-    private readonly calendarService: CalendarService,
     private readonly stripeProvider: StripeProvider,
     private readonly config: ConfigService,
+    private readonly setupPackagesService: SetupPackagesService,
+    private readonly availabilityService: OnboardingAvailabilityService,
   ) {}
 
   async create(user: RequestUser, dto: CreateOnboardingSetupDto) {
@@ -99,21 +62,83 @@ export class OnboardingSetupsService {
       user.organizationId,
     );
     if (existing) {
+      if (this.canRetryPayment(existing)) {
+        const checkout = await this.createPaymentCheckoutSession(
+          String(existing._id),
+          user,
+          {
+            successUrl:
+              dto.paymentSuccessUrl ||
+              this.defaultPaymentSuccessUrl(String(existing._id)),
+            cancelUrl:
+              dto.paymentCancelUrl ||
+              this.defaultPaymentCancelUrl(String(existing._id)),
+          },
+        );
+        return {
+          ...this.toOnboardingView(existing),
+          checkoutUrl: checkout.checkoutUrl,
+          sessionId: checkout.sessionId,
+          resumedPayment: true,
+        };
+      }
       throw new ConflictException(
         'An active onboarding setup already exists for this organization',
       );
     }
 
-    const defaults = this.resolvePackageDefaults(dto);
+    const selectedPackage = await this.setupPackagesService.findActiveById(
+      dto.setupPackageId,
+    );
+    if (!selectedPackage.paymentRequired && !selectedPackage.meetingRequired) {
+      throw new BadRequestException(
+        'This package does not require onboarding payment or a meeting; continue to Connections',
+      );
+    }
+    const defaults = this.resolvePackageDefaults(selectedPackage);
     const setup = await this.repository.create({
       organizationId: user.organizationId,
       organizerId: user.id,
       createdBy: user.id,
       ...defaults,
-      packageType: dto.packageType,
-      selectedSetupPackage: this.buildSelectedPackage(dto),
-      progress: this.buildInitialProgress(),
+      setupPackageId: String(selectedPackage._id),
+      selectedSetupPackage: this.buildSelectedPackage(selectedPackage),
     });
+
+    if (setup.payment?.required) {
+      let checkout: { checkoutUrl?: string | null; sessionId: string };
+      try {
+        await this.pushStatusHistory(
+          String(setup._id),
+          setup.status,
+          user.id,
+          'Onboarding setup created',
+        );
+        checkout = await this.createPaymentCheckoutSession(
+          String(setup._id),
+          user,
+          {
+            successUrl:
+              dto.paymentSuccessUrl ||
+              this.defaultPaymentSuccessUrl(String(setup._id)),
+            cancelUrl:
+              dto.paymentCancelUrl ||
+              this.defaultPaymentCancelUrl(String(setup._id)),
+          },
+        );
+      } catch (error) {
+        await this.rollbackFailedPaidSetupCreation(
+          String(setup._id),
+          user.organizationId,
+        );
+        throw error;
+      }
+
+      return {
+        ...this.toOnboardingView(setup),
+        ...(checkout.checkoutUrl ? { checkoutUrl: checkout.checkoutUrl } : {}),
+      };
+    }
 
     await this.pushStatusHistory(
       String(setup._id),
@@ -122,27 +147,7 @@ export class OnboardingSetupsService {
       'Onboarding setup created',
     );
 
-    if (setup.packageType === PlanType.ENTERPRISE) {
-      const checkout = await this.createPaymentCheckoutSession(
-        String(setup._id),
-        user,
-        {
-          successUrl:
-            dto.paymentSuccessUrl ||
-            this.defaultPaymentSuccessUrl(String(setup._id)),
-          cancelUrl:
-            dto.paymentCancelUrl ||
-            this.defaultPaymentCancelUrl(String(setup._id)),
-        },
-      );
-
-      return {
-        ...this.toOrganizerView(setup),
-        ...(checkout.checkoutUrl ? { checkoutUrl: checkout.checkoutUrl } : {}),
-      };
-    }
-
-    return setup;
+    return this.toOnboardingView(setup);
   }
 
   async findMy(user: RequestUser) {
@@ -152,7 +157,11 @@ export class OnboardingSetupsService {
     if (!setup) {
       throw new NotFoundException('No onboarding setup found');
     }
-    return this.toOrganizerView(setup);
+    return this.toOnboardingView(setup);
+  }
+
+  getAvailability() {
+    return this.availabilityService.getPublicAvailability();
   }
 
   async findById(id: string, user: RequestUser) {
@@ -160,43 +169,33 @@ export class OnboardingSetupsService {
     if (!setup) {
       throw new NotFoundException('Onboarding setup not found');
     }
-    return this.toOrganizerView(setup);
+    return this.toOnboardingView(setup);
   }
 
-  async update(id: string, user: RequestUser, dto: UpdateOnboardingSetupDto) {
+  async getAvailableSlots(
+    id: string,
+    user: RequestUser,
+    query: OnboardingAvailableSlotsQueryDto,
+  ) {
     const setup = await this.requireOwnedSetup(id, user);
-    this.assertNotTerminal(setup.status);
-
-    const requirementsUpdate = dto.requirements
-      ? this.buildRequirementsUpdate(dto.requirements)
-      : {};
-
-    const shouldCollectRequirements =
-      setup.setupType === SetupType.DONE_FOR_YOU &&
+    if (!setup.meeting?.isRequired) {
+      throw new BadRequestException('This setup does not require a meeting');
+    }
+    const recoverPaidMeetingState =
       setup.status === SetupStatus.MEETING_SCHEDULED &&
-      Object.keys(requirementsUpdate).length > 0;
-    const updated = await this.repository.update(
-      id,
-      {
-        $set: {
-          ...requirementsUpdate,
-          ...(shouldCollectRequirements
-            ? { status: SetupStatus.REQUIREMENT_COLLECTED }
-            : {}),
-          updatedBy: user.id,
-        },
-      },
-      user.organizationId,
-    );
-    if (shouldCollectRequirements) {
-      await this.pushStatusHistory(
-        id,
-        SetupStatus.REQUIREMENT_COLLECTED,
-        user.id,
-        'Company information submitted',
+      setup.payment?.status === SetupPaymentStatus.PAID &&
+      setup.meeting.status === SetupMeetingStatus.PENDING;
+    if (
+      ![SetupStatus.MEETING_PENDING, SetupStatus.PAYMENT_COMPLETED].includes(
+        setup.status,
+      ) &&
+      !recoverPaidMeetingState
+    ) {
+      throw new BadRequestException(
+        'Meeting slots are only available when meeting booking is pending',
       );
     }
-    return this.toOrganizerView(updated!);
+    return this.availabilityService.getAvailableSlots(query, id);
   }
 
   async bookMeeting(id: string, user: RequestUser, dto: BookSetupMeetingDto) {
@@ -218,54 +217,57 @@ export class OnboardingSetupsService {
     if (!setup.meeting?.isRequired) {
       throw new BadRequestException('This setup does not require a meeting');
     }
-    const start = new Date(dto.startTime);
-    const end = new Date(dto.endTime);
-    if (start >= end) {
-      throw new BadRequestException('startTime must be before endTime');
-    }
-
-    let calendarEventId: string | undefined;
-    const meetingLink = dto.meetingLink;
-
-    if (dto.calendarProvider && dto.calendarProvider !== 'MANUAL') {
-      try {
-        const event = (await this.calendarService.createEvent(
-          user.organizationId,
-          user.id,
-          {
-            title: 'Noltra Onboarding & Setup Call',
-            startTime: dto.startTime,
-            endTime: dto.endTime,
-          },
-        )) as { id?: string } | null;
-        calendarEventId = event?.id;
-      } catch {
-        // Fall back to manual meeting link if calendar integration fails
-      }
-    }
-
-    const nextStatus = this.hasSubmittedRequirements(setup)
-      ? SetupStatus.REQUIREMENT_COLLECTED
-      : SetupStatus.MEETING_SCHEDULED;
-    const updated = await this.repository.update(
+    const resolvedSlot = await this.availabilityService.resolveBookableSlot(
+      dto.startTime,
+      dto.endTime,
       id,
-      {
-        $set: {
-          'meeting.meetingDate': start,
-          'meeting.startTime': start,
-          'meeting.endTime': end,
-          'meeting.timezone': dto.timezone || setup.meeting.timezone || 'UTC',
-          'meeting.meetingLink': meetingLink || setup.meeting.meetingLink,
-          'meeting.calendarProvider': dto.calendarProvider || 'MANUAL',
-          'meeting.calendarEventId': calendarEventId,
-          'meeting.notes': dto.notes,
-          'meeting.status': SetupMeetingStatus.SCHEDULED,
-          status: nextStatus,
-          updatedBy: user.id,
-        },
-      },
-      user.organizationId,
     );
+    const { start, end, timezone } = resolvedSlot;
+
+    /*
+     * Future platform-host automation (intentionally disabled):
+     * This booking must use a Noltra platform onboarding-host connection,
+     * not user.organizationId. When that host configuration exists, reuse
+     * PlatformMeetingsService here to create Google Meet/Zoom, save its join
+     * URL, and email it to the customer.
+     */
+
+    const nextStatus = SetupStatus.MEETING_SCHEDULED;
+    let updated: (OnboardingSetup & { _id: unknown }) | null;
+    try {
+      updated = await this.repository.bookMeetingIfPending(
+        id,
+        user.organizationId,
+        {
+          $set: {
+            'meeting.meetingDate': start,
+            'meeting.startTime': start,
+            'meeting.endTime': end,
+            'meeting.timezone': timezone,
+            'meeting.meetingLink': setup.meeting?.meetingLink,
+            'meeting.calendarProvider':
+              setup.meeting?.calendarProvider || 'MANUAL',
+            'meeting.calendarEventId': setup.meeting?.calendarEventId,
+            'meeting.notes': dto.notes,
+            'meeting.status': SetupMeetingStatus.SCHEDULED,
+            status: nextStatus,
+            updatedBy: user.id,
+          },
+        },
+      );
+    } catch (error) {
+      if (this.isDuplicateKeyError(error)) {
+        throw new ConflictException(
+          'This onboarding meeting slot was just booked; choose another slot',
+        );
+      }
+      throw error;
+    }
+    if (!updated) {
+      throw new ConflictException(
+        'The onboarding setup changed while booking; refresh and try again',
+      );
+    }
 
     await this.pushStatusHistory(
       id,
@@ -276,9 +278,37 @@ export class OnboardingSetupsService {
         : 'Setup meeting booked',
     );
 
-    await this.notifySupportTeamOfMeeting(setup, user, start, end, dto);
+    const scheduledMeetingLink =
+      updated?.meeting?.meetingLink || setup.meeting?.meetingLink;
+    await this.notifySupportTeamOfMeeting(
+      setup,
+      user,
+      start,
+      end,
+      dto,
+      scheduledMeetingLink,
+    );
+    await this.notifyOrganizerOfBookedMeeting(
+      setup,
+      user,
+      start,
+      end,
+      dto,
+      scheduledMeetingLink,
+    );
 
-    return this.toOrganizerView(updated!);
+    return this.toOnboardingView(updated);
+  }
+
+  getAdminAvailability() {
+    return this.availabilityService.getAdminAvailability();
+  }
+
+  upsertAdminAvailability(
+    dto: UpsertOnboardingAvailabilityDto,
+    admin: RequestUser,
+  ) {
+    return this.availabilityService.upsertAdminAvailability(dto, admin);
   }
 
   async createPaymentCheckoutSession(
@@ -287,9 +317,9 @@ export class OnboardingSetupsService {
     dto: CreateOnboardingPaymentSessionDto,
   ) {
     const setup = await this.requireOwnedSetup(id, user);
-    if (setup.packageType !== PlanType.ENTERPRISE || !setup.payment?.required) {
+    if (!setup.payment?.required) {
       throw new BadRequestException(
-        'Stripe payment is only required for Enterprise onboarding setups',
+        'Stripe payment is not required for this onboarding setup',
       );
     }
     if (setup.status !== SetupStatus.PAYMENT_PENDING) {
@@ -299,7 +329,7 @@ export class OnboardingSetupsService {
     }
     if (!setup.payment.amount || setup.payment.amount <= 0) {
       throw new BadRequestException(
-        'A positive Enterprise setup payment amount is required',
+        'A positive setup payment amount is required',
       );
     }
 
@@ -322,97 +352,19 @@ export class OnboardingSetupsService {
       {
         $set: {
           'payment.provider': 'STRIPE',
+          'payment.status': SetupPaymentStatus.PENDING,
           'payment.checkoutSessionId': session.id,
           updatedBy: user.id,
+        },
+        $unset: {
+          'payment.failedAt': 1,
+          'payment.failureCode': 1,
         },
       },
       user.organizationId,
     );
 
     return { checkoutUrl: session.url, sessionId: session.id };
-  }
-
-  async updatePaymentStatus(
-    id: string,
-    user: RequestUser,
-    dto: UpdateSetupPaymentDto,
-  ) {
-    const setup = await this.requireOwnedSetup(id, user);
-    if (setup.status !== SetupStatus.PAYMENT_PENDING) {
-      throw new BadRequestException(
-        'Payment can only be confirmed while payment is pending',
-      );
-    }
-
-    if (dto.status === SetupPaymentStatus.PAID && dto.provider !== 'MANUAL') {
-      throw new BadRequestException(
-        'Stripe payments must be confirmed by the Stripe webhook',
-      );
-    }
-
-    const paymentUpdate: Record<string, unknown> = {
-      'payment.status': dto.status,
-      ...(dto.paymentIntentId
-        ? { 'payment.paymentIntentId': dto.paymentIntentId }
-        : {}),
-      ...(dto.checkoutSessionId
-        ? { 'payment.checkoutSessionId': dto.checkoutSessionId }
-        : {}),
-      ...(dto.amount !== undefined ? { 'payment.amount': dto.amount } : {}),
-      ...(dto.provider ? { 'payment.provider': dto.provider } : {}),
-    };
-
-    let nextStatus: SetupStatus = setup.status;
-    if (dto.status === SetupPaymentStatus.PAID) {
-      paymentUpdate['payment.paidAt'] = new Date();
-      nextStatus =
-        setup.meeting?.status === SetupMeetingStatus.SCHEDULED
-          ? SetupStatus.MEETING_SCHEDULED
-          : SetupStatus.PAYMENT_COMPLETED;
-    }
-
-    const updated = await this.repository.update(
-      id,
-      {
-        $set: {
-          ...paymentUpdate,
-          status: nextStatus,
-          updatedBy: user.id,
-        },
-      },
-      user.organizationId,
-    );
-
-    if (nextStatus !== setup.status) {
-      await this.pushStatusHistory(
-        id,
-        nextStatus,
-        user.id,
-        `Payment status updated to ${dto.status}`,
-      );
-    }
-
-    return this.toOrganizerView(updated!);
-  }
-
-  async updateSelfConnectProgress(
-    id: string,
-    user: RequestUser,
-    dto: UpdateSetupProgressDto,
-  ) {
-    const setup = await this.requireOwnedSetup(id, user);
-    if (setup.setupType !== SetupType.SELF_CONNECT) {
-      throw new BadRequestException(
-        'Integration progress can only be updated for self-connect setups',
-      );
-    }
-    return this.updateProgressRecord(
-      id,
-      user.id,
-      setup,
-      dto,
-      user.organizationId,
-    );
   }
 
   async confirmStripePayment(input: {
@@ -446,13 +398,12 @@ export class OnboardingSetupsService {
       return setup;
     }
 
-    const requirementsSubmitted = this.hasSubmittedRequirements(setup);
     const nextStatus =
       setup.meeting?.status === SetupMeetingStatus.SCHEDULED
-        ? requirementsSubmitted
-          ? SetupStatus.REQUIREMENT_COLLECTED
-          : SetupStatus.MEETING_SCHEDULED
-        : SetupStatus.PAYMENT_COMPLETED;
+        ? SetupStatus.MEETING_SCHEDULED
+        : setup.meeting?.isRequired
+          ? SetupStatus.PAYMENT_COMPLETED
+          : SetupStatus.COMPLETED;
     const updated = await this.repository.update(input.setupId, {
       $set: {
         'payment.status': SetupPaymentStatus.PAID,
@@ -462,6 +413,13 @@ export class OnboardingSetupsService {
           ? { 'payment.paymentIntentId': input.paymentIntentId }
           : {}),
         status: nextStatus,
+        ...(nextStatus === SetupStatus.COMPLETED
+          ? { completedAt: new Date() }
+          : {}),
+      },
+      $unset: {
+        'payment.failedAt': 1,
+        'payment.failureCode': 1,
       },
     });
 
@@ -469,7 +427,46 @@ export class OnboardingSetupsService {
       input.setupId,
       nextStatus,
       'STRIPE_WEBHOOK',
-      'Enterprise onboarding payment confirmed by Stripe',
+      'Onboarding setup payment confirmed by Stripe',
+    );
+    return updated;
+  }
+
+  async markStripePaymentFailed(input: {
+    setupId: string;
+    checkoutSessionId?: string;
+    paymentIntentId?: string;
+    failureCode?: string;
+  }) {
+    const setup = await this.requireSetup(input.setupId);
+    if (
+      setup.payment?.provider !== 'STRIPE' ||
+      setup.payment.status === SetupPaymentStatus.PAID ||
+      setup.status !== SetupStatus.PAYMENT_PENDING
+    ) {
+      return setup;
+    }
+
+    const updated = await this.repository.update(input.setupId, {
+      $set: {
+        'payment.status': SetupPaymentStatus.FAILED,
+        'payment.failedAt': new Date(),
+        ...(input.checkoutSessionId
+          ? { 'payment.checkoutSessionId': input.checkoutSessionId }
+          : {}),
+        ...(input.paymentIntentId
+          ? { 'payment.paymentIntentId': input.paymentIntentId }
+          : {}),
+        ...(input.failureCode
+          ? { 'payment.failureCode': input.failureCode.slice(0, 200) }
+          : {}),
+      },
+    });
+    await this.pushStatusHistory(
+      input.setupId,
+      SetupStatus.PAYMENT_PENDING,
+      'STRIPE_WEBHOOK',
+      `Onboarding payment failed${input.failureCode ? `: ${input.failureCode}` : ''}; payment can be retried`,
     );
     return updated;
   }
@@ -484,6 +481,9 @@ export class OnboardingSetupsService {
         $set: {
           status: SetupStatus.CANCELLED,
           cancelledAt: new Date(),
+          ...(setup.meeting?.isRequired
+            ? { 'meeting.status': SetupMeetingStatus.CANCELLED }
+            : {}),
           updatedBy: user.id,
         },
       },
@@ -497,12 +497,17 @@ export class OnboardingSetupsService {
       'Setup cancelled by organizer',
     );
 
-    return this.toOrganizerView(updated!);
+    return this.toOnboardingView(updated!);
   }
 
   async adminFindAll(query: OnboardingSetupQueryDto) {
     const [items, total] = await this.repository.findAll(query);
-    return { items, total, page: query.page ?? 1, limit: query.limit ?? 20 };
+    return {
+      items: items.map((item) => this.toOnboardingView(item)),
+      total,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+    };
   }
 
   async adminFindById(id: string) {
@@ -510,7 +515,7 @@ export class OnboardingSetupsService {
     if (!setup) {
       throw new NotFoundException('Onboarding setup not found');
     }
-    return setup;
+    return this.toOnboardingView(setup);
   }
 
   async assignAdmin(id: string, admin: RequestUser, dto: AssignAdminDto) {
@@ -528,7 +533,7 @@ export class OnboardingSetupsService {
       `Admin ${dto.adminId} assigned`,
     );
 
-    return updated;
+    return this.toOnboardingView(updated!);
   }
 
   async addAdminNote(id: string, admin: RequestUser, dto: AddAdminNoteDto) {
@@ -546,281 +551,140 @@ export class OnboardingSetupsService {
       await this.pushStatusHistory(id, setup.status, admin.id, dto.statusNote);
     }
 
-    return updated;
-  }
-
-  async updateProgress(
-    id: string,
-    admin: RequestUser,
-    dto: UpdateSetupProgressDto,
-  ) {
-    const setup = await this.requireSetup(id);
-    this.assertNotTerminal(setup.status);
-
-    return this.updateProgressRecord(id, admin.id, setup, dto);
-  }
-
-  private async updateProgressRecord(
-    id: string,
-    actorId: string,
-    setup: OnboardingSetup & { _id: unknown },
-    dto: UpdateSetupProgressDto,
-    organizationId?: string,
-  ) {
-    const progress = this.ensureProgress(setup.progress);
-    const { updates: sectionUpdates, progress: nextProgress } =
-      this.buildProgressUpdates(dto, progress);
-
-    let nextStatus = setup.status;
-    const computed = SetupProgressHelper.computeOverallProgress({
-      ...nextProgress,
-      overallProgress: progress.overallProgress,
-    });
-
-    if (
-      SetupProgressHelper.isSetupComplete({
-        ...nextProgress,
-        overallProgress: computed,
-      })
-    ) {
-      nextStatus = SetupStatus.COMPLETED;
-    }
-
-    const updated = await this.repository.update(
-      id,
-      {
-        $set: {
-          ...sectionUpdates,
-          'progress.overallProgress': computed,
-          ...(nextStatus === SetupStatus.COMPLETED
-            ? { status: SetupStatus.COMPLETED, completedAt: new Date() }
-            : {}),
-          updatedBy: actorId,
-        },
-      },
-      organizationId,
-    );
-
-    if (nextStatus !== setup.status) {
-      await this.pushStatusHistory(
-        id,
-        SetupStatus.COMPLETED,
-        actorId,
-        'Setup progress completed',
-      );
-    }
-
-    return updated;
-  }
-
-  async changeStatus(
-    id: string,
-    admin: RequestUser,
-    dto: ChangeSetupStatusDto,
-  ) {
-    const setup = await this.requireSetup(id);
-    this.assertNotTerminal(setup.status);
-    this.assertAllowedTransition(setup.status, dto.status);
-
-    const sideEffects: Record<string, unknown> = {};
-    if (dto.status === SetupStatus.COMPLETED) {
-      sideEffects.completedAt = new Date();
-    }
-    if (dto.status === SetupStatus.CANCELLED) {
-      sideEffects.cancelledAt = new Date();
-    }
-
-    const updated = await this.repository.update(id, {
-      $set: { ...sideEffects, status: dto.status, updatedBy: admin.id },
-    });
-
-    await this.pushStatusHistory(id, dto.status, admin.id, dto.note);
-
-    return updated;
+    return this.toOnboardingView(updated!);
   }
 
   async complete(id: string, admin: RequestUser) {
-    return this.changeStatus(id, admin, { status: SetupStatus.COMPLETED });
-  }
-
-  private resolvePackageDefaults(dto: CreateOnboardingSetupDto) {
-    const integrationSetup = dto.setupType === SetupType.DONE_FOR_YOU;
-    switch (dto.packageType) {
-      case PlanType.STARTER:
-        return {
-          setupType: integrationSetup
-            ? SetupType.DONE_FOR_YOU
-            : SetupType.SELF_CONNECT,
-          setupFeeType: SetupFeeType.FREE,
-          status: integrationSetup
-            ? SetupStatus.MEETING_PENDING
-            : SetupStatus.NOT_STARTED,
-          payment: {
-            required: false,
-            status: SetupPaymentStatus.NOT_REQUIRED,
-            amount: 0,
-          },
-          meeting: {
-            isRequired: integrationSetup,
-            status: integrationSetup
-              ? SetupMeetingStatus.PENDING
-              : SetupMeetingStatus.NOT_REQUIRED,
-          },
-        };
-      case PlanType.GROWTH:
-        return {
-          setupType: integrationSetup
-            ? SetupType.DONE_FOR_YOU
-            : SetupType.SELF_CONNECT,
-          setupFeeType: SetupFeeType.FREE,
-          status: integrationSetup
-            ? SetupStatus.MEETING_PENDING
-            : SetupStatus.NOT_STARTED,
-          payment: {
-            required: false,
-            status: SetupPaymentStatus.NOT_REQUIRED,
-            amount: 0,
-            currency: dto.setupPackageCurrency ?? 'USD',
-          },
-          meeting: {
-            isRequired: integrationSetup,
-            status: integrationSetup
-              ? SetupMeetingStatus.PENDING
-              : SetupMeetingStatus.NOT_REQUIRED,
-          },
-        };
-      case PlanType.ENTERPRISE:
-        return {
-          setupType: SetupType.DONE_FOR_YOU,
-          setupFeeType: SetupFeeType.PAID_ADDON,
-          status: SetupStatus.PAYMENT_PENDING,
-          payment: {
-            required: true,
-            status: SetupPaymentStatus.PENDING,
-            amount: dto.setupPackagePrice ?? 0,
-            currency: dto.setupPackageCurrency ?? 'USD',
-          },
-          meeting: { isRequired: true, status: SetupMeetingStatus.PENDING },
-        };
-      default:
-        throw new BadRequestException('Unsupported package type');
+    const setup = await this.requireSetup(id);
+    this.assertNotTerminal(setup.status);
+    if (
+      setup.payment?.required &&
+      setup.payment.status !== SetupPaymentStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Onboarding cannot be completed before payment succeeds',
+      );
     }
-  }
-
-  private buildRequirementsUpdate(
-    requirements: UpdateOnboardingSetupDto['requirements'],
-  ): Record<string, unknown> {
-    const update: Record<string, unknown> = {};
-    if (!requirements) return update;
-
-    const fields = [
-      'businessName',
-      'website',
-      'industry',
-      'teamSize',
-      'message',
-      'crmProvider',
-      'calendarProvider',
-      'callingProvider',
-      'needCrmMigration',
-      'needCalendarSetup',
-      'needTwilioSetup',
-      'needAiAgentSetup',
-      'needWorkflowSetup',
-      'needTeamOnboarding',
-    ] as const;
-
-    for (const field of fields) {
-      const value = requirements[field];
-      if (value !== undefined) {
-        update[`requirements.${field}`] = value;
-      }
+    if (
+      setup.meeting?.isRequired &&
+      setup.meeting.status !== SetupMeetingStatus.SCHEDULED
+    ) {
+      throw new BadRequestException(
+        'Onboarding cannot be completed before the first meeting is scheduled',
+      );
     }
 
-    return update;
+    const updated = await this.repository.update(id, {
+      $set: {
+        status: SetupStatus.COMPLETED,
+        completedAt: new Date(),
+        ...(setup.meeting?.isRequired
+          ? { 'meeting.status': SetupMeetingStatus.COMPLETED }
+          : {}),
+        updatedBy: admin.id,
+      },
+    });
+
+    await this.pushStatusHistory(
+      id,
+      SetupStatus.COMPLETED,
+      admin.id,
+      'First onboarding meeting completed',
+    );
+
+    return this.toOnboardingView(updated!);
   }
 
-  private buildSelectedPackage(dto: CreateOnboardingSetupDto) {
+  private resolvePackageDefaults(setupPackage: {
+    setupType: SetupType;
+    setupFeeType: SetupFeeType;
+    price: number;
+    currency: string;
+    paymentRequired: boolean;
+    meetingRequired: boolean;
+  }) {
     return {
-      name: dto.setupPackageName || `${dto.packageType} onboarding setup`,
-      price: dto.setupPackagePrice ?? 0,
-      currency: (dto.setupPackageCurrency || 'USD').toUpperCase(),
-      ...(dto.setupPackageDescription
-        ? { description: dto.setupPackageDescription }
-        : {}),
+      setupType: setupPackage.setupType,
+      setupFeeType: setupPackage.setupFeeType,
+      status: setupPackage.paymentRequired
+        ? SetupStatus.PAYMENT_PENDING
+        : setupPackage.meetingRequired
+          ? SetupStatus.MEETING_PENDING
+          : SetupStatus.NOT_STARTED,
+      payment: {
+        required: setupPackage.paymentRequired,
+        status: setupPackage.paymentRequired
+          ? SetupPaymentStatus.PENDING
+          : SetupPaymentStatus.NOT_REQUIRED,
+        amount: setupPackage.price,
+        currency: setupPackage.currency,
+      },
+      meeting: {
+        isRequired: setupPackage.meetingRequired,
+        status: setupPackage.meetingRequired
+          ? SetupMeetingStatus.PENDING
+          : SetupMeetingStatus.NOT_REQUIRED,
+      },
     };
   }
 
-  private buildInitialProgress(): OnboardingSetup['progress'] {
-    const pending = () => ({ status: IntegrationSetupStatus.PENDING });
-    return {
-      overallProgress: 0,
-      crmSetup: pending(),
-      calendarSetup: pending(),
-      twilioSetup: pending(),
-      aiAgentSetup: pending(),
-      workflowSetup: pending(),
-      teamOnboarding: pending(),
-    } as OnboardingSetup['progress'];
+  private canRetryPayment(setup: OnboardingSetup) {
+    return (
+      setup.status === SetupStatus.PAYMENT_PENDING &&
+      setup.payment?.required === true &&
+      [SetupPaymentStatus.PENDING, SetupPaymentStatus.FAILED].includes(
+        setup.payment.status,
+      )
+    );
   }
 
-  private buildProgressUpdates(
-    dto: UpdateSetupProgressDto,
-    progress: OnboardingSetup['progress'],
-  ): {
-    updates: Record<string, unknown>;
-    progress: OnboardingSetup['progress'];
-  } {
-    const updates: Record<string, unknown> = {};
-    const nextProgress = { ...progress };
-    const sections = [
-      'crmSetup',
-      'calendarSetup',
-      'twilioSetup',
-      'aiAgentSetup',
-      'workflowSetup',
-      'teamOnboarding',
-    ] as const;
-
-    for (const key of sections) {
-      const section = dto[key];
-      if (!section) continue;
-
-      const current = progress[key];
-      const status = section.status ?? current.status;
-      const note = section.note !== undefined ? section.note : current.note;
-      const completedAt =
-        status === IntegrationSetupStatus.COMPLETED
-          ? (current.completedAt ?? new Date())
-          : undefined;
-
-      nextProgress[key] = { status, note, completedAt };
-
-      updates[`progress.${key}.status`] = status;
-      if (note !== undefined) {
-        updates[`progress.${key}.note`] = note;
-      }
-      if (completedAt) {
-        updates[`progress.${key}.completedAt`] = completedAt;
-      } else {
-        updates[`progress.${key}.completedAt`] = null;
-      }
+  private async rollbackFailedPaidSetupCreation(
+    id: string,
+    organizationId: string,
+  ) {
+    try {
+      if (await this.repository.deleteById(id, organizationId)) return;
+    } catch (error) {
+      this.logger.error(
+        `Could not delete setup ${id} after checkout creation failed: ${this.errorMessage(error)}`,
+      );
     }
 
-    return { updates, progress: nextProgress };
+    // A failed hard-delete must never leave an active setup that blocks the
+    // organizer. Mark it terminal so a later POST can start a new setup.
+    await this.repository
+      .update(id, {
+        $set: {
+          status: SetupStatus.CANCELLED,
+          cancelledAt: new Date(),
+          'payment.status': SetupPaymentStatus.FAILED,
+          'payment.failedAt': new Date(),
+          'payment.failureCode': 'CHECKOUT_SESSION_CREATION_FAILED',
+        },
+      }, organizationId)
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Could not mark setup ${id} as cancelled after checkout creation failed: ${this.errorMessage(error)}`,
+        );
+      });
   }
 
-  private ensureProgress(
-    progress: OnboardingSetup['progress'] | undefined,
-  ): OnboardingSetup['progress'] {
-    return progress || this.buildInitialProgress();
-  }
-
-  private hasSubmittedRequirements(setup: OnboardingSetup) {
-    return Boolean(
-      setup.requirements &&
-      Object.values(setup.requirements).some((value) => value !== undefined),
-    );
+  private buildSelectedPackage(setupPackage: {
+    code: string;
+    name: string;
+    price: number;
+    currency: string;
+    description?: string;
+  }) {
+    return {
+      code: setupPackage.code,
+      name: setupPackage.name,
+      price: setupPackage.price,
+      currency: setupPackage.currency,
+      ...(setupPackage.description
+        ? { description: setupPackage.description }
+        : {}),
+    };
   }
 
   private async notifySupportTeamOfMeeting(
@@ -829,6 +693,7 @@ export class OnboardingSetupsService {
     start: Date,
     end: Date,
     dto: BookSetupMeetingDto,
+    meetingLink?: string,
   ) {
     const supportEmail = this.config.get<string>('mail.supportEmail');
     if (!supportEmail) {
@@ -843,14 +708,62 @@ export class OnboardingSetupsService {
       organizerEmail: user.email,
       organizationId: setup.organizationId,
       setupId: String(setup._id),
-      packageType: setup.packageType,
+      packageType:
+        setup.selectedSetupPackage?.name ||
+        setup.packageType ||
+        'Onboarding setup',
       startTime: start.toISOString(),
       endTime: end.toISOString(),
       timezone: dto.timezone || setup.meeting?.timezone || 'UTC',
-      meetingLink: dto.meetingLink || setup.meeting?.meetingLink,
+      meetingLink,
     });
 
     await sendEmail(this.config, { to: supportEmail, ...template });
+  }
+
+  private async notifyOrganizerOfBookedMeeting(
+    setup: OnboardingSetup & { _id: unknown },
+    user: RequestUser,
+    start: Date,
+    end: Date,
+    dto: BookSetupMeetingDto,
+    meetingLink?: string,
+  ) {
+    const template = getOnboardingSetupOrganizerMeetingConfirmationTemplate({
+      organizerName: `${user.firstName} ${user.lastName}`.trim(),
+      packageType:
+        setup.selectedSetupPackage?.name ||
+        setup.packageType ||
+        'Onboarding setup',
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      timezone: dto.timezone || setup.meeting?.timezone || 'UTC',
+      meetingLink,
+      hasBookingNote: Boolean(dto.notes?.trim()),
+    });
+
+    const sent = await sendEmail(this.config, { to: user.email, ...template });
+    if (!sent) {
+      this.logger.warn(
+        `Meeting confirmation email could not be sent for setup ${String(setup._id)}`,
+      );
+    }
+  }
+
+  private errorMessage(error: unknown) {
+    return (error instanceof Error ? error.message : String(error)).slice(
+      0,
+      500,
+    );
+  }
+
+  private isDuplicateKeyError(error: unknown) {
+    return Boolean(
+      error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: number }).code === 11000,
+    );
   }
 
   private defaultPaymentSuccessUrl(id: string) {
@@ -906,22 +819,24 @@ export class OnboardingSetupsService {
     }
   }
 
-  private assertAllowedTransition(from: SetupStatus, to: SetupStatus) {
-    if (from === to) {
-      throw new BadRequestException(`Setup is already ${from.toLowerCase()}`);
-    }
-    const allowed = ALLOWED_TRANSITIONS[from] ?? [];
-    if (!allowed.includes(to)) {
-      throw new ForbiddenException(
-        `Cannot transition setup from ${from} to ${to}`,
-      );
-    }
-  }
+  private toOnboardingView(setup: OnboardingSetup & { _id: unknown }) {
+    const document = setup as OnboardingSetup & {
+      _id: unknown;
+      toObject?: () => Record<string, unknown>;
+    };
+    const view = document.toObject
+      ? document.toObject()
+      : ({ ...setup } as Record<string, unknown>);
 
-  private toOrganizerView(setup: OnboardingSetup & { _id: unknown }) {
+    // Existing values are left in MongoDB for backward compatibility. The
+    // focused onboarding API no longer exposes integration-owned data.
+    delete view.requirements;
+    delete view.progress;
+
     return {
-      ...setup,
-      statusMessage: STATUS_MESSAGES[setup.status],
+      ...view,
+      statusMessage:
+        STATUS_MESSAGES[setup.status] || 'Onboarding status is available',
     };
   }
 }

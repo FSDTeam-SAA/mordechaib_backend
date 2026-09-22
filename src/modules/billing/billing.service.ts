@@ -10,6 +10,7 @@ import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 import { AddonProductsService } from '../addons/addon-products.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { OnboardingSetupsService } from '../onboarding-setups/onboarding-setups.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { SubscriptionPlansService } from '../subscriptions/subscription-plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -45,7 +46,7 @@ export class BillingService {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly invoicesService: InvoicesService,
     private readonly twilioProvisioning: TwilioProvisioningService,
-    private readonly addonProductsService: AddonProductsService,
+    private readonly onboardingSetupsService: OnboardingSetupsService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
@@ -336,6 +337,23 @@ export class BillingService {
           event.data.object as Stripe.Checkout.Session,
         );
         break;
+      case 'checkout.session.async_payment_succeeded':
+        await this.confirmOnboardingPayment(
+          event.data.object as Stripe.Checkout.Session,
+        );
+        break;
+      case 'checkout.session.async_payment_failed':
+      case 'checkout.session.expired':
+        await this.markOnboardingPaymentFailed(
+          event.data.object as Stripe.Checkout.Session,
+          event.type,
+        );
+        break;
+      case 'payment_intent.payment_failed':
+        await this.markOnboardingPaymentIntentFailed(
+          event.data.object as Stripe.PaymentIntent,
+        );
+        break;
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
@@ -362,6 +380,8 @@ export class BillingService {
   }
 
   private async onCheckoutCompleted(session: Stripe.Checkout.Session) {
+    if (await this.confirmOnboardingPayment(session)) return;
+
     const organizationId = session.metadata?.organizationId;
     const planId = session.metadata?.planId;
     const stripeSubscriptionId = session.subscription;
@@ -458,6 +478,62 @@ export class BillingService {
     // Billing interval isn't known from the checkout session alone (it's
     // not expanded here) — the customer.subscription.created/updated event
     // Stripe fires right after checkout fills it in via onSubscriptionUpdated.
+  }
+
+  private async confirmOnboardingPayment(session: Stripe.Checkout.Session) {
+    const setupId = session.metadata?.onboardingSetupId;
+    if (!setupId) return false;
+
+    if (session.mode !== 'payment' || session.payment_status !== 'paid') {
+      this.logger.warn(
+        `Ignoring unpaid onboarding checkout session ${session.id}`,
+      );
+      return true;
+    }
+
+    await this.onboardingSetupsService.confirmStripePayment({
+      setupId,
+      checkoutSessionId: session.id,
+      paymentIntentId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : undefined,
+    });
+    return true;
+  }
+
+  private async markOnboardingPaymentFailed(
+    session: Stripe.Checkout.Session,
+    failureCode: string,
+  ) {
+    const setupId = session.metadata?.onboardingSetupId;
+    if (!setupId || session.mode !== 'payment') return false;
+
+    await this.onboardingSetupsService.markStripePaymentFailed({
+      setupId,
+      checkoutSessionId: session.id,
+      paymentIntentId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : undefined,
+      failureCode,
+    });
+    return true;
+  }
+
+  private async markOnboardingPaymentIntentFailed(
+    paymentIntent: Stripe.PaymentIntent,
+  ) {
+    const setupId = paymentIntent.metadata?.onboardingSetupId;
+    if (!setupId) return false;
+
+    await this.onboardingSetupsService.markStripePaymentFailed({
+      setupId,
+      paymentIntentId: paymentIntent.id,
+      failureCode:
+        paymentIntent.last_payment_error?.code || 'payment_intent.payment_failed',
+    });
+    return true;
   }
 
   private async onSubscriptionUpdated(subscription: Stripe.Subscription) {

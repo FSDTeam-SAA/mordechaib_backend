@@ -59,8 +59,12 @@ Repositories use Mongoose models through `@InjectModel()`.
 ```bash
 pnpm install
 cp .env.example .env
-pnpm run start:dev
+pnpm dev
 ```
+
+`pnpm dev` and `pnpm run start:dev` both enable live reload. Do not write
+`pnpm start : dev`; the spaces make pnpm run the non-watch `start` script and
+pass `:` and `dev` as unrelated arguments.
 
 ## MongoDB
 
@@ -88,6 +92,7 @@ Public endpoints:
 - `POST /api/v1/auth/forgot-password`
 - `POST /api/v1/auth/reset-password`
 - `POST /api/v1/auth/verify-email`
+- `POST /api/v1/auth/resend-verification`
 - `POST /api/v1/package-inquiries`
 
 Authenticated endpoints:
@@ -97,11 +102,14 @@ Authenticated endpoints:
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/logout-all`
 - `PATCH /api/v1/auth/change-password`
-- `POST /api/v1/auth/resend-verification`
 
-When SMTP is configured, verification and password-reset links are sent by email. During
-local development, `.env` can set `AUTH_EXPOSE_DEVELOPMENT_TOKENS=true` to include these
-one-time tokens in API responses. Never enable that option in production.
+Registration sends a six-digit email OTP and does not create an authenticated
+session. Verify it with `{ "email", "code" }` through `verify-email`; login is
+blocked until verification succeeds. `resend-verification` is public and accepts
+`{ "email" }`. When SMTP is configured, verification and password-reset codes are
+sent by email. During local development, `.env` can set
+`AUTH_EXPOSE_DEVELOPMENT_TOKENS=true` to include these one-time codes in API
+responses. Never enable that option in production.
 
 ## Business onboarding
 

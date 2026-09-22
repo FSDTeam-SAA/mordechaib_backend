@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import { IntegrationSetupStatus } from '../../common/enums/integration-setup-status.enum';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SetupFeeType } from '../../common/enums/setup-fee-type.enum';
 import { SetupMeetingStatus } from '../../common/enums/setup-meeting-status.enum';
@@ -11,6 +10,9 @@ import { SetupType } from '../../common/enums/setup-type.enum';
 export type OnboardingSetupDocument = HydratedDocument<OnboardingSetup>;
 
 export class SelectedSetupPackage {
+  @Prop({ trim: true, uppercase: true })
+  code?: string;
+
   @Prop({ required: true, trim: true })
   name!: string;
 
@@ -51,6 +53,12 @@ export class SetupPayment {
 
   @Prop()
   paidAt?: Date;
+
+  @Prop()
+  failedAt?: Date;
+
+  @Prop({ trim: true, maxlength: 200 })
+  failureCode?: string;
 }
 
 export class SetupMeeting {
@@ -78,6 +86,14 @@ export class SetupMeeting {
   @Prop({ trim: true })
   meetingLink?: string;
 
+  /*
+   * Future platform-host automation fields:
+   * platform?: MeetingPlatform;
+   * platformMeetingId?: string;
+   *
+   * Enable only after a platform onboarding-host account is configurable.
+   */
+
   @Prop({ enum: ['GOOGLE_CALENDAR', 'OUTLOOK_CALENDAR', 'MANUAL'] })
   calendarProvider?: string;
 
@@ -86,90 +102,6 @@ export class SetupMeeting {
 
   @Prop({ trim: true })
   notes?: string;
-}
-
-export class SetupRequirements {
-  @Prop({ trim: true })
-  businessName?: string;
-
-  @Prop({ trim: true })
-  website?: string;
-
-  @Prop({ trim: true })
-  industry?: string;
-
-  @Prop({ min: 1 })
-  teamSize?: number;
-
-  @Prop({ trim: true })
-  message?: string;
-
-  @Prop({ enum: ['HUBSPOT', 'SALESFORCE', 'OTHER', 'NONE'], default: 'NONE' })
-  crmProvider?: string;
-
-  @Prop({
-    enum: ['GOOGLE_CALENDAR', 'OUTLOOK_CALENDAR', 'NONE'],
-    default: 'NONE',
-  })
-  calendarProvider?: string;
-
-  @Prop({ enum: ['TWILIO', 'NONE'], default: 'NONE' })
-  callingProvider?: string;
-
-  @Prop({ default: false })
-  needCrmMigration!: boolean;
-
-  @Prop({ default: false })
-  needCalendarSetup!: boolean;
-
-  @Prop({ default: false })
-  needTwilioSetup!: boolean;
-
-  @Prop({ default: false })
-  needAiAgentSetup!: boolean;
-
-  @Prop({ default: false })
-  needWorkflowSetup!: boolean;
-
-  @Prop({ default: false })
-  needTeamOnboarding!: boolean;
-}
-
-export class SetupSectionProgress {
-  @Prop({
-    default: IntegrationSetupStatus.PENDING,
-    enum: Object.values(IntegrationSetupStatus),
-  })
-  status!: IntegrationSetupStatus;
-
-  @Prop({ trim: true })
-  note?: string;
-
-  @Prop()
-  completedAt?: Date;
-}
-
-export class SetupProgress {
-  @Prop({ default: 0, min: 0, max: 100 })
-  overallProgress!: number;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  crmSetup!: SetupSectionProgress;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  calendarSetup!: SetupSectionProgress;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  twilioSetup!: SetupSectionProgress;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  aiAgentSetup!: SetupSectionProgress;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  workflowSetup!: SetupSectionProgress;
-
-  @Prop({ type: SetupSectionProgress, _id: false })
-  teamOnboarding!: SetupSectionProgress;
 }
 
 export class AdminNote {
@@ -208,8 +140,13 @@ export class OnboardingSetup {
   @Prop({ index: true })
   assignedAdminId?: string;
 
-  @Prop({ required: true, enum: Object.values(PlanType) })
-  packageType!: PlanType;
+  // Legacy subscription-plan classification. New setups use setupPackageId
+  // instead, because setup packages are an independent admin-managed catalog.
+  @Prop({ enum: Object.values(PlanType) })
+  packageType?: PlanType;
+
+  @Prop({ index: true })
+  setupPackageId?: string;
 
   @Prop({ required: true, enum: Object.values(SetupType) })
   setupType!: SetupType;
@@ -232,12 +169,6 @@ export class OnboardingSetup {
 
   @Prop({ type: SetupMeeting, _id: false })
   meeting!: SetupMeeting;
-
-  @Prop({ type: SetupRequirements, _id: false })
-  requirements?: SetupRequirements;
-
-  @Prop({ type: SetupProgress, _id: false })
-  progress!: SetupProgress;
 
   @Prop({ type: [AdminNote], _id: false })
   adminNotes!: AdminNote[];
@@ -262,3 +193,12 @@ export const OnboardingSetupSchema =
   SchemaFactory.createForClass(OnboardingSetup);
 OnboardingSetupSchema.index({ organizationId: 1, status: 1 });
 OnboardingSetupSchema.index({ assignedAdminId: 1, status: 1 });
+OnboardingSetupSchema.index(
+  { 'meeting.startTime': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'meeting.status': SetupMeetingStatus.SCHEDULED,
+    },
+  },
+);
