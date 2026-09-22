@@ -63,6 +63,7 @@ export class StripeProvider {
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
       metadata: params.metadata,
+      payment_intent_data: { metadata: params.metadata },
     });
   }
 
@@ -70,6 +71,12 @@ export class StripeProvider {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
+  }
+
+  // Account deletion is different from a normal voluntary cancellation:
+  // no future billing may remain after the workspace has been erased.
+  cancelSubscriptionImmediately(stripeSubscriptionId: string) {
+    return this.client.subscriptions.cancel(stripeSubscriptionId);
   }
 
   // Screen 3 — no charges while paused; Stripe resumes billing on its own

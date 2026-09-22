@@ -65,10 +65,11 @@ export class AuthRepository {
       set: Record<string, unknown>;
       unset: Record<string, ''>;
     },
+    expectedUpdatedAt: Date,
   ) {
     return this.userModel
-      .findByIdAndUpdate(
-        id,
+      .findOneAndUpdate(
+        { _id: id, updatedAt: expectedUpdatedAt },
         {
           ...(Object.keys(input.set).length > 0 ? { $set: input.set } : {}),
           ...(Object.keys(input.unset).length > 0

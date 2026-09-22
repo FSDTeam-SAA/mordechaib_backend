@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { isValidObjectId } from 'mongoose';
@@ -10,10 +11,17 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TasksRepository } from './tasks.repository';
+import { TaskStatus } from '../../common/enums/task-status.enum';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly repository: TasksRepository) {}
+  private readonly logger = new Logger(TasksService.name);
+
+  constructor(
+    private readonly repository: TasksRepository,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(organizationId: string, userId: string, dto: CreateTaskDto) {
     const task = await this.repository.create({
@@ -101,12 +109,36 @@ export class TasksService {
       throw new BadRequestException('No task changes were provided');
     }
 
+    const previous =
+      dto.status === TaskStatus.COMPLETED
+        ? await this.repository.findById(organizationId, id)
+        : undefined;
+    const persistence = this.toPersistence(dto);
+    if (previous && previous.status !== TaskStatus.COMPLETED) {
+      persistence.completedAt = new Date();
+    }
     const updated = await this.repository.updateById(
       organizationId,
       id,
-      this.toPersistence(dto),
+      persistence,
     );
     if (!updated) throw new NotFoundException('Task not found');
+    if (
+      previous &&
+      previous.status !== TaskStatus.COMPLETED &&
+      updated.proposedByAgent &&
+      updated.status === TaskStatus.COMPLETED
+    ) {
+      try {
+        await this.notifications.notifyAgentTaskCompleted(updated);
+      } catch (error) {
+        this.logger.warn(
+          `Task ${id} completed but its notification failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     return this.toResponse(updated);
   }
 

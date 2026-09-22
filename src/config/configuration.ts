@@ -128,6 +128,10 @@ export default () => {
     process.env.AI_LOG_ANALYZE_SOURCE_REQUEST_BODY,
     false,
   );
+  const aiAttachmentDownloadUrlEnabled = booleanValue(
+    process.env.AI_ATTACHMENT_DOWNLOAD_URL_ENABLED,
+    false,
+  );
   const aiServiceTimeoutMs = positiveInteger(
     process.env.AI_SERVICE_TIMEOUT_MS,
     30_000,
@@ -137,6 +141,16 @@ export default () => {
     process.env.AI_MESSAGE_ANALYSIS_DELAY_MS,
     1_500,
     'AI_MESSAGE_ANALYSIS_DELAY_MS',
+  );
+  const aiBriefingTimeoutMs = positiveInteger(
+    process.env.AI_BRIEFING_TIMEOUT_MS,
+    60_000,
+    'AI_BRIEFING_TIMEOUT_MS',
+  );
+  const aiBriefingPollAfterMs = positiveInteger(
+    process.env.AI_BRIEFING_POLL_AFTER_MS,
+    2_000,
+    'AI_BRIEFING_POLL_AFTER_MS',
   );
   const aiCallTranscriptionEnabled = booleanValue(
     process.env.AI_CALL_TRANSCRIPTION_ENABLED,
@@ -418,7 +432,7 @@ export default () => {
         process.env.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN || '30d',
       passwordResetExpiresIn: process.env.PASSWORD_RESET_EXPIRES_IN || '1h',
       emailVerificationExpiresIn:
-        process.env.EMAIL_VERIFICATION_EXPIRES_IN || '24h',
+        process.env.EMAIL_VERIFICATION_EXPIRES_IN || '10m',
       bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 12),
       exposeDevelopmentTokens:
         exposeDevelopmentTokens === undefined
@@ -463,6 +477,11 @@ export default () => {
       apiKey: cloudinaryApiKey,
       apiSecret: cloudinaryApiSecret,
       messageFolder: process.env.CLOUDINARY_MESSAGE_FOLDER || 'noltra/messages',
+      profileAvatarFolder:
+        process.env.CLOUDINARY_PROFILE_AVATAR_FOLDER || 'noltra/avatars',
+      organizationLogoFolder:
+        process.env.CLOUDINARY_ORGANIZATION_LOGO_FOLDER ||
+        'noltra/organization-logos',
       downloadUrlTtlSeconds: cloudinaryDownloadUrlTtlSeconds,
     },
 
@@ -470,13 +489,16 @@ export default () => {
       apiKey: process.env.OPENAI_API_KEY,
     },
 
-      aiService: {
-        baseUrl: aiServiceBaseUrl,
-        sharedSecret: aiServiceSharedSecret,
-        automationEnabled: aiAutomationEnabled,
-        logAnalyzeSourceRequestBody: aiLogAnalyzeSourceRequestBody,
-        timeoutMs: aiServiceTimeoutMs,
-        messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
+    aiService: {
+      baseUrl: aiServiceBaseUrl,
+      sharedSecret: aiServiceSharedSecret,
+      automationEnabled: aiAutomationEnabled,
+      logAnalyzeSourceRequestBody: aiLogAnalyzeSourceRequestBody,
+      attachmentDownloadUrlEnabled: aiAttachmentDownloadUrlEnabled,
+      timeoutMs: aiServiceTimeoutMs,
+      messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
+      briefingTimeoutMs: aiBriefingTimeoutMs,
+      briefingPollAfterMs: aiBriefingPollAfterMs,
       callTranscription: {
         enabled: aiCallTranscriptionEnabled,
         model: aiCallTranscriptionModel,

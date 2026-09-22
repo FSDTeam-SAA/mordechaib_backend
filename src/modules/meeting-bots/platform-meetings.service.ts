@@ -72,8 +72,10 @@ export class PlatformMeetingsService {
     const durationMinutes =
       input.durationMinutes || this.defaultDurationMinutes;
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
-    const reminderMinutesBeforeStart =
-      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes;
+    const reminderMinutesBeforeStart = await this.calendar.resolveReminderMinutes(
+      userId,
+      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
+    );
     const calendarProvider = immediate
       ? undefined
       : await this.calendar.getDefaultProvider(organizationId);
@@ -277,6 +279,16 @@ export class PlatformMeetingsService {
       ...(warning ? { warning } : {}),
     };
   }
+
+  /*
+   * Future onboarding-host flow (intentionally disabled):
+   * Resolve a platform-managed onboarding host account, then call create()
+   * with that host organization instead of the customer's organization.
+   *
+   * Do not reactivate this with the customer organizationId: its connections
+   * belong to the customer, whereas onboarding meetings must be created from
+   * the Noltra platform host account.
+   */
 
   createFromAiProposal(
     organizationId: string,
