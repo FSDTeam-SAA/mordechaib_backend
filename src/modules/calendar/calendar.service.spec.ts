@@ -9,6 +9,7 @@ import { CalendarService } from './calendar.service';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { CalendarEventsRepository } from './calendar-events.repository';
+import { SettingsService } from '../settings/settings.service';
 
 describe('CalendarService', () => {
   const encryptionKey = 'c'.repeat(32);
@@ -16,6 +17,7 @@ describe('CalendarService', () => {
   let google: Record<string, jest.Mock>;
   let outlook: Record<string, jest.Mock>;
   let events: Record<string, jest.Mock>;
+  let settings: Record<string, jest.Mock>;
   let service: CalendarService;
 
   beforeEach(() => {
@@ -48,13 +50,25 @@ describe('CalendarService', () => {
       get: jest.fn((_key: string, fallback?: unknown) => fallback),
       getOrThrow: jest.fn().mockReturnValue(encryptionKey),
     };
+    settings = {
+      getNotifications: jest.fn().mockResolvedValue({
+        meetingReminders: true,
+      }),
+    };
     service = new CalendarService(
       repository as unknown as CalendarRepository,
       google as unknown as GoogleCalendarProvider,
       outlook as unknown as OutlookCalendarProvider,
       config as unknown as ConfigService,
       events as unknown as CalendarEventsRepository,
+      settings as unknown as SettingsService,
     );
+  });
+
+  it('disables provider reminders when the user preference is off', async () => {
+    settings.getNotifications.mockResolvedValue({ meetingReminders: false });
+
+    await expect(service.resolveReminderMinutes('user-1', 60)).resolves.toBe(0);
   });
 
   it('refreshes an expired Outlook token and creates the event with the new token', async () => {

@@ -72,8 +72,10 @@ export class PlatformMeetingsService {
     const durationMinutes =
       input.durationMinutes || this.defaultDurationMinutes;
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
-    const reminderMinutesBeforeStart =
-      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes;
+    const reminderMinutesBeforeStart = await this.calendar.resolveReminderMinutes(
+      userId,
+      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
+    );
     const calendarProvider = immediate
       ? undefined
       : await this.calendar.getDefaultProvider(organizationId);

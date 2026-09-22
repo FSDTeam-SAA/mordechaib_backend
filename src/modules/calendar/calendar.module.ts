@@ -7,9 +7,10 @@ import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { ConfigModule } from '@nestjs/config';
 import { CalendarEventsRepository } from './calendar-events.repository';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, SettingsModule],
   controllers: [CalendarController, CalendarConnectionsController],
   providers: [
     CalendarService,

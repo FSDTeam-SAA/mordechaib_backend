@@ -59,8 +59,12 @@ Repositories use Mongoose models through `@InjectModel()`.
 ```bash
 pnpm install
 cp .env.example .env
-pnpm run start:dev
+pnpm dev
 ```
+
+`pnpm dev` and `pnpm run start:dev` both enable live reload. Do not write
+`pnpm start : dev`; the spaces make pnpm run the non-watch `start` script and
+pass `:` and `dev` as unrelated arguments.
 
 ## MongoDB
 

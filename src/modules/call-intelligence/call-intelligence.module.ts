@@ -27,5 +27,6 @@ import { CallIntelligenceService } from './call-intelligence.service';
     CallIntelligenceDeletionService,
     CallIntelligenceProposalsFacade,
   ],
+  exports: [CallIntelligenceService],
 })
 export class CallIntelligenceModule {}
