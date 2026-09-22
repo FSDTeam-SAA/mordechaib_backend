@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, UpdateQuery } from 'mongoose';
+import { FilterQuery, Model, Types, UpdateQuery } from 'mongoose';
+import { SetupMeetingStatus } from '../../common/enums/setup-meeting-status.enum';
+import { SetupStatus } from '../../common/enums/setup-status.enum';
 import {
   AdminNote,
   OnboardingSetup,
@@ -54,7 +56,6 @@ export class OnboardingSetupsRepository {
   ) {
     const {
       status,
-      packageType,
       setupType,
       assignedAdminId,
       page = 1,
@@ -63,7 +64,6 @@ export class OnboardingSetupsRepository {
     const filter: FilterQuery<OnboardingSetup> = {
       ...extraFilters,
       ...(status ? { status } : {}),
-      ...(packageType ? { packageType } : {}),
       ...(setupType ? { setupType } : {}),
       ...(assignedAdminId ? { assignedAdminId } : {}),
     };
@@ -89,6 +89,53 @@ export class OnboardingSetupsRepository {
     if (organizationId) filter.organizationId = organizationId;
     return this.setupModel
       .findOneAndUpdate(filter, update, { new: true })
+      .lean()
+      .exec();
+  }
+
+  bookMeetingIfPending(
+    id: string,
+    organizationId: string,
+    update: UpdateQuery<OnboardingSetup>,
+  ) {
+    return this.setupModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          status: {
+            $in: [
+              SetupStatus.MEETING_PENDING,
+              SetupStatus.PAYMENT_COMPLETED,
+              SetupStatus.MEETING_SCHEDULED,
+            ],
+          },
+          'meeting.status': SetupMeetingStatus.PENDING,
+        },
+        update,
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  findScheduledMeetingsInRange(
+    startsBefore: Date,
+    endsAfter: Date,
+    excludeSetupId?: string,
+  ) {
+    const filter: FilterQuery<OnboardingSetup> = {
+      'meeting.status': SetupMeetingStatus.SCHEDULED,
+      'meeting.startTime': { $lt: startsBefore },
+      'meeting.endTime': { $gt: endsAfter },
+    };
+    if (excludeSetupId && Types.ObjectId.isValid(excludeSetupId)) {
+      filter._id = { $ne: new Types.ObjectId(excludeSetupId) };
+    }
+
+    return this.setupModel
+      .find(filter)
+      .select('meeting.startTime meeting.endTime')
       .lean()
       .exec();
   }

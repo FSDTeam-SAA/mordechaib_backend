@@ -90,5 +90,6 @@ import { StrategicNotesService } from './strategic-notes.service';
     StrategicNotesRepository,
     StrategicNotesService,
   ],
+  exports: [ExecutiveBriefingsService],
 })
 export class ChiefOfStaffModule {}

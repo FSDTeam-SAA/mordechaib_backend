@@ -14,6 +14,10 @@ const DEFAULT_NOTIFICATIONS = {
   productUpdates: true,
 };
 
+export type NotificationPreferencesView = typeof DEFAULT_NOTIFICATIONS & {
+  userId: string;
+};
+
 const DEFAULT_AI_SETTINGS = {
   autoApproveLowRiskActions: false,
   learningMode: true,
@@ -36,20 +40,33 @@ export class SettingsService {
   private notificationResponse(
     userId: string,
     preferences?: Record<string, unknown> | null,
-  ) {
+  ): NotificationPreferencesView {
     return {
       userId,
-      ...DEFAULT_NOTIFICATIONS,
-      ...(preferences
-        ? {
-            emailNotifications: preferences.emailNotifications,
-            inAppNotifications: preferences.inAppNotifications,
-            agentTaskCompletions: preferences.agentTaskCompletions,
-            meetingReminders: preferences.meetingReminders,
-            weeklyRoiReports: preferences.weeklyRoiReports,
-            productUpdates: preferences.productUpdates,
-          }
-        : {}),
+      emailNotifications: this.booleanPreference(
+        preferences?.emailNotifications,
+        DEFAULT_NOTIFICATIONS.emailNotifications,
+      ),
+      inAppNotifications: this.booleanPreference(
+        preferences?.inAppNotifications,
+        DEFAULT_NOTIFICATIONS.inAppNotifications,
+      ),
+      agentTaskCompletions: this.booleanPreference(
+        preferences?.agentTaskCompletions,
+        DEFAULT_NOTIFICATIONS.agentTaskCompletions,
+      ),
+      meetingReminders: this.booleanPreference(
+        preferences?.meetingReminders,
+        DEFAULT_NOTIFICATIONS.meetingReminders,
+      ),
+      weeklyRoiReports: this.booleanPreference(
+        preferences?.weeklyRoiReports,
+        DEFAULT_NOTIFICATIONS.weeklyRoiReports,
+      ),
+      productUpdates: this.booleanPreference(
+        preferences?.productUpdates,
+        DEFAULT_NOTIFICATIONS.productUpdates,
+      ),
     };
   }
 
@@ -65,7 +82,7 @@ export class SettingsService {
 
     const preferences = await this.repository.upsertNotifications(
       userId,
-      update,
+      { ...update, updatedBy: userId },
     );
     await this.auditLogs.create({
       organizationId,
@@ -131,5 +148,9 @@ export class SettingsService {
     return Object.fromEntries(
       Object.entries(input).filter(([, value]) => value !== undefined),
     ) as Record<string, unknown>;
+  }
+
+  private booleanPreference(value: unknown, fallback: boolean) {
+    return typeof value === 'boolean' ? value : fallback;
   }
 }

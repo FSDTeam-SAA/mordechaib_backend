@@ -4,10 +4,12 @@ import { TaskStatus } from '../../common/enums/task-status.enum';
 import { TasksRepository } from './tasks.repository';
 import { TasksService } from './tasks.service';
 import { AgentType } from '../../common/enums/agent-type.enum';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('TasksService', () => {
   let repository: Record<string, jest.Mock>;
   let service: TasksService;
+  let notifications: Record<string, jest.Mock>;
 
   beforeEach(() => {
     repository = {
@@ -18,7 +20,11 @@ describe('TasksService', () => {
       updateById: jest.fn(),
       deleteById: jest.fn(),
     };
-    service = new TasksService(repository as unknown as TasksRepository);
+    notifications = { notifyAgentTaskCompleted: jest.fn() };
+    service = new TasksService(
+      repository as unknown as TasksRepository,
+      notifications as unknown as NotificationsService,
+    );
   });
 
   it('creates an AI-proposed task with the approver as creator', async () => {
@@ -156,6 +162,41 @@ describe('TasksService', () => {
       'org-1',
       '66cc9bdfa847ea856c7b41d2',
       { status: TaskStatus.COMPLETED },
+    );
+  });
+
+  it('notifies when an AI-proposed task first becomes completed', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d2',
+      organizationId: 'org-1',
+      title: 'Prepare quote',
+      status: TaskStatus.IN_PROGRESS,
+      createdByUserId: 'user-1',
+      proposedByAgent: {
+        id: 'agent-1',
+        name: 'Steve',
+        type: AgentType.SALES,
+      },
+    });
+    repository.updateById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d2',
+      organizationId: 'org-1',
+      title: 'Prepare quote',
+      status: TaskStatus.COMPLETED,
+      createdByUserId: 'user-1',
+      proposedByAgent: {
+        id: 'agent-1',
+        name: 'Steve',
+        type: AgentType.SALES,
+      },
+    });
+
+    await service.update('org-1', '66cc9bdfa847ea856c7b41d2', {
+      status: TaskStatus.COMPLETED,
+    });
+
+    expect(notifications.notifyAgentTaskCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ status: TaskStatus.COMPLETED }),
     );
   });
 });

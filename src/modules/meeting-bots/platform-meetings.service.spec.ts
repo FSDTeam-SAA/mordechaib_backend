@@ -75,6 +75,9 @@ describe('PlatformMeetingsService', () => {
       deleteMeeting: jest.fn(),
     };
     calendar = {
+      resolveReminderMinutes: jest
+        .fn()
+        .mockImplementation(async (_userId, minutes) => minutes),
       getDefaultProvider: jest
         .fn()
         .mockResolvedValue(CalendarProviderType.GOOGLE_CALENDAR),
