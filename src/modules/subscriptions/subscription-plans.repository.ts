@@ -12,8 +12,19 @@ export class SubscriptionPlansRepository {
     private readonly planModel: Model<SubscriptionPlan>,
   ) {}
 
-  findAll(includeInactive: boolean) {
-    const filter = includeInactive ? {} : { isActive: true };
+  findAll(includeInactive: boolean, billingCycle?: 'month' | 'year') {
+    const filter: Record<string, unknown> = includeInactive
+      ? {}
+      : { isActive: true };
+    if (billingCycle === 'month') {
+      // Plans created before billingCycles was introduced are monthly.
+      filter.$or = [
+        { billingCycles: 'month' },
+        { billingCycles: { $exists: false } },
+      ];
+    } else if (billingCycle === 'year') {
+      filter.billingCycles = 'year';
+    }
     return this.planModel.find(filter).sort({ sortOrder: 1 }).exec();
   }
 
@@ -29,10 +40,25 @@ export class SubscriptionPlansRepository {
     return this.planModel.find({ _id: { $in: ids } }).exec();
   }
 
+  backfillLegacyBillingCycles() {
+    return this.planModel
+      .updateMany(
+        {
+          $or: [
+            { billingCycles: { $exists: false } },
+            { billingCycles: { $size: 0 } },
+          ],
+        },
+        { $set: { billingCycles: ['month'] } },
+      )
+      .exec();
+  }
+
   create(
     input: CreateSubscriptionPlanDto & {
       stripeProductId?: string;
       stripePriceId?: string;
+      stripeAnnualPriceId?: string;
     },
   ) {
     return this.planModel.create(input);
@@ -43,6 +69,7 @@ export class SubscriptionPlansRepository {
     input: UpdateSubscriptionPlanDto & {
       stripeProductId?: string;
       stripePriceId?: string;
+      stripeAnnualPriceId?: string;
     },
   ) {
     return this.planModel.findByIdAndUpdate(id, input, { new: true }).exec();

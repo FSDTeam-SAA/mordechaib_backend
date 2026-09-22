@@ -113,6 +113,10 @@ import {
   AiSourceAnalysis,
   AiSourceAnalysisSchema,
 } from '../schemas/ai-source-analysis.schema';
+import {
+  AddonProduct,
+  AddonProductSchema,
+} from '../schemas/addon-product.schema';
 
 @Global()
 @Module({
@@ -183,6 +187,7 @@ import {
       },
       { name: Agent.name, schema: AgentSchema },
       { name: AiSourceAnalysis.name, schema: AiSourceAnalysisSchema },
+      { name: AddonProduct.name, schema: AddonProductSchema },
     ]),
   ],
   exports: [MongooseModule],

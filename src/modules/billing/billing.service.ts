@@ -1,13 +1,22 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import Stripe from 'stripe';
+import { AddonCategory } from '../../common/enums/addon-category.enum';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
+import { AddonProductsService } from '../addons/addon-products.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { SubscriptionPlansService } from '../subscriptions/subscription-plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
-import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { TwilioProvisioningService } from '../twilio/twilio-provisioning.service';
+import { AddAddonDto } from './dto/add-addon.dto';
+import { CreateCheckoutSessionWithAddonsDto } from './dto/create-checkout-session-with-addons.dto';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 // Maps Stripe's own subscription statuses onto ours. Stripe has a couple of
 // extra states (`unpaid`, `paused`) that we fold into PAST_DUE/CANCELED
@@ -36,6 +45,7 @@ export class BillingService {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly invoicesService: InvoicesService,
     private readonly twilioProvisioning: TwilioProvisioningService,
+    private readonly addonProductsService: AddonProductsService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
@@ -62,14 +72,12 @@ export class BillingService {
     }
 
     const plan = await this.plansService.findByPlanType(dto.planType);
-    if (!plan.stripePriceId) {
-      throw new BadRequestException(
-        'This plan is not yet linked to a Stripe price',
-      );
-    }
+    const planPriceId = await this.plansService.ensureCheckoutPrice(
+      String(plan._id),
+    );
 
     const session = await this.stripeProvider.createCheckoutSession({
-      priceId: plan.stripePriceId,
+      priceId: planPriceId,
       successUrl: dto.successUrl,
       cancelUrl: dto.cancelUrl,
       trialDays: plan.trialDays,
@@ -80,6 +88,158 @@ export class BillingService {
     });
 
     return { checkoutUrl: session.url };
+  }
+
+  // Checkout with base plan plus optional add-on tiers in a single checkout session
+  async createCheckoutSessionWithAddons(
+    organizationId: string,
+    dto: CreateCheckoutSessionWithAddonsDto,
+  ) {
+    if (!dto.planId && !dto.planType) {
+      throw new BadRequestException(
+        'Either planId or planType must be provided',
+      );
+    }
+
+    const plan = dto.planId
+      ? await this.plansService.findById(dto.planId)
+      : await this.plansService.findByPlanType(dto.planType!);
+
+    if (plan.planType === PlanType.CUSTOM || plan.isInquiryOnly) {
+      throw new BadRequestException(
+        'The Customized plan is inquiry-only — submit a package inquiry instead',
+      );
+    }
+
+    const existing = await this.subscriptionsService
+      .getMine(organizationId)
+      .catch(() => null);
+    if (existing?.subscription.stripeSubscriptionId) {
+      throw new BadRequestException(
+        'This organization already has a subscription — use the upgrade or addon endpoints instead of checking out again',
+      );
+    }
+
+    const planPriceId = await this.plansService.ensureCheckoutPrice(
+      String(plan._id),
+    );
+
+    // Deduplicate any repeated selections (same product and tier)
+    const uniqueAddons: { addonProductId: string; tierIndex: number }[] = [];
+    const seen = new Set<string>();
+    for (const item of dto.addons ?? []) {
+      const key = `${item.addonProductId}:${item.tierIndex}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueAddons.push(item);
+      }
+    }
+
+    const addonPriceIds: string[] = [];
+    for (const item of uniqueAddons) {
+      const priceId = await this.addonProductsService.getTierStripePriceId(
+        item.addonProductId,
+        item.tierIndex,
+      );
+      addonPriceIds.push(priceId);
+    }
+
+    const session = await this.stripeProvider.createCheckoutSessionWithAddons({
+      planPriceId,
+      addonPriceIds,
+      successUrl: dto.successUrl,
+      cancelUrl: dto.cancelUrl,
+      trialDays: plan.trialDays,
+      metadata: {
+        organizationId,
+        planId: String(plan._id),
+        addonSelections: uniqueAddons.length
+          ? JSON.stringify(uniqueAddons)
+          : '',
+      },
+    });
+
+    return { checkoutUrl: session.url };
+  }
+
+  // Add or update an add-on tier on an existing subscription
+  async addOrUpdateAddon(organizationId: string, dto: AddAddonDto) {
+    const { subscription } =
+      await this.subscriptionsService.getMine(organizationId);
+    if (!subscription.stripeSubscriptionId) {
+      throw new BadRequestException('No active Stripe subscription found');
+    }
+
+    const addonProduct = await this.addonProductsService.findById(
+      dto.addonProductId,
+    );
+    const tier = addonProduct.tiers[dto.tierIndex];
+    if (!tier || !tier.stripePriceId) {
+      throw new BadRequestException(
+        'Invalid add-on tier or tier has no Stripe price',
+      );
+    }
+
+    const existingAddon = subscription.activeAddons?.find(
+      (a) => a.category === addonProduct.category,
+    );
+
+    let stripeSubscriptionItemId: string;
+
+    if (existingAddon?.stripeSubscriptionItemId) {
+      const updatedItem = await this.stripeProvider.updateSubscriptionItem(
+        existingAddon.stripeSubscriptionItemId,
+        tier.stripePriceId,
+      );
+      stripeSubscriptionItemId = updatedItem.id;
+    } else {
+      const newItem = await this.stripeProvider.addSubscriptionItem(
+        subscription.stripeSubscriptionId,
+        tier.stripePriceId,
+      );
+      stripeSubscriptionItemId = newItem.id;
+    }
+
+    await this.subscriptionsService.upsertActiveAddon(organizationId, {
+      category: addonProduct.category,
+      addonProductId: String((addonProduct as unknown as { _id: unknown })._id),
+      tierIndex: dto.tierIndex,
+      label: tier.label,
+      quantity: tier.quantity,
+      priceUsd: tier.priceUsd,
+      stripeSubscriptionItemId,
+    });
+
+    return { message: 'Add-on updated successfully' };
+  }
+
+  // Remove an active add-on from an existing subscription
+  async removeAddon(organizationId: string, category: AddonCategory) {
+    const { subscription } =
+      await this.subscriptionsService.getMine(organizationId);
+    if (!subscription.stripeSubscriptionId) {
+      throw new BadRequestException('No active Stripe subscription found');
+    }
+
+    const existingAddons = subscription.activeAddons?.filter(
+      (a) => a.category === category,
+    ) || [];
+    if (existingAddons.length === 0) {
+      throw new NotFoundException(
+        `No active add-on found for category ${category}`,
+      );
+    }
+
+    for (const item of existingAddons) {
+      if (item.stripeSubscriptionItemId) {
+        await this.stripeProvider.deleteSubscriptionItem(
+          item.stripeSubscriptionItemId,
+        );
+      }
+    }
+
+    await this.subscriptionsService.removeActiveAddon(organizationId, category);
+    return { message: 'Add-on removed successfully' };
   }
 
   // Self-service upgrade — "upgrade is easy, anytime" per your spec.
@@ -228,6 +388,73 @@ export class BillingService {
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(),
     });
+
+    // Stripe does not guarantee webhook delivery order. Retrieve the source
+    // of truth immediately so a fast invoice event cannot arrive before the
+    // local subscription exists and get skipped.
+    try {
+      const stripeSubscription =
+        await this.stripeProvider.client.subscriptions.retrieve(
+          stripeSubscriptionId,
+          { expand: ['latest_invoice'] },
+        );
+      await this.onSubscriptionUpdated(stripeSubscription);
+
+      const latestInvoice = stripeSubscription.latest_invoice;
+      if (latestInvoice) {
+        const invoice =
+          typeof latestInvoice === 'string'
+            ? await this.stripeProvider.client.invoices.retrieve(latestInvoice)
+            : latestInvoice;
+        await this.invoicesService.upsertFromStripeEvent(invoice);
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to synchronize subscription/invoice after checkout',
+        error,
+      );
+    }
+
+    // If addons were included in the checkout session, link them to the subscription
+    if (session.metadata?.addonSelections) {
+      try {
+        const selections = JSON.parse(
+          session.metadata.addonSelections,
+        ) as { addonProductId: string; tierIndex: number }[];
+        const stripeSub =
+          await this.stripeProvider.client.subscriptions.retrieve(
+            stripeSubscriptionId,
+          );
+
+        for (const item of selections) {
+          const addonProduct = await this.addonProductsService.findById(
+            item.addonProductId,
+          );
+          const tier = addonProduct.tiers[item.tierIndex];
+          if (tier?.stripePriceId) {
+            const subItem = stripeSub.items.data.find(
+              (si) => si.price.id === tier.stripePriceId,
+            );
+            await this.subscriptionsService.upsertActiveAddon(organizationId, {
+              category: addonProduct.category,
+              addonProductId: String(
+                (addonProduct as unknown as { _id: unknown })._id,
+              ),
+              tierIndex: item.tierIndex,
+              label: tier.label,
+              quantity: tier.quantity,
+              priceUsd: tier.priceUsd,
+              stripeSubscriptionItemId: subItem?.id,
+            });
+          }
+        }
+      } catch (err) {
+        this.logger.error(
+          'Failed to sync add-ons from checkout session completed event',
+          err,
+        );
+      }
+    }
     // Billing interval isn't known from the checkout session alone (it's
     // not expanded here) — the customer.subscription.created/updated event
     // Stripe fires right after checkout fills it in via onSubscriptionUpdated.
