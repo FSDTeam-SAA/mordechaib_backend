@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { IntegrationProvider } from '../../database/schemas/integration.schema';
 import { TwilioProvisioningStatus } from '../../common/enums/twilio-provisioning-status.enum';
 import { IntegrationsRepository } from './integrations.repository';
+import { EmailProvider } from '../../common/enums/email-provider.enum';
+import { EmailConnectionsService } from '../email/email-connections.service';
 
 const INTEGRATION_CARDS = [
   {
@@ -37,8 +39,14 @@ const INTEGRATION_CARDS = [
   {
     provider: IntegrationProvider.GMAIL,
     label: 'Gmail',
-    lookup: [IntegrationProvider.GMAIL],
-    connectPath: undefined,
+    lookup: [],
+    connectPath: '/email/connections/GOOGLE/connect',
+  },
+  {
+    provider: 'OUTLOOK_EMAIL',
+    label: 'Outlook Email',
+    lookup: [],
+    connectPath: '/email/connections/OUTLOOK/connect',
   },
   {
     provider: IntegrationProvider.SALESFORCE,
@@ -62,20 +70,49 @@ const INTEGRATION_CARDS = [
 
 @Injectable()
 export class IntegrationsService {
-  constructor(private readonly repository: IntegrationsRepository) {}
+  constructor(
+    private readonly repository: IntegrationsRepository,
+    private readonly emailConnections: EmailConnectionsService,
+  ) {}
 
-  async findAll(organizationId: string) {
-    const [integrations, twilioAccount, twilioSetting] = await Promise.all([
-      this.repository.findByOrganization(organizationId),
-      this.repository.findTwilioAccount(organizationId),
-      this.repository.findTwilioSetting(organizationId),
-    ]);
+  async findAll(organizationId: string, userId: string) {
+    const [integrations, twilioAccount, twilioSetting, emailConnections] =
+      await Promise.all([
+        this.repository.findByOrganization(organizationId),
+        this.repository.findTwilioAccount(organizationId),
+        this.repository.findTwilioSetting(organizationId),
+        this.emailConnections.list(organizationId, userId),
+      ]);
 
     return {
       organizationId,
       items: INTEGRATION_CARDS.map((card) => {
         if (card.provider === IntegrationProvider.TWILIO) {
           return this.twilioCard(card, twilioAccount, twilioSetting);
+        }
+
+        if (
+          card.provider === IntegrationProvider.GMAIL ||
+          card.provider === 'OUTLOOK_EMAIL'
+        ) {
+          const provider =
+            card.provider === IntegrationProvider.GMAIL
+              ? EmailProvider.GOOGLE
+              : EmailProvider.OUTLOOK;
+          const connection = emailConnections.find(
+            (item) => item.provider === provider,
+          );
+          return {
+            provider: card.provider,
+            label: card.label,
+            connected: connection?.connected === true,
+            status: connection?.connected ? 'CONNECTED' : 'NOT_CONFIGURED',
+            isDefault: false,
+            connectPath: card.connectPath,
+            account: { email: connection?.email },
+            connectedByUserId: connection?.connected ? userId : undefined,
+            expiresAt: connection?.expiresAt,
+          };
         }
 
         const connection = integrations.find((item) =>

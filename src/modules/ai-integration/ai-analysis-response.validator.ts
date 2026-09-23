@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model } from 'mongoose';
+import { isEmail } from 'class-validator';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { Agent } from '../../database/schemas/agent.schema';
@@ -121,6 +122,42 @@ export class AiAnalysisResponseValidator {
       value.runId === undefined
         ? undefined
         : this.requiredString(value.runId, 'assistantMessage.runId', 200);
+    let emailDraft: AiAssistantMessage['emailDraft'];
+    if (value.emailDraft !== undefined) {
+      if (!this.isRecord(value.emailDraft)) {
+        throw new BadRequestException('assistantMessage.emailDraft is invalid');
+      }
+      const draft = value.emailDraft;
+      if (
+        !Array.isArray(draft.to) ||
+        draft.to.length < 1 ||
+        draft.to.length > 10 ||
+        draft.to.some(
+          (recipient) => typeof recipient !== 'string' || !isEmail(recipient),
+        )
+      ) {
+        throw new BadRequestException(
+          'assistantMessage.emailDraft.to is invalid',
+        );
+      }
+      emailDraft = {
+        to: [
+          ...new Set(
+            draft.to.map((recipient: string) => recipient.trim().toLowerCase()),
+          ),
+        ],
+        subject: this.requiredString(
+          draft.subject,
+          'assistantMessage.emailDraft.subject',
+          300,
+        ),
+        body: this.requiredString(
+          draft.body,
+          'assistantMessage.emailDraft.body',
+          20_000,
+        ),
+      };
+    }
     return {
       responseId,
       content,
@@ -128,8 +165,10 @@ export class AiAnalysisResponseValidator {
         id: agentId,
         name: registered.name,
         type: registered.type,
+        ...(registered.imageUrl ? { imageUrl: registered.imageUrl } : {}),
       },
       ...(runId ? { runId } : {}),
+      ...(emailDraft ? { emailDraft } : {}),
     };
   }
 

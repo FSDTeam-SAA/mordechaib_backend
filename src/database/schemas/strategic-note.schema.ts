@@ -1,6 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import { ExecutiveBriefingType } from '../../common/enums/executive-briefing.enum';
+import {
+  ExecutiveBriefingType,
+  StrategicNoteKind,
+} from '../../common/enums/executive-briefing.enum';
 
 export type StrategicNoteDocument = HydratedDocument<StrategicNote>;
 
@@ -14,6 +17,16 @@ export class StrategicNote {
 
   @Prop({ required: true, trim: true, maxlength: 5_000 })
   content!: string;
+
+  @Prop({ trim: true, maxlength: 200 })
+  title?: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(StrategicNoteKind),
+    default: StrategicNoteKind.NOTE,
+  })
+  kind!: StrategicNoteKind;
 
   @Prop({
     type: [String],

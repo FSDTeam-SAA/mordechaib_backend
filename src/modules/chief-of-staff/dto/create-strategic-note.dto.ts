@@ -9,9 +9,27 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ExecutiveBriefingType } from '../../../common/enums/executive-briefing.enum';
+import {
+  ExecutiveBriefingType,
+  StrategicNoteKind,
+} from '../../../common/enums/executive-briefing.enum';
 
 export class CreateStrategicNoteDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional({
+    enum: StrategicNoteKind,
+    default: StrategicNoteKind.NOTE,
+  })
+  @IsOptional()
+  @IsEnum(StrategicNoteKind)
+  kind?: StrategicNoteKind;
+
   @ApiProperty({ maxLength: 5_000 })
   @IsString()
   @MinLength(1)

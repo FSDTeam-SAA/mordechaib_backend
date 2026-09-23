@@ -4,6 +4,7 @@ import { AgentType } from '../../common/enums/agent-type.enum';
 import { Conversation } from '../../database/schemas/conversation.schema';
 import { Message } from '../../database/schemas/message.schema';
 import { AiChatReplyService } from './ai-chat-reply.service';
+import { EmailDraftsService } from '../email/email-drafts.service';
 
 describe('AiChatReplyService', () => {
   const organizationId = 'org-1';
@@ -21,21 +22,31 @@ describe('AiChatReplyService', () => {
         id: '507f1f77bcf86cd799439013',
         name: 'Laura',
         type: AgentType.CHIEF_OF_STAFF,
+        imageUrl: 'https://cdn.example.com/laura.png',
       },
       runId: 'run-1',
     },
   };
 
-  let messages: { findOne: jest.Mock; create: jest.Mock };
+  let messages: { findOne: jest.Mock; create: jest.Mock; updateOne: jest.Mock };
   let conversations: { findOne: jest.Mock; findOneAndUpdate: jest.Mock };
+  let emailDrafts: { ensureFromAiReply: jest.Mock };
   let service: AiChatReplyService;
 
   beforeEach(() => {
-    messages = { findOne: jest.fn(), create: jest.fn() };
+    messages = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      updateOne: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue({}) }),
+    };
     conversations = { findOne: jest.fn(), findOneAndUpdate: jest.fn() };
+    emailDrafts = { ensureFromAiReply: jest.fn() };
     service = new AiChatReplyService(
       messages as unknown as Model<Message>,
       conversations as unknown as Model<Conversation>,
+      emailDrafts as unknown as EmailDraftsService,
     );
   });
 
@@ -54,6 +65,8 @@ describe('AiChatReplyService', () => {
         content: input.assistantMessage.content,
         agentId: input.assistantMessage.agent.id,
         agentName: input.assistantMessage.agent.name,
+        agentType: input.assistantMessage.agent.type,
+        agentImageUrl: input.assistantMessage.agent.imageUrl,
         agentRunId: input.assistantMessage.runId,
         createdAt: new Date('2026-09-18T00:00:00.000Z'),
       }),
@@ -71,6 +84,8 @@ describe('AiChatReplyService', () => {
         sourceMessageId,
         aiResponseId: input.assistantMessage.responseId,
         content: input.assistantMessage.content,
+        agentType: input.assistantMessage.agent.type,
+        agentImageUrl: input.assistantMessage.agent.imageUrl,
       }),
     );
     expect(conversations.findOneAndUpdate).toHaveBeenCalledTimes(1);
@@ -84,6 +99,8 @@ describe('AiChatReplyService', () => {
       content: input.assistantMessage.content,
       agentId: input.assistantMessage.agent.id,
       agentName: input.assistantMessage.agent.name,
+      agentType: input.assistantMessage.agent.type,
+      agentImageUrl: input.assistantMessage.agent.imageUrl,
       agentRunId: input.assistantMessage.runId,
     };
     messages.findOne
@@ -97,6 +114,52 @@ describe('AiChatReplyService', () => {
     });
     expect(messages.create).not.toHaveBeenCalled();
     expect(conversations.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('links an AI email suggestion to an idempotent platform draft', async () => {
+    const emailInput = {
+      ...input,
+      assistantMessage: {
+        ...input.assistantMessage,
+        emailDraft: {
+          to: ['client@example.com'],
+          subject: 'Project quotation',
+          body: 'Please review the quotation.',
+        },
+      },
+    };
+    const existing = {
+      _id: aiMessageId,
+      conversationId,
+      sourceMessageId,
+      content: input.assistantMessage.content,
+      agentId: input.assistantMessage.agent.id,
+      agentName: input.assistantMessage.agent.name,
+      agentRunId: input.assistantMessage.runId,
+    };
+    messages.findOne
+      .mockReturnValueOnce(
+        queryResult({ _id: sourceMessageId, senderId: 'owner-1' }),
+      )
+      .mockReturnValueOnce(queryResult(existing));
+    conversations.findOne.mockReturnValue(queryResult({ _id: conversationId }));
+    emailDrafts.ensureFromAiReply.mockResolvedValue({ id: 'draft-1' });
+
+    const result = await service.persist(emailInput);
+
+    expect(emailDrafts.ensureFromAiReply).toHaveBeenCalledWith({
+      organizationId,
+      userId: 'owner-1',
+      conversationId,
+      sourceMessageId,
+      aiResponseId: input.assistantMessage.responseId,
+      draft: emailInput.assistantMessage.emailDraft,
+    });
+    expect(messages.updateOne).toHaveBeenCalledWith(
+      { _id: aiMessageId, organizationId },
+      { $set: { emailDraftId: 'draft-1' } },
+    );
+    expect(result.message.emailDraftId).toBe('draft-1');
   });
 
   it('rejects reuse of a response id with different content', async () => {

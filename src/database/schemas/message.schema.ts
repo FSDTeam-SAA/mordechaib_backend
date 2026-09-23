@@ -3,6 +3,7 @@ import { HydratedDocument } from 'mongoose';
 import { MessageProcessingStatus } from '../../common/enums/message-processing-status.enum';
 import { MessageSenderType } from '../../common/enums/message-sender-type.enum';
 import { MessageType } from '../../common/enums/message-type.enum';
+import { AgentType } from '../../common/enums/agent-type.enum';
 
 export type MessageDocument = HydratedDocument<Message>;
 
@@ -56,8 +57,17 @@ export class Message {
   @Prop({ trim: true, maxlength: 200 })
   agentName?: string;
 
+  @Prop({ enum: Object.values(AgentType) })
+  agentType?: AgentType;
+
+  @Prop({ trim: true, maxlength: 500 })
+  agentImageUrl?: string;
+
   @Prop({ trim: true, maxlength: 200, index: true })
   agentRunId?: string;
+
+  @Prop({ index: true })
+  emailDraftId?: string;
 
   @Prop({ select: false })
   extractedText?: string;

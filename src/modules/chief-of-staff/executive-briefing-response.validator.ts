@@ -70,7 +70,7 @@ const UNITS = [
   'SCORE',
   'TEXT',
 ];
-const PROPOSAL_ACTIONS = ['APPROVE', 'REJECT', 'RETRY'];
+const PROPOSAL_ACTIONS = ['APPROVE', 'RETRY'];
 
 @Injectable()
 export class ExecutiveBriefingResponseValidator {
@@ -92,20 +92,28 @@ export class ExecutiveBriefingResponseValidator {
     ) {
       this.invalid('Briefing period does not match');
     }
-    this.string(value.summary, 'summary', 20_000);
+    this.string(value.summary, 'summary', 4_000);
     this.oneOf(value.trajectory, TRAJECTORIES, 'trajectory');
     this.number(value.confidence, 'confidence', 0, 1);
 
     const submittedFacts = new Map<
       string,
-      { sourceType: string; sourceId: string; capturedAt: string }
+      {
+        sourceType: string;
+        sourceId: string;
+        capturedAt: string;
+        availability: BriefingFactAvailability;
+      }
     >();
     for (const group of Object.values(input.facts)) {
       for (const fact of group.items) {
         if (submittedFacts.has(fact.id)) {
           this.invalid(`Duplicate submitted fact id ${fact.id}`);
         }
-        submittedFacts.set(fact.id, fact);
+        submittedFacts.set(fact.id, {
+          ...fact,
+          availability: group.availability,
+        });
       }
     }
     const proposalStatuses = new Map(
@@ -113,6 +121,9 @@ export class ExecutiveBriefingResponseValidator {
         fact.sourceId,
         typeof fact.data.status === 'string' ? fact.data.status : undefined,
       ]),
+    );
+    const proposalFactIds = new Map(
+      input.facts.actionProposals.items.map((fact) => [fact.sourceId, fact.id]),
     );
     const returnedRefs = this.validateReturnedRefs(
       value.sourceRefs,
@@ -138,7 +149,23 @@ export class ExecutiveBriefingResponseValidator {
       this.oneOf(metric.unit, UNITS, 'headline metric unit');
       this.oneOf(metric.direction, DIRECTIONS, 'headline metric direction');
       this.oneOf(metric.severity, SEVERITIES, 'headline metric severity');
-      this.refs(metric.sourceRefs, submittedFacts, returnedRefs);
+      const metricRefs = this.refs(
+        metric.sourceRefs,
+        submittedFacts,
+        returnedRefs,
+      );
+      if (
+        metricRefs.some(
+          (ref: string) =>
+            submittedFacts.get(ref)?.availability !==
+            BriefingFactAvailability.AVAILABLE,
+        )
+      ) {
+        this.invalid('Headline metrics require available source facts');
+      }
+      if (metric.unit === 'COUNT' && metric.value === 0) {
+        this.invalid('A zero count cannot be a headline metric');
+      }
     }
 
     if (!Array.isArray(value.sections))
@@ -161,7 +188,7 @@ export class ExecutiveBriefingResponseValidator {
         Object.values(BriefingFactAvailability),
         'section availability',
       );
-      this.string(section.summary, 'section summary', 20_000, true);
+      this.string(section.summary, 'section summary', 4_000, true);
       if (!Array.isArray(section.items) || section.items.length > 100) {
         this.invalid('A briefing section contains too many items');
       }
@@ -178,20 +205,59 @@ export class ExecutiveBriefingResponseValidator {
         this.string(item.detail, 'section item detail', 5_000, true);
         this.string(item.status, 'section item status', 100, true);
         this.oneOf(item.severity, SEVERITIES, 'section item severity');
-        this.refs(item.sourceRefs, submittedFacts, returnedRefs);
-        if (
-          item.recommendationOnly !== undefined &&
-          typeof item.recommendationOnly !== 'boolean'
-        ) {
+        const itemRefs = this.refs(
+          item.sourceRefs,
+          submittedFacts,
+          returnedRefs,
+        );
+        const hasValue = item.value !== undefined;
+        const hasUnit = item.unit !== undefined;
+        if (hasValue !== hasUnit) {
+          this.invalid('Section item value and unit must be provided together');
+        }
+        if (hasValue) {
+          if (
+            !['string', 'number'].includes(typeof item.value) ||
+            (typeof item.value === 'number' && !Number.isFinite(item.value))
+          ) {
+            this.invalid('Section item value is invalid');
+          }
+          this.oneOf(item.unit, UNITS, 'section item unit');
+        }
+        if (typeof item.recommendationOnly !== 'boolean') {
           this.invalid('recommendationOnly must be boolean');
         }
+        if (item.recommendationOnly === true) {
+          if (item.proposalAction !== undefined) {
+            this.invalid(
+              'Recommendation-only items cannot contain a proposal action',
+            );
+          }
+          if (item.proposalId !== undefined) {
+            const linkedProposalId = this.string(
+              item.proposalId,
+              'linked proposalId',
+              100,
+            )!;
+            if (
+              proposalStatuses.get(linkedProposalId) !== 'NEEDS_CLARIFICATION'
+            ) {
+              this.invalid(
+                'Recommendation-only item references an incompatible proposal',
+              );
+            }
+            if (!itemRefs.includes(proposalFactIds.get(linkedProposalId)!)) {
+              this.invalid(
+                'Linked proposal must be cited by the decision item',
+              );
+            }
+          }
+        }
         if (
-          item.recommendationOnly !== false &&
-          (item.proposalId !== undefined || item.proposalAction !== undefined)
+          item.recommendationOnly === false &&
+          item.proposalId === undefined
         ) {
-          this.invalid(
-            'Recommendation-only items cannot contain executable proposal fields',
-          );
+          this.invalid('Executable decision items must reference a proposal');
         }
         if (item.recommendationOnly === false) {
           const proposalId = this.string(
@@ -203,6 +269,11 @@ export class ExecutiveBriefingResponseValidator {
           if (!proposalStatus) {
             this.invalid('Decision item references an unknown proposal');
           }
+          if (!itemRefs.includes(proposalFactIds.get(proposalId)!)) {
+            this.invalid(
+              'Executable proposal must be cited by the decision item',
+            );
+          }
           this.oneOf(
             item.proposalAction,
             PROPOSAL_ACTIONS,
@@ -210,7 +281,7 @@ export class ExecutiveBriefingResponseValidator {
           );
           if (
             (proposalStatus === 'PENDING' &&
-              !['APPROVE', 'REJECT'].includes(item.proposalAction as string)) ||
+              item.proposalAction !== 'APPROVE') ||
             (proposalStatus === 'FAILED' && item.proposalAction !== 'RETRY') ||
             !['PENDING', 'FAILED'].includes(proposalStatus)
           ) {
@@ -229,7 +300,12 @@ export class ExecutiveBriefingResponseValidator {
     value: unknown,
     submitted: Map<
       string,
-      { sourceType: string; sourceId: string; capturedAt: string }
+      {
+        sourceType: string;
+        sourceId: string;
+        capturedAt: string;
+        availability: BriefingFactAvailability;
+      }
     >,
   ) {
     if (!Array.isArray(value) || value.length > 500) {
@@ -258,7 +334,7 @@ export class ExecutiveBriefingResponseValidator {
     value: unknown,
     submitted: Map<string, unknown>,
     returned: Set<string>,
-  ) {
+  ): string[] {
     if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
       this.invalid('Factual briefing output requires sourceRefs');
     }
@@ -271,6 +347,7 @@ export class ExecutiveBriefingResponseValidator {
         this.invalid(`Unknown or omitted source reference ${String(ref)}`);
       }
     }
+    return value as string[];
   }
 
   private string(

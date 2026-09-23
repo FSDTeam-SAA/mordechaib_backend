@@ -7,7 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -64,10 +64,43 @@ export class CallIntelligenceProposalsController {
   }
 
   @Post(':id/action')
+  @ApiBody({
+    schema: {
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['action'],
+          properties: { action: { type: 'string', enum: ['APPROVE'] } },
+          example: { action: 'APPROVE' },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['action', 'reason'],
+          properties: {
+            action: { type: 'string', enum: ['REJECT'] },
+            reason: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+          example: {
+            action: 'REJECT',
+            reason: 'The proposed time does not work.',
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['action'],
+          properties: { action: { type: 'string', enum: ['RETRY'] } },
+          example: { action: 'RETRY' },
+        },
+      ],
+    },
+  })
   @ApiOperation({
     summary: 'Approve, reject, or retry an AI action proposal',
     description:
-      'Use the dedicated clarifications endpoint for new clarification clients. ANSWER_CLARIFICATION remains accepted here for compatibility.',
+      'Clarification answers use POST /call-intelligence/proposals/:id/clarifications.',
   })
   execute(
     @CurrentOrg() organization: RequestOrganization,

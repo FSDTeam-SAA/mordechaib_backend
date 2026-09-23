@@ -55,11 +55,6 @@ export class CallIntelligenceProposalsFacade {
         );
       case CallIntelligenceProposalCommand.RETRY:
         return this.actions.retry(organizationId, actor, proposalId);
-      case CallIntelligenceProposalCommand.ANSWER_CLARIFICATION:
-        return this.answerClarification(organizationId, proposalId, {
-          questionId: command.questionId!,
-          answer: command.answer!,
-        });
     }
   }
 }

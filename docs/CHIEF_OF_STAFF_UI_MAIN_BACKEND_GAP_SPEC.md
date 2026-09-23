@@ -1,5 +1,10 @@
 # AI Chief of Staff: Main Backend Implementation Specification
 
+> Historical implementation-gap specification. For current frontend routes,
+> request/response bodies, state transitions, and implemented email behavior,
+> use `AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` as the canonical frontend
+> contract.
+
 ## Purpose and authority
 
 This document defines the remaining Main Backend work required for the AI
@@ -27,22 +32,22 @@ work.
 
 The Main Backend is partially ready, but it cannot yet support the complete UI.
 
-| Capability | Current state | Required work |
-| --- | --- | --- |
-| Store and list user chat messages | Ready | Reuse current Message APIs |
-| Submit a user message for background analysis | Ready | Preserve current queue flow |
-| Create Task/Meeting proposals from AI actions | Ready | Preserve current proposal logic |
-| Clarify, approve, reject, or retry proposals | Ready | Reuse Call Intelligence proposal routes |
-| Persist and return an AI chat reply | Phase 1 implemented | `assistantMessage` is validated, stored idempotently, and exposed through the current message list |
-| Build organization facts for chat | Phase 1 MVP implemented | Permission-aware Task, Meeting, Calendar, Proposal, and source-analysis facts are bounded and source-referenced |
-| Read attachment contents | Partial | Plain text and CSV are extracted; other formats explicitly report unavailable unless secure download is enabled |
-| Analyze call transcripts | Implemented but deployment-dependent | Enable and verify transcription configuration |
-| Generate Executive Briefings | Phase 2 implemented | Briefing persistence, facts, queue, validation, polling, and public APIs are available |
-| Customer Intelligence | Missing domain model | Add only when a real customer/account source exists |
-| Finance, vendor, support, ROI | Missing or partial | Report `UNAVAILABLE` until authoritative modules exist |
-| AI runtime health/activity | Phase 3A implemented | Source-analysis and briefing workers emit measured activity, latency, and outcome telemetry |
-| CEO strategic notes | Phase 3A implemented | Organization-scoped CRUD plus active-note briefing facts are available |
-| Email draft/send action | Not supported | Keep suggestion-only for MVP |
+| Capability                                    | Current state                        | Required work                                                                                                   |
+| --------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Store and list user chat messages             | Ready                                | Reuse current Message APIs                                                                                      |
+| Submit a user message for background analysis | Ready                                | Preserve current queue flow                                                                                     |
+| Create Task/Meeting proposals from AI actions | Ready                                | Preserve current proposal logic                                                                                 |
+| Clarify, approve, reject, or retry proposals  | Ready                                | Reuse Call Intelligence proposal routes                                                                         |
+| Persist and return an AI chat reply           | Phase 1 implemented                  | `assistantMessage` is validated, stored idempotently, and exposed through the current message list              |
+| Build organization facts for chat             | Phase 1 MVP implemented              | Permission-aware Task, Meeting, Calendar, Proposal, and source-analysis facts are bounded and source-referenced |
+| Read attachment contents                      | Partial                              | Plain text and CSV are extracted; other formats explicitly report unavailable unless secure download is enabled |
+| Analyze call transcripts                      | Implemented but deployment-dependent | Enable and verify transcription configuration                                                                   |
+| Generate Executive Briefings                  | Phase 2 implemented                  | Briefing persistence, facts, queue, validation, polling, and public APIs are available                          |
+| Customer Intelligence                         | Missing domain model                 | Add only when a real customer/account source exists                                                             |
+| Finance, vendor, support, ROI                 | Missing or partial                   | Report `UNAVAILABLE` until authoritative modules exist                                                          |
+| AI runtime health/activity                    | Phase 3A implemented                 | Source-analysis and briefing workers emit measured activity, latency, and outcome telemetry                     |
+| CEO strategic notes                           | Phase 3A implemented                 | Organization-scoped CRUD plus active-note briefing facts are available                                          |
+| Email draft/send action                       | Implemented                          | Owner-scoped Google/Outlook connection, platform draft, explicit Send, audit, and idempotent state handling     |
 
 ## Existing public routes to reuse
 
@@ -370,23 +375,23 @@ strategicNotes
 
 Current realistic availability is:
 
-| Fact category | Current readiness | MVP handling |
-| --- | --- | --- |
-| Tasks | Available | Build from Task records |
-| Meetings | Available | Build from meeting/calendar records |
-| Action proposals | Available | Build from AI action proposals |
-| Source analyses | Partial | Label source-scoped analysis as partial |
-| Agent activity | Available | Built from persisted source-analysis and briefing worker telemetry |
-| Sales | Unavailable/partial | Use only an authoritative sales module if present |
-| Customers | Unavailable | Requires account/customer identity and history |
-| Support | Unavailable | Requires support/ticket source |
-| Finance | Unavailable | Subscription billing is not customer business finance |
-| Vendors | Unavailable | Requires vendor domain records |
-| Marketing | Partial | Use only persisted, organization-owned campaign facts |
-| Product/design | Partial | Use Tasks only when labels are explicit and truthful |
-| ROI | Unavailable | Requires agreed formulas and source facts |
-| AI quality | Partial | Runtime success, failure, running count, and latency are measured; model accuracy/eval scores remain unavailable |
-| Strategic notes | Available | Built from persisted, organization-scoped CEO notes active for the briefing period/type |
+| Fact category    | Current readiness   | MVP handling                                                                                                     |
+| ---------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Tasks            | Available           | Build from Task records                                                                                          |
+| Meetings         | Available           | Build from meeting/calendar records                                                                              |
+| Action proposals | Available           | Build from AI action proposals                                                                                   |
+| Source analyses  | Partial             | Label source-scoped analysis as partial                                                                          |
+| Agent activity   | Available           | Built from persisted source-analysis and briefing worker telemetry                                               |
+| Sales            | Unavailable/partial | Use only an authoritative sales module if present                                                                |
+| Customers        | Unavailable         | Requires account/customer identity and history                                                                   |
+| Support          | Unavailable         | Requires support/ticket source                                                                                   |
+| Finance          | Unavailable         | Subscription billing is not customer business finance                                                            |
+| Vendors          | Unavailable         | Requires vendor domain records                                                                                   |
+| Marketing        | Partial             | Use only persisted, organization-owned campaign facts                                                            |
+| Product/design   | Partial             | Use Tasks only when labels are explicit and truthful                                                             |
+| ROI              | Unavailable         | Requires agreed formulas and source facts                                                                        |
+| AI quality       | Partial             | Runtime success, failure, running count, and latency are measured; model accuracy/eval scores remain unavailable |
+| Strategic notes  | Available           | Built from persisted, organization-scoped CEO notes active for the briefing period/type                          |
 
 Never fabricate design values to fill unavailable cards. The AI response
 contract supports `UNAVAILABLE` sections.
@@ -624,7 +629,7 @@ Until those foundations exist:
 - do not invent churn prediction, NPS, renewal forecast, or major-account
   metrics.
 
-## Gap 13: email remains suggestion-only for MVP
+## Gap 13: email draft/send (implemented)
 
 The current executable action types are only:
 
@@ -632,13 +637,16 @@ The current executable action types are only:
 CREATE_TASK | SCHEDULE_MEETING
 ```
 
-Therefore Main Backend must not accept, persist, or execute `DRAFT_EMAIL` or
-`SEND_EMAIL` from the AI response. Suggested email text may appear as clearly
-unsaved assistant content.
+Main Backend does not accept `DRAFT_EMAIL` or `SEND_EMAIL` as executable AI
+actions. Instead, AI Backend may return the validated structured
+`assistantMessage.emailDraft` contract. Main Backend persists that value as an
+owner-scoped platform draft, links `emailDraftId` to the AI chat message, and
+sends only after an explicit owner request to the dedicated email-draft API.
 
-If email execution is added later, it needs a separate contract covering
-provider connection, recipients, draft persistence, approval, idempotency,
-audit, and send confirmation. It is outside this MVP.
+Google and Outlook connections, request/response bodies, revision handling,
+audit, and ambiguous-send behavior are defined in
+`AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` and
+`EMAIL_DRAFT_AND_SEND_HANDOFF.md`.
 
 ## Security, privacy, and reliability requirements
 
@@ -723,9 +731,9 @@ section from `UNAVAILABLE` only when the source and permission model are real.
 ### Regression and security
 
 - [ ] Existing analyze-source action ingestion still supports
-  `CREATE_TASK` and `SCHEDULE_MEETING` unchanged.
+      `CREATE_TASK` and `SCHEDULE_MEETING` unchanged.
 - [ ] Existing clarification, approve, reject, retry, and execution logic is
-  unchanged.
+      unchanged.
 - [ ] Existing Call Intelligence public namespace remains authoritative.
 - [ ] The browser never receives the AI shared secret or calls AI Backend.
 - [ ] Cross-organization message, source, proposal, and briefing access fails.

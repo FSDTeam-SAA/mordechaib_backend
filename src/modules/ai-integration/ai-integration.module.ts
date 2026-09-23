@@ -16,7 +16,6 @@ import { AiServiceClient } from './ai-service.client';
 import { CallTranscriptionService } from './call-transcription.service';
 import { AiActionsModule } from '../ai-actions/ai-actions.module';
 import { AiSourceContextModule } from '../ai-internal/ai-internal.module';
-import { AiActionClarificationsController } from './ai-action-clarifications.controller';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
 import { Agent, AgentSchema } from '../../database/schemas/agent.schema';
 import {
@@ -27,6 +26,7 @@ import { Message, MessageSchema } from '../../database/schemas/message.schema';
 import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiTelemetryModule } from '../ai-telemetry/ai-telemetry.module';
+import { EmailModule } from '../email/email.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -48,6 +48,7 @@ function redisConnection(urlValue: string) {
     forwardRef(() => AiActionsModule),
     AiSourceContextModule,
     AiTelemetryModule,
+    EmailModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: CallRecording.name, schema: CallRecordingSchema },
@@ -75,7 +76,6 @@ function redisConnection(urlValue: string) {
     AiAnalysisResponseValidator,
     AiChatReplyService,
   ],
-  controllers: [AiActionClarificationsController],
   exports: [AiServiceClient, AiJobsQueue, AiActionClarificationWorkflowService],
 })
 export class AiIntegrationModule {}
