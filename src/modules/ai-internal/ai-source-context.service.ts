@@ -27,6 +27,12 @@ import {
 import { MessageAttachmentStatus } from '../../common/enums/message-attachment-status.enum';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { UserRole } from '../../common/enums/user-role.enum';
+import {
+  aiIsoTimestamp,
+  boundedAiText,
+  boundedRows,
+  createAiFact,
+} from '../../common/helpers/ai-fact.helper';
 
 type SourceType =
   | 'CALL_AUDIO'
@@ -102,7 +108,7 @@ export class AiSourceContextService {
   async markMessageProcessed(
     organizationId: string,
     messageId: string,
-    status: 'COMPLETED' | 'FAILED',
+    status: 'PROCESSING' | 'COMPLETED' | 'FAILED',
     error?: string,
   ) {
     await this.messages
@@ -115,12 +121,16 @@ export class AiSourceContextService {
         {
           $set: {
             processingStatus: status,
-            processedAt: new Date(),
+            ...(status !== 'PROCESSING' ? { processedAt: new Date() } : {}),
             ...(status === 'FAILED'
               ? { aiError: (error || 'AI processing failed').slice(0, 500) }
               : {}),
           },
-          ...(status === 'COMPLETED' ? { $unset: { aiError: 1 } } : {}),
+          ...(status === 'PROCESSING'
+            ? { $unset: { aiError: 1, processedAt: 1 } }
+            : status === 'COMPLETED'
+              ? { $unset: { aiError: 1 } }
+              : {}),
         },
       )
       .exec();
@@ -354,6 +364,8 @@ export class AiSourceContextService {
       String(message.organizationId),
       canReadRestrictedFacts,
       pendingProposals,
+      aiIsoTimestamp((message as unknown as MessageContextRecord).createdAt) ||
+        new Date(0).toISOString(),
     );
 
     return {
@@ -448,10 +460,11 @@ export class AiSourceContextService {
     organizationId: string,
     canReadRestrictedFacts: boolean,
     pendingProposals: Array<Record<string, unknown>>,
+    asOfIso: string,
   ) {
-    const now = new Date();
-    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const to = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const asOf = new Date(asOfIso);
+    const from = new Date(asOf.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const to = new Date(asOf.getTime() + 30 * 24 * 60 * 60 * 1000);
     const [tasks, calendarEvents, meetings, analyses] = await Promise.all([
       this.tasks
         .find({ organizationId })
@@ -459,7 +472,7 @@ export class AiSourceContextService {
           'title description status priority department assignedToUserId dueDate tags createdAt updatedAt',
         )
         .sort({ updatedAt: -1, _id: -1 })
-        .limit(20)
+        .limit(21)
         .lean()
         .exec(),
       this.calendarEvents
@@ -468,7 +481,7 @@ export class AiSourceContextService {
           'title meetingType urgency startsAt endsAt timezone status createdAt updatedAt',
         )
         .sort({ startsAt: 1, _id: 1 })
-        .limit(20)
+        .limit(21)
         .lean()
         .exec(),
       canReadRestrictedFacts
@@ -478,7 +491,7 @@ export class AiSourceContextService {
               'title agenda platform startsAt endsAt durationMinutes timezone status createdAt updatedAt',
             )
             .sort({ startsAt: 1, _id: 1 })
-            .limit(20)
+            .limit(21)
             .lean()
             .exec()
         : Promise.resolve([]),
@@ -489,62 +502,73 @@ export class AiSourceContextService {
               'source summary overallConfidence sentimentAnalysis customerIntelligence patternDetection createdAt updatedAt',
             )
             .sort({ updatedAt: -1, _id: -1 })
-            .limit(10)
+            .limit(11)
             .lean()
             .exec()
         : Promise.resolve([]),
     ]);
 
+    const boundedTasks = boundedRows(tasks, 20);
+    const boundedCalendarEvents = boundedRows(calendarEvents, 20);
+    const boundedMeetings = boundedRows(meetings, 20);
+    const boundedAnalyses = boundedRows(analyses, 10);
+
     return {
       tasks: {
-        availability: 'AVAILABLE',
-        items: tasks.map((task) =>
-          this.factItem('TASK', task, {
+        availability: boundedTasks.truncated ? 'PARTIAL' : 'AVAILABLE',
+        items: boundedTasks.items.map((task) =>
+          createAiFact('task', 'TASK', task, {
             title: task.title,
-            description: this.boundedText(task.description, 2000),
+            description: boundedAiText(task.description, 2000),
             status: task.status,
             priority: task.priority,
             department: task.department,
             assignedToUserId: task.assignedToUserId,
-            dueDate: task.dueDate,
+            dueDate: aiIsoTimestamp(task.dueDate),
+            updatedAt: aiIsoTimestamp(
+              (task as unknown as Record<string, unknown>).updatedAt,
+            ),
             tags: Array.isArray(task.tags) ? task.tags.slice(0, 20) : [],
           }),
         ),
       },
       meetings: {
-        availability: canReadRestrictedFacts ? 'AVAILABLE' : 'UNAVAILABLE',
-        items: meetings.map((meeting) =>
-          this.factItem('PLATFORM_MEETING', meeting, {
-            title: meeting.title,
-            agenda: this.boundedText(meeting.agenda, 2000),
-            platform: meeting.platform,
-            startsAt: meeting.startsAt,
-            endsAt: meeting.endsAt,
-            durationMinutes: meeting.durationMinutes,
-            timezone: meeting.timezone,
-            status: meeting.status,
-          }),
-        ),
-      },
-      calendarEvents: {
-        availability: 'AVAILABLE',
-        items: calendarEvents.map((event) =>
-          this.factItem('CALENDAR_EVENT', event, {
-            title: event.title,
-            meetingType: event.meetingType,
-            urgency: event.urgency,
-            startsAt: event.startsAt,
-            endsAt: event.endsAt,
-            timezone: event.timezone,
-            status: event.status,
-          }),
-        ),
+        availability: 'PARTIAL',
+        items: [
+          ...boundedMeetings.items.map((meeting) =>
+            createAiFact('meeting', 'PLATFORM_MEETING', meeting, {
+              title: meeting.title,
+              agenda: boundedAiText(meeting.agenda, 2000),
+              platform: meeting.platform,
+              startsAt: aiIsoTimestamp(meeting.startsAt),
+              endsAt: aiIsoTimestamp(meeting.endsAt),
+              durationMinutes: meeting.durationMinutes,
+              timezone: meeting.timezone,
+              status: meeting.status,
+            }),
+          ),
+          ...boundedCalendarEvents.items.map((event) =>
+            createAiFact('calendar-event', 'CALENDAR_EVENT', event, {
+              title: event.title,
+              meetingType: event.meetingType,
+              urgency: event.urgency,
+              startsAt: aiIsoTimestamp(event.startsAt),
+              endsAt: aiIsoTimestamp(event.endsAt),
+              timezone: event.timezone,
+              status: event.status,
+            }),
+          ),
+        ],
       },
       actionProposals: {
-        availability: canReadRestrictedFacts ? 'AVAILABLE' : 'UNAVAILABLE',
+        availability: canReadRestrictedFacts ? 'PARTIAL' : 'UNAVAILABLE',
         items: pendingProposals.map((proposal) =>
-          this.factItem('AI_ACTION_PROPOSAL', proposal, {
+          createAiFact('proposal', 'AI_ACTION_PROPOSAL', proposal, {
             proposalId: proposal.proposalId,
+            title:
+              proposal.payload && typeof proposal.payload === 'object'
+                ? (proposal.payload as Record<string, unknown>).title
+                : undefined,
             actionType: proposal.actionType,
             status: proposal.status,
             payload: proposal.payload,
@@ -557,10 +581,18 @@ export class AiSourceContextService {
       },
       sourceAnalyses: {
         availability: canReadRestrictedFacts ? 'PARTIAL' : 'UNAVAILABLE',
-        items: analyses.map((analysis) =>
-          this.factItem('AI_SOURCE_ANALYSIS', analysis, {
+        items: boundedAnalyses.items.map((analysis) =>
+          createAiFact('analysis', 'AI_SOURCE_ANALYSIS', analysis, {
+            title: 'AI source analysis',
+            sourceType:
+              analysis.source && typeof analysis.source === 'object'
+                ? (analysis.source as Record<string, unknown>).type
+                : undefined,
             source: analysis.source,
-            summary: this.boundedText(analysis.summary, 2000),
+            summary: boundedAiText(analysis.summary, 2000),
+            analyzedAt: aiIsoTimestamp(
+              (analysis as unknown as Record<string, unknown>).updatedAt,
+            ),
             overallConfidence: analysis.overallConfidence,
             sentimentAnalysis: analysis.sentimentAnalysis,
             customerIntelligence: analysis.customerIntelligence,
@@ -569,24 +601,6 @@ export class AiSourceContextService {
         ),
       },
     };
-  }
-
-  private factItem(
-    sourceType: string,
-    source: Record<string, unknown>,
-    data: Record<string, unknown>,
-  ) {
-    return {
-      id: `${sourceType.toLowerCase()}-${String(source._id)}`,
-      sourceType,
-      sourceId: String(source._id),
-      capturedAt: source.updatedAt || source.createdAt,
-      data,
-    };
-  }
-
-  private boundedText(value: unknown, maxLength: number) {
-    return typeof value === 'string' ? value.slice(0, maxLength) : undefined;
   }
 
   private messageData(message: MessageContextRecord) {

@@ -44,9 +44,10 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
     const resourceType = this.resourceType(input.category);
     const extension = this.extension(input.originalName);
     const folder = [
-      this.config.get<string>('cloudinary.messageFolder', 'noltra/messages'),
+      input.storageFolder ||
+        this.config.get<string>('cloudinary.messageFolder', 'noltra/messages'),
       input.organizationId,
-      input.conversationId,
+      input.storageScopeId || input.conversationId,
     ]
       .map((part) => part.replace(/^\/+|\/+$/g, ''))
       .join('/');
@@ -63,7 +64,7 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
           : input.uploadId,
       overwrite: false,
       use_filename: false,
-      tags: ['noltra-message-attachment'],
+      tags: input.storageTags || ['noltra-message-attachment'],
       filename_override: input.originalName,
     };
 

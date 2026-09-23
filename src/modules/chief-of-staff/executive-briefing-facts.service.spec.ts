@@ -4,6 +4,7 @@ import { AgentType } from '../../common/enums/agent-type.enum';
 import {
   BriefingFactAvailability,
   ExecutiveBriefingType,
+  StrategicNoteKind,
 } from '../../common/enums/executive-briefing.enum';
 import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { TaskPriority } from '../../common/enums/task-priority.enum';
@@ -35,13 +36,22 @@ describe('ExecutiveBriefingFactsService', () => {
         language: 'en',
         status: 'ACTIVE',
       }) as unknown as Model<Organization>,
-      modelWithFindOne({
-        _id: requesterUserId,
-        firstName: 'Rifat',
-        lastName: 'Hossain',
-        language: 'en',
-        role: UserRole.OWNER,
-      }) as unknown as Model<User>,
+      {
+        ...modelWithFindOne({
+          _id: requesterUserId,
+          firstName: 'Rifat',
+          lastName: 'Hossain',
+          language: 'en',
+          role: UserRole.OWNER,
+        }),
+        ...modelWithFind([
+          {
+            _id: requesterUserId,
+            firstName: 'Rifat',
+            lastName: 'Hossain',
+          },
+        ]),
+      } as unknown as Model<User>,
       modelWithFind([
         {
           _id: '507f1f77bcf86cd799439013',
@@ -54,6 +64,7 @@ describe('ExecutiveBriefingFactsService', () => {
         {
           _id: '507f1f77bcf86cd799439014',
           title: 'Launch campaign',
+          assignedToUserId: requesterUserId,
           department: TaskDepartment.MARKETING,
           priority: TaskPriority.HIGH,
           status: TaskStatus.IN_PROGRESS,
@@ -81,6 +92,8 @@ describe('ExecutiveBriefingFactsService', () => {
         {
           _id: '507f1f77bcf86cd799439016',
           createdByUserId: requesterUserId,
+          title: 'Enterprise focus',
+          kind: StrategicNoteKind.STRATEGY,
           content: 'Prioritize the enterprise pipeline.',
           appliesTo: [ExecutiveBriefingType.TODAY],
           validFrom: capturedAt,
@@ -115,6 +128,7 @@ describe('ExecutiveBriefingFactsService', () => {
           averageLatencyMs: 125,
           p95LatencyMs: 125,
           operationCounts: { SOURCE_ANALYSIS: 1 },
+          truncated: false,
         }),
       } as unknown as AgentActivityService,
     );
@@ -139,6 +153,9 @@ describe('ExecutiveBriefingFactsService', () => {
       timezone: 'Asia/Dhaka',
     });
     expect(first.input.facts.tasks.items).toHaveLength(1);
+    expect(first.input.facts.tasks.items[0].data.assigneeName).toBe(
+      'Rifat Hossain',
+    );
     expect(first.input.facts.actionProposals.items[0]).toEqual(
       expect.objectContaining({
         sourceType: 'AI_ACTION_PROPOSAL',
@@ -157,10 +174,28 @@ describe('ExecutiveBriefingFactsService', () => {
     });
     expect(first.input.facts.agentActivity.items).toHaveLength(1);
     expect(first.input.facts.aiQuality.availability).toBe(
-      BriefingFactAvailability.AVAILABLE,
+      BriefingFactAvailability.PARTIAL,
+    );
+    expect(first.input.facts.aiQuality.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'AI job success rate',
+            value: 100,
+            unit: 'PERCENT',
+          }),
+        }),
+      ]),
     );
     expect(first.input.facts.strategicNotes.items[0]).toEqual(
-      expect.objectContaining({ sourceType: 'STRATEGIC_NOTE' }),
+      expect.objectContaining({
+        sourceType: 'STRATEGIC_NOTE',
+        data: expect.objectContaining({
+          title: 'Enterprise focus',
+          kind: StrategicNoteKind.STRATEGY,
+          text: 'Prioritize the enterprise pipeline.',
+        }),
+      }),
     );
     expect(first.inputHash).toBe(second.inputHash);
     expect(first.input.idempotencyKey).toBe(second.input.idempotencyKey);

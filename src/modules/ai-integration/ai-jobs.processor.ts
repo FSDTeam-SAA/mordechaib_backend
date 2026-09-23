@@ -63,13 +63,13 @@ export class AiJobsProcessor extends WorkerHost {
     try {
       switch (job.name) {
         case AI_ANALYZE_SOURCE_JOB:
-          return this.analyzeSource(job as Job<AnalyzeSourceJob>);
+          return await this.analyzeSource(job as Job<AnalyzeSourceJob>);
         case AI_REFINE_ACTION_JOB:
-          return this.refineAction(job as Job<RefineActionJob>);
+          return await this.refineAction(job as Job<RefineActionJob>);
         case AI_TRANSCRIBE_CALL_JOB:
-          return this.transcribeCall(job as Job<TranscribeCallJob>);
+          return await this.transcribeCall(job as Job<TranscribeCallJob>);
         case AI_SYNC_AGENT_JOB:
-          return this.syncAgent(job as Job<AgentSyncEvent>);
+          return await this.syncAgent(job as Job<AgentSyncEvent>);
         default:
           throw new UnrecoverableError(`Unsupported AI job ${job.name}`);
       }
@@ -104,6 +104,13 @@ export class AiJobsProcessor extends WorkerHost {
     );
     let context: MessageAnalysisContext & Record<string, unknown>;
     try {
+      if (sourceType === 'USER_MESSAGE') {
+        await this.sourceContext.markMessageProcessed(
+          organizationId,
+          sourceId,
+          'PROCESSING',
+        );
+      }
       context = (await this.sourceContext.sourceContext(
         sourceType,
         sourceId,
@@ -263,6 +270,9 @@ export class AiJobsProcessor extends WorkerHost {
           ? {
               assistantMessageId: String(assistantReply.message._id),
               assistantMessageCreated: assistantReply.created,
+              ...(assistantReply.message.emailDraftId
+                ? { emailDraftId: assistantReply.message.emailDraftId }
+                : {}),
             }
           : {}),
       };
@@ -272,7 +282,10 @@ export class AiJobsProcessor extends WorkerHost {
         failureMessage:
           error instanceof Error ? error.message : 'Source analysis failed',
       });
-      if (sourceType === 'USER_MESSAGE') {
+      if (
+        sourceType === 'USER_MESSAGE' &&
+        this.shouldFinalizeMessageFailure(job, error)
+      ) {
         await this.sourceContext
           .markMessageProcessed(
             organizationId,
@@ -336,6 +349,14 @@ export class AiJobsProcessor extends WorkerHost {
     const attempts =
       typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;
     return job.attemptsMade + 1 >= attempts;
+  }
+
+  private shouldFinalizeMessageFailure(job: Job, error: unknown) {
+    return (
+      error instanceof UnrecoverableError ||
+      (error instanceof AiServiceHttpError && !error.retryable) ||
+      this.isFinalAttempt(job)
+    );
   }
 
   private async recoverFailedRefinement(job: Job, error: unknown) {

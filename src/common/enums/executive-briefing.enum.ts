@@ -16,3 +16,11 @@ export enum BriefingFactAvailability {
   PARTIAL = 'PARTIAL',
   UNAVAILABLE = 'UNAVAILABLE',
 }
+
+export enum StrategicNoteKind {
+  NOTE = 'NOTE',
+  STRATEGIC_SHIFT = 'STRATEGIC_SHIFT',
+  STRATEGY = 'STRATEGY',
+  PIVOT = 'PIVOT',
+  BLOCKER = 'BLOCKER',
+}

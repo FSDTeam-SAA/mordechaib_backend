@@ -47,6 +47,7 @@ export class BillingService {
     private readonly invoicesService: InvoicesService,
     private readonly twilioProvisioning: TwilioProvisioningService,
     private readonly onboardingSetupsService: OnboardingSetupsService,
+    private readonly addonProductsService: AddonProductsService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
@@ -222,9 +223,8 @@ export class BillingService {
       throw new BadRequestException('No active Stripe subscription found');
     }
 
-    const existingAddons = subscription.activeAddons?.filter(
-      (a) => a.category === category,
-    ) || [];
+    const existingAddons =
+      subscription.activeAddons?.filter((a) => a.category === category) || [];
     if (existingAddons.length === 0) {
       throw new NotFoundException(
         `No active add-on found for category ${category}`,
@@ -438,9 +438,10 @@ export class BillingService {
     // If addons were included in the checkout session, link them to the subscription
     if (session.metadata?.addonSelections) {
       try {
-        const selections = JSON.parse(
-          session.metadata.addonSelections,
-        ) as { addonProductId: string; tierIndex: number }[];
+        const selections = JSON.parse(session.metadata.addonSelections) as {
+          addonProductId: string;
+          tierIndex: number;
+        }[];
         const stripeSub =
           await this.stripeProvider.client.subscriptions.retrieve(
             stripeSubscriptionId,
@@ -531,7 +532,8 @@ export class BillingService {
       setupId,
       paymentIntentId: paymentIntent.id,
       failureCode:
-        paymentIntent.last_payment_error?.code || 'payment_intent.payment_failed',
+        paymentIntent.last_payment_error?.code ||
+        'payment_intent.payment_failed',
     });
     return true;
   }
