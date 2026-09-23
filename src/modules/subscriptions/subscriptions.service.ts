@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { AddonCategory } from '../../common/enums/addon-category.enum';
 import { PackageType } from '../../common/enums/package-type.enum';
 import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
+import { OrganizationSubscription } from '../../database/schemas/organization-subscription.schema';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { PackageInquiriesService } from '../package-inquiries/package-inquiries.service';
 import { DowngradeRequestDto } from './dto/downgrade-request.dto';
@@ -57,6 +59,51 @@ export class SubscriptionsService {
 
   findByStripeSubscriptionId(stripeSubscriptionId: string) {
     return this.repository.findByStripeSubscriptionId(stripeSubscriptionId);
+  }
+
+  findById(id: string) {
+    return this.repository.findById(id);
+  }
+
+  async getForAdmin(id: string) {
+    const subscription = await this.repository.findById(id);
+    if (!subscription) throw new NotFoundException('Subscription not found');
+
+    const [organization, plan] = await Promise.all([
+      this.organizationsService
+        .findCurrent(subscription.organizationId)
+        .catch(() => null),
+      this.plansService.findById(subscription.planId).catch(() => null),
+    ]);
+
+    return {
+      id: String(subscription._id),
+      organization: organization
+        ? {
+            id: String(organization._id),
+            name: organization.name,
+            emailAddress: organization.emailAddress ?? null,
+            phoneNumber: organization.phoneNumber ?? null,
+            status: organization.status,
+            address: organization.address ?? null,
+          }
+        : null,
+      plan: plan
+        ? { id: String(plan._id), planType: plan.planType, name: plan.name }
+        : null,
+      billingCycle: subscription.billingInterval ?? null,
+      mrrUsd: subscription.snapshotLimits?.priceUsd ?? 0,
+      status: subscription.status,
+      currentPeriodStart: subscription.currentPeriodStart ?? null,
+      nextRenewal: subscription.currentPeriodEnd ?? null,
+      pausedUntil: subscription.pausedUntil ?? null,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      activeAddons: subscription.activeAddons ?? [],
+      stripeCustomerId: subscription.stripeCustomerId ?? null,
+      stripeSubscriptionId: subscription.stripeSubscriptionId ?? null,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt,
+    };
   }
 
   // Called by BillingService when Stripe reports checkout.session.completed.
@@ -115,6 +162,7 @@ export class SubscriptionsService {
       aiActionsPerMonth: plan.aiActionsPerMonth,
       crmContactsLimit: plan.crmContactsLimit,
       callMinutesPerMonth: plan.callMinutesPerMonth,
+      meetingHoursPerMonth: plan.meetingHoursPerMonth,
       usersIncluded: plan.usersIncluded,
       aiAgentsIncluded: plan.aiAgentsIncluded,
       extraAiActionPriceUsd: plan.extraAiActionPriceUsd,
@@ -206,6 +254,7 @@ export class SubscriptionsService {
       organizationIds,
       planId,
       status: query.status,
+      billingInterval: query.billingInterval,
       page,
       limit,
     });
@@ -225,6 +274,7 @@ export class SubscriptionsService {
       items: items.map((item) => {
         const plan = planById.get(item.planId);
         return {
+          id: String(item._id),
           organizationId: item.organizationId,
           organizationName:
             orgNameById.get(item.organizationId) ?? 'Unknown organization',
@@ -243,5 +293,18 @@ export class SubscriptionsService {
       total,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  // Called by BillingService after successfully adding an add-on to Stripe.
+  upsertActiveAddon(
+    organizationId: string,
+    addon: OrganizationSubscription['activeAddons'][number],
+  ) {
+    return this.repository.upsertAddon(organizationId, addon);
+  }
+
+  // Called by BillingService after removing an add-on from Stripe.
+  removeActiveAddon(organizationId: string, category: AddonCategory) {
+    return this.repository.removeAddon(organizationId, category);
   }
 }

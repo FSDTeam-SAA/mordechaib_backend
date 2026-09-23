@@ -20,7 +20,7 @@ export class SubscriptionAnalyticsController {
   // Revenue Overview chart — monthly series for the current year to date.
   @Get('revenue-overview')
   getRevenueOverview(@Query() query: RevenueOverviewQueryDto) {
-    return this.service.getRevenueOverview(query.range!);
+    return this.service.getRevenueOverview(query.year);
   }
 
   // Plan Distribution donut.

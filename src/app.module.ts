@@ -22,6 +22,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PackageInquiriesModule } from './modules/package-inquiries/package-inquiries.module';
 import { OnboardingSetupsModule } from './modules/onboarding-setups/onboarding-setups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { AddonsModule } from './modules/addons/addons.module';
 import { MetaModule } from './modules/meta/meta.module';
 import { MeetingBotsModule } from './modules/meeting-bots/meeting-bots.module';
 import { TeamModule } from './modules/team/team.module';
@@ -56,6 +57,7 @@ import { OrganizerDashboardModule } from './modules/organizer-dashboard/organize
     UsageModule,
     BillingModule,
     SubscriptionsModule,
+    AddonsModule,
     AuditLogsModule,
     PackageInquiriesModule,
     OnboardingSetupsModule,
@@ -75,4 +77,5 @@ import { OrganizerDashboardModule } from './modules/organizer-dashboard/organize
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+
+export class AppModule { }
