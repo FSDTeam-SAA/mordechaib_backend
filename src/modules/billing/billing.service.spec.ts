@@ -6,6 +6,7 @@ import { SubscriptionPlansService } from '../subscriptions/subscription-plans.se
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { TwilioProvisioningService } from '../twilio/twilio-provisioning.service';
 import { BillingService } from './billing.service';
+import { AddonProductsService } from '../addons/addon-products.service';
 
 describe('BillingService onboarding payment webhook', () => {
   it('confirms a paid onboarding checkout without running subscription activation', async () => {
@@ -21,6 +22,7 @@ describe('BillingService onboarding payment webhook', () => {
       {} as InvoicesService,
       {} as TwilioProvisioningService,
       onboardingSetups as unknown as OnboardingSetupsService,
+      {} as AddonProductsService,
     );
     const event = {
       type: 'checkout.session.completed',
@@ -59,6 +61,7 @@ describe('BillingService onboarding payment webhook', () => {
       {} as InvoicesService,
       {} as TwilioProvisioningService,
       onboardingSetups as unknown as OnboardingSetupsService,
+      {} as AddonProductsService,
     );
     const event = {
       type: 'checkout.session.expired',

@@ -98,6 +98,27 @@ describe('ExecutiveBriefingsService', () => {
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
+  it('does not requeue a permanently failed briefing', async () => {
+    repository.reserve.mockResolvedValue({
+      created: false,
+      record: {
+        _id: '507f1f77bcf86cd799439013',
+        status: ExecutiveBriefingStatus.FAILED,
+        failureRetryable: false,
+      },
+    });
+
+    const result = await service.generate(
+      organizationId,
+      userId,
+      ExecutiveBriefingType.TODAY,
+    );
+
+    expect(result.status).toBe(ExecutiveBriefingStatus.FAILED);
+    expect(repository.requeueFailed).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
   it('uses the current requester scope when reading by id', async () => {
     repository.findByIdForRequester.mockResolvedValue({
       _id: '507f1f77bcf86cd799439013',

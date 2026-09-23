@@ -1,0 +1,23 @@
+export enum SupportRequestCategory {
+  ACCOUNT = 'ACCOUNT',
+  BILLING = 'BILLING',
+  TECHNICAL = 'TECHNICAL',
+  INTEGRATION = 'INTEGRATION',
+  AI_ASSISTANT = 'AI_ASSISTANT',
+  FEATURE_REQUEST = 'FEATURE_REQUEST',
+  OTHER = 'OTHER',
+}
+
+export enum SupportRequestStatus {
+  OPEN = 'OPEN',
+  IN_PROGRESS = 'IN_PROGRESS',
+  RESOLVED = 'RESOLVED',
+  CLOSED = 'CLOSED',
+}
+
+export enum SupportAttachmentStatus {
+  ACTIVE = 'ACTIVE',
+  DELETION_PENDING = 'DELETION_PENDING',
+  DELETED = 'DELETED',
+  DELETE_FAILED = 'DELETE_FAILED',
+}

@@ -77,11 +77,13 @@ describe('AgentActivityService', () => {
   function query(value: unknown) {
     const chain = {
       select: jest.fn(),
+      sort: jest.fn(),
       limit: jest.fn(),
       lean: jest.fn(),
       exec: jest.fn().mockResolvedValue(value),
     };
     chain.select.mockReturnValue(chain);
+    chain.sort.mockReturnValue(chain);
     chain.limit.mockReturnValue(chain);
     chain.lean.mockReturnValue(chain);
     return chain;

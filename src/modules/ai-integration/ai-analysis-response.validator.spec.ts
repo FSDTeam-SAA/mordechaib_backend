@@ -26,6 +26,7 @@ describe('AiAnalysisResponseValidator', () => {
         _id: agentId,
         name: 'Laura',
         type: AgentType.CHIEF_OF_STAFF,
+        imageUrl: 'https://cdn.example.com/laura.png',
         status: AgentStatus.ACTIVE,
       }),
     );
@@ -47,6 +48,7 @@ describe('AiAnalysisResponseValidator', () => {
         id: agentId,
         name: 'Laura',
         type: AgentType.CHIEF_OF_STAFF,
+        imageUrl: 'https://cdn.example.com/laura.png',
       },
       runId: 'run-1',
     });
@@ -67,6 +69,64 @@ describe('AiAnalysisResponseValidator', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(agents.findOne).not.toHaveBeenCalled();
+  });
+
+  it('accepts a structured platform email draft for a user message', async () => {
+    agents.findOne.mockReturnValue(
+      queryResult({
+        _id: agentId,
+        name: 'Laura',
+        type: AgentType.CHIEF_OF_STAFF,
+        status: AgentStatus.ACTIVE,
+      }),
+    );
+    const value = validResponse();
+    Object.assign(value.assistantMessage, {
+      emailDraft: {
+        to: ['client@example.com'],
+        subject: 'Project quotation',
+        body: 'Please review the attached quotation.',
+      },
+    });
+
+    const result = await validator.validate(value, {
+      requestId,
+      sourceType: AiProposalSourceType.USER_MESSAGE,
+      sourceId,
+    });
+
+    expect(result.assistantMessage?.emailDraft).toEqual({
+      to: ['client@example.com'],
+      subject: 'Project quotation',
+      body: 'Please review the attached quotation.',
+    });
+  });
+
+  it('rejects invalid AI email recipients before saving a draft', async () => {
+    agents.findOne.mockReturnValue(
+      queryResult({
+        _id: agentId,
+        name: 'Laura',
+        type: AgentType.CHIEF_OF_STAFF,
+        status: AgentStatus.ACTIVE,
+      }),
+    );
+    const value = validResponse();
+    Object.assign(value.assistantMessage, {
+      emailDraft: {
+        to: ['not-an-address'],
+        subject: 'Quotation',
+        body: 'Please review.',
+      },
+    });
+
+    await expect(
+      validator.validate(value, {
+        requestId,
+        sourceType: AiProposalSourceType.USER_MESSAGE,
+        sourceId,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects assistantMessage for a non-user source', async () => {

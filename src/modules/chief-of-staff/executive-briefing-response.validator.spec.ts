@@ -32,6 +32,14 @@ describe('ExecutiveBriefingResponseValidator', () => {
     expect(() => validator.validate(value, input)).toThrow(BadRequestException);
   });
 
+  it('rejects headline metrics sourced from partial data', () => {
+    const input = request();
+    input.facts.tasks.availability = BriefingFactAvailability.PARTIAL;
+    expect(() => validator.validate(response(input), input)).toThrow(
+      BadRequestException,
+    );
+  });
+
   it('rejects an executable decision without a real proposal', () => {
     const input = request();
     const value = response(input);
@@ -69,7 +77,43 @@ describe('ExecutiveBriefingResponseValidator', () => {
     expect(() => validator.validate(value, input)).not.toThrow();
   });
 
-  it('rejects executable fields on a recommendation-only item', () => {
+  it('requires a decision card to cite its own proposal fact', () => {
+    const input = request();
+    const value = response(input);
+    (value.sections[2].items as Array<Record<string, unknown>>).push({
+      id: 'decision-1',
+      label: 'Approve proposal',
+      severity: 'HIGH',
+      sourceRefs: ['task-1'],
+      proposalId: 'proposal-db-1',
+      proposalAction: 'APPROVE',
+      recommendationOnly: false,
+    });
+    expect(() => validator.validate(value, input)).toThrow(BadRequestException);
+  });
+
+  it('accepts a recommendation-only item linked to a clarification proposal', () => {
+    const input = request();
+    const value = response(input);
+    value.sourceRefs.push({
+      ref: 'proposal-clarification',
+      sourceType: 'AI_ACTION_PROPOSAL',
+      sourceId: 'proposal-db-clarification',
+      capturedAt,
+    });
+    (value.sections[0].items as Array<Record<string, unknown>>).push({
+      id: 'recommendation-1',
+      label: 'Clarify the quotation recipient',
+      severity: 'INFO',
+      sourceRefs: ['proposal-clarification'],
+      recommendationOnly: true,
+      proposalId: 'proposal-db-clarification',
+    });
+
+    expect(() => validator.validate(value, input)).not.toThrow();
+  });
+
+  it('rejects a proposal action on a recommendation-only item', () => {
     const input = request();
     const value = response(input);
     (value.sections[0].items as Array<Record<string, unknown>>).push({
@@ -78,7 +122,7 @@ describe('ExecutiveBriefingResponseValidator', () => {
       severity: 'INFO',
       sourceRefs: ['task-1'],
       recommendationOnly: true,
-      proposalId: 'proposal-db-1',
+      proposalAction: 'APPROVE',
     });
 
     expect(() => validator.validate(value, input)).toThrow(BadRequestException);
@@ -134,6 +178,13 @@ describe('ExecutiveBriefingResponseValidator', () => {
               sourceId: 'proposal-db-1',
               capturedAt,
               data: { status: 'PENDING' },
+            },
+            {
+              id: 'proposal-clarification',
+              sourceType: 'AI_ACTION_PROPOSAL',
+              sourceId: 'proposal-db-clarification',
+              capturedAt,
+              data: { status: 'NEEDS_CLARIFICATION' },
             },
           ],
         },

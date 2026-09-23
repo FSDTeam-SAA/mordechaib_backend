@@ -5,6 +5,7 @@ import { MessageProcessingStatus } from '../../common/enums/message-processing-s
 import { MessageSenderType } from '../../common/enums/message-sender-type.enum';
 import { MessageType } from '../../common/enums/message-type.enum';
 import { Message } from '../../database/schemas/message.schema';
+import { AgentType } from '../../common/enums/agent-type.enum';
 
 type CreateMessageInput = {
   organizationId: string;
@@ -23,6 +24,8 @@ type CreateAiMessageInput = {
   aiResponseId: string;
   agentId: string;
   agentName: string;
+  agentType: AgentType;
+  agentImageUrl?: string;
   agentRunId?: string;
   content: string;
 };

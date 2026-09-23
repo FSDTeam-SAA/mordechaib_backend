@@ -2,6 +2,7 @@ import {
   BriefingFactAvailability,
   ExecutiveBriefingType,
 } from '../../common/enums/executive-briefing.enum';
+import { AiFact } from '../../common/helpers/ai-fact.helper';
 
 export type BriefingPeriod = {
   start: string;
@@ -9,13 +10,7 @@ export type BriefingPeriod = {
   timezone: string;
 };
 
-export type BriefingFact = {
-  id: string;
-  sourceType: string;
-  sourceId: string;
-  capturedAt: string;
-  data: Record<string, unknown>;
-};
+export type BriefingFact = AiFact;
 
 export type BriefingFactGroup = {
   availability: BriefingFactAvailability;

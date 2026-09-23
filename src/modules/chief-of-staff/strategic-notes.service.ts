@@ -4,7 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { isValidObjectId } from 'mongoose';
-import { ExecutiveBriefingType } from '../../common/enums/executive-briefing.enum';
+import {
+  ExecutiveBriefingType,
+  StrategicNoteKind,
+} from '../../common/enums/executive-briefing.enum';
 import { CreateStrategicNoteDto } from './dto/create-strategic-note.dto';
 import { ListStrategicNotesQueryDto } from './dto/list-strategic-notes-query.dto';
 import { UpdateStrategicNoteDto } from './dto/update-strategic-note.dto';
@@ -80,8 +83,12 @@ export class StrategicNotesService {
     current?: Record<string, unknown>,
   ) {
     const content = input.content?.trim();
+    const title = input.title?.trim();
     if (input.content !== undefined && !content) {
       throw new BadRequestException('Strategic note content cannot be empty');
+    }
+    if (input.title !== undefined && !title) {
+      throw new BadRequestException('Strategic note title cannot be empty');
     }
     const validFrom = input.validFrom
       ? new Date(input.validFrom)
@@ -98,6 +105,11 @@ export class StrategicNotesService {
     }
     return {
       ...(content !== undefined ? { content } : {}),
+      ...(title !== undefined ? { title } : {}),
+      kind:
+        input.kind ||
+        (current?.kind as StrategicNoteKind | undefined) ||
+        StrategicNoteKind.NOTE,
       appliesTo:
         input.appliesTo === undefined
           ? current?.appliesTo || Object.values(ExecutiveBriefingType)

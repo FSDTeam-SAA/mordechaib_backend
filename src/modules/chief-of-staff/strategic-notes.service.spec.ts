@@ -1,5 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ExecutiveBriefingType } from '../../common/enums/executive-briefing.enum';
+import {
+  ExecutiveBriefingType,
+  StrategicNoteKind,
+} from '../../common/enums/executive-briefing.enum';
 import { StrategicNotesRepository } from './strategic-notes.repository';
 import { StrategicNotesService } from './strategic-notes.service';
 
@@ -34,6 +37,7 @@ describe('StrategicNotesService', () => {
         organizationId,
         createdByUserId: userId,
         content: 'Focus on enterprise renewals.',
+        kind: StrategicNoteKind.NOTE,
         appliesTo: Object.values(ExecutiveBriefingType),
       }),
     );
@@ -41,6 +45,7 @@ describe('StrategicNotesService', () => {
       expect.objectContaining({
         id: '507f1f77bcf86cd799439011',
         content: 'Focus on enterprise renewals.',
+        kind: StrategicNoteKind.NOTE,
       }),
     );
   });
@@ -53,6 +58,21 @@ describe('StrategicNotesService', () => {
         validUntil: '2026-09-18T09:00:00.000Z',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('stores a typed strategic direction with a trimmed title', async () => {
+    await service.create(organizationId, userId, {
+      title: '  Enterprise focus  ',
+      kind: StrategicNoteKind.STRATEGY,
+      content: 'Prioritize enterprise renewals.',
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Enterprise focus',
+        kind: StrategicNoteKind.STRATEGY,
+      }),
+    );
   });
 
   it('returns not found when deleting a missing note', async () => {

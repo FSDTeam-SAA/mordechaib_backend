@@ -24,6 +24,6 @@ import { TemporaryUploadCleanupInterceptor } from './temporary-upload-cleanup.in
     },
     TemporaryUploadCleanupInterceptor,
   ],
-  exports: [MessagesService],
+  exports: [MessagesService, CloudinaryMessageAttachmentStorage],
 })
 export class MessagesModule {}
