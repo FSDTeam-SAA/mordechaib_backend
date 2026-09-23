@@ -47,6 +47,7 @@ export class BillingService {
     private readonly invoicesService: InvoicesService,
     private readonly twilioProvisioning: TwilioProvisioningService,
     private readonly onboardingSetupsService: OnboardingSetupsService,
+    private readonly addonProductsService: AddonProductsService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
