@@ -46,4 +46,9 @@ export class SubscriptionsAdminController {
   undoCancellation(@Param('id') id: string) {
     return this.cancellationsService.undoByAdmin(id);
   }
+
+  @Get(':id')
+  getById(@Param('id') id: string) {
+    return this.service.getForAdmin(id);
+  }
 }

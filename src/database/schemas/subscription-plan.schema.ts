@@ -18,6 +18,15 @@ export class SubscriptionPlan {
   @Prop()
   priceUsd?: number;
 
+  // A plan card can be offered for one or both recurring billing cycles.
+  // priceUsd remains the monthly amount for backwards compatibility;
+  // annualPriceUsd is the amount charged once per year.
+  @Prop({ type: [String], enum: ['month', 'year'], default: ['month'] })
+  billingCycles!: ('month' | 'year')[];
+
+  @Prop()
+  annualPriceUsd?: number;
+
   @Prop({ default: false })
   isInquiryOnly!: boolean;
 
@@ -29,6 +38,9 @@ export class SubscriptionPlan {
 
   @Prop()
   callMinutesPerMonth?: number;
+
+  @Prop()
+  meetingHoursPerMonth?: number;
 
   @Prop()
   usersIncluded?: number;
@@ -68,6 +80,9 @@ export class SubscriptionPlan {
 
   @Prop()
   stripePriceId?: string;
+
+  @Prop()
+  stripeAnnualPriceId?: string;
 }
 
 export const SubscriptionPlanSchema =

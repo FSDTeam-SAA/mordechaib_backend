@@ -1,11 +1,11 @@
-import { IsEnum, IsOptional } from 'class-validator';
-
-export enum RevenueOverviewRange {
-  YEARLY = 'yearly',
-}
+import { Transform } from 'class-transformer';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class RevenueOverviewQueryDto {
   @IsOptional()
-  @IsEnum(RevenueOverviewRange)
-  range?: RevenueOverviewRange = RevenueOverviewRange.YEARLY;
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year?: number;
 }

@@ -1,8 +1,11 @@
 import { Transform } from 'class-transformer';
 import {
   IsArray,
+  ArrayNotEmpty,
+  ArrayUnique,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -36,6 +39,18 @@ export class CreateSubscriptionPlanDto {
   priceUsd?: number;
 
   @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsIn(['month', 'year'], { each: true })
+  billingCycles?: ('month' | 'year')[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualPriceUsd?: number;
+
+  @IsOptional()
   @IsBoolean()
   isInquiryOnly?: boolean;
 
@@ -53,6 +68,11 @@ export class CreateSubscriptionPlanDto {
   @IsInt()
   @Min(0)
   callMinutesPerMonth?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  meetingHoursPerMonth?: number;
 
   @IsOptional()
   @IsInt()

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { AddonCategory } from '../../common/enums/addon-category.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 
 export type OrganizationSubscriptionDocument =
@@ -7,6 +8,9 @@ export type OrganizationSubscriptionDocument =
 
 @Schema({ timestamps: true, collection: 'organization_subscriptions' })
 export class OrganizationSubscription {
+  createdAt!: Date;
+  updatedAt!: Date;
+
   @Prop({ required: true, unique: true, index: true })
   organizationId!: string;
 
@@ -58,6 +62,7 @@ export class OrganizationSubscription {
       aiActionsPerMonth: Number,
       crmContactsLimit: Number,
       callMinutesPerMonth: Number,
+      meetingHoursPerMonth: Number,
       usersIncluded: Number,
       aiAgentsIncluded: Number,
       extraAiActionPriceUsd: Number,
@@ -70,11 +75,45 @@ export class OrganizationSubscription {
     aiActionsPerMonth?: number;
     crmContactsLimit?: number;
     callMinutesPerMonth?: number;
+    meetingHoursPerMonth?: number;
     usersIncluded?: number;
     aiAgentsIncluded?: number;
     extraAiActionPriceUsd?: number;
     extraCallMinutePriceUsd?: number;
   };
+
+  // Active add-on tiers purchased by this organization. One entry per
+  // category maximum. Updated by BillingService when add-ons are added
+  // or removed.
+  @Prop({
+    type: [
+      {
+        category: {
+          type: String,
+          enum: Object.values(AddonCategory),
+          required: true,
+        },
+        addonProductId: { type: String, required: true },
+        tierIndex: { type: Number, required: true },
+        label: { type: String, required: true },
+        quantity: { type: Number, required: true },
+        priceUsd: { type: Number, required: true },
+        // The Stripe subscription item id — needed to update/remove later
+        stripeSubscriptionItemId: { type: String },
+        _id: false,
+      },
+    ],
+    default: [],
+  })
+  activeAddons!: {
+    category: AddonCategory;
+    addonProductId: string;
+    tierIndex: number;
+    label: string;
+    quantity: number;
+    priceUsd: number;
+    stripeSubscriptionItemId?: string;
+  }[];
 }
 
 export const OrganizationSubscriptionSchema = SchemaFactory.createForClass(
