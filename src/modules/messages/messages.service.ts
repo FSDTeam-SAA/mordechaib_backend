@@ -437,7 +437,10 @@ export class MessagesService {
       sourceMessageId: messageData.sourceMessageId,
       agentId: messageData.agentId,
       agentName: messageData.agentName,
+      agentType: messageData.agentType,
+      agentImageUrl: messageData.agentImageUrl,
       agentRunId: messageData.agentRunId,
+      emailDraftId: messageData.emailDraftId,
       createdAt: messageData.createdAt,
       updatedAt: messageData.updatedAt,
       attachments: attachments.map((attachment) => {

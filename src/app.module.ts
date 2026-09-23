@@ -36,6 +36,8 @@ import { ChiefOfStaffModule } from './modules/chief-of-staff/chief-of-staff.modu
 import { SetupPackagesModule } from './modules/setup-packages/setup-packages.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrganizerDashboardModule } from './modules/organizer-dashboard/organizer-dashboard.module';
+import { EmailModule } from './modules/email/email.module';
+import { SupportRequestsModule } from './modules/support-requests/support-requests.module';
 
 @Module({
   imports: [
@@ -74,8 +76,9 @@ import { OrganizerDashboardModule } from './modules/organizer-dashboard/organize
     SetupPackagesModule,
     NotificationsModule,
     OrganizerDashboardModule,
+    EmailModule,
+    SupportRequestsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-
-export class AppModule { }
+export class AppModule {}

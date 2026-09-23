@@ -96,15 +96,19 @@ export class AgentActivityService {
     organizationId: string,
     range: { from: Date; to: Date },
   ) {
-    const rows = await this.activities
+    const rowLimit = 10_000;
+    const queriedRows = await this.activities
       .find({
         organizationId,
         startedAt: { $gte: range.from, $lt: range.to },
       })
       .select('status operationType latencyMs completedAt startedAt')
-      .limit(10_000)
+      .sort({ startedAt: -1, _id: -1 })
+      .limit(rowLimit + 1)
       .lean()
       .exec();
+    const truncated = queriedRows.length > rowLimit;
+    const rows = queriedRows.slice(0, rowLimit);
     const completed = rows.filter((row) =>
       [AgentActivityStatus.SUCCEEDED, AgentActivityStatus.FAILED].includes(
         row.status,
@@ -153,6 +157,7 @@ export class AgentActivityService {
           ]
         : null,
       operationCounts,
+      truncated,
     };
   }
 

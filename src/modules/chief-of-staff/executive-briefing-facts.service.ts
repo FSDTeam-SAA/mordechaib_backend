@@ -6,7 +6,14 @@ import { AgentStatus } from '../../common/enums/agent-status.enum';
 import {
   BriefingFactAvailability,
   ExecutiveBriefingType,
+  StrategicNoteKind,
 } from '../../common/enums/executive-briefing.enum';
+import {
+  aiIsoTimestamp,
+  boundedAiText,
+  boundedRows,
+  createAiFact,
+} from '../../common/helpers/ai-fact.helper';
 import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -31,6 +38,16 @@ import {
   ExecutiveBriefingFacts,
   PreparedExecutiveBriefing,
 } from './executive-briefing.types';
+
+const FACT_LIMITS = {
+  tasks: 100,
+  meetings: 100,
+  proposals: 100,
+  analyses: 50,
+  agents: 50,
+  activities: 100,
+  strategicNotes: 20,
+} as const;
 
 @Injectable()
 export class ExecutiveBriefingFactsService {
@@ -101,10 +118,10 @@ export class ExecutiveBriefingFactsService {
           ],
         })
         .select(
-          'title description assignedToUserId department priority status dueDate estimatedDurationMinutes dependencies subtasks tags createdAt updatedAt',
+          'title description assignedToUserId department priority status dueDate completedAt estimatedDurationMinutes dependencies subtasks tags createdAt updatedAt',
         )
         .sort({ dueDate: 1, updatedAt: -1, _id: -1 })
-        .limit(100)
+        .limit(FACT_LIMITS.tasks + 1)
         .lean()
         .exec(),
       this.meetings
@@ -113,7 +130,7 @@ export class ExecutiveBriefingFactsService {
           'platform title agenda startsAt endsAt durationMinutes timezone status botRequested createdAt updatedAt',
         )
         .sort({ startsAt: 1, _id: 1 })
-        .limit(100)
+        .limit(FACT_LIMITS.meetings + 1)
         .lean()
         .exec(),
       this.calendarEvents
@@ -122,7 +139,7 @@ export class ExecutiveBriefingFactsService {
           'provider title description meetingType urgency startsAt endsAt timezone status createdAt updatedAt',
         )
         .sort({ startsAt: 1, _id: 1 })
-        .limit(100)
+        .limit(FACT_LIMITS.meetings + 1)
         .lean()
         .exec(),
       this.proposals
@@ -142,10 +159,10 @@ export class ExecutiveBriefingFactsService {
           ],
         })
         .select(
-          'proposalId actionType proposedByAgent source payload confidence clarificationQuestions clarificationAnswers status targetResourceType targetResourceId executionError createdAt updatedAt',
+          'proposalId actionType proposedByAgent source payload confidence clarificationQuestions clarificationAnswers status targetResourceType targetResourceId executionError executedAt createdAt updatedAt',
         )
         .sort({ updatedAt: -1, _id: -1 })
-        .limit(100)
+        .limit(FACT_LIMITS.proposals + 1)
         .lean()
         .exec(),
       this.analyses
@@ -154,20 +171,20 @@ export class ExecutiveBriefingFactsService {
           'source summary overallConfidence sentimentAnalysis customerIntelligence patternDetection classifiedSegments createdAt updatedAt',
         )
         .sort({ updatedAt: -1, _id: -1 })
-        .limit(50)
+        .limit(FACT_LIMITS.analyses + 1)
         .lean()
         .exec(),
       this.agents
         .find({ status: AgentStatus.ACTIVE })
         .select('name type status')
         .sort({ type: 1, name: 1 })
-        .limit(50)
+        .limit(FACT_LIMITS.agents)
         .lean()
         .exec(),
       this.activities.list(
         organizationId,
         { from: start, to: activityEnd },
-        100,
+        FACT_LIMITS.activities + 1,
       ),
       this.activities.healthSnapshot(organizationId, {
         from: start,
@@ -185,23 +202,61 @@ export class ExecutiveBriefingFactsService {
           ],
         })
         .select(
-          'createdByUserId content appliesTo validFrom validUntil createdAt updatedAt',
+          'createdByUserId title kind content appliesTo validFrom validUntil createdAt updatedAt',
         )
         .sort({ validFrom: -1, createdAt: -1, _id: -1 })
-        .limit(20)
+        .limit(FACT_LIMITS.strategicNotes + 1)
         .lean()
         .exec(),
     ]);
 
-    const taskFacts = taskRows.map((task) =>
-      this.fact('task', 'TASK', task, {
+    const boundedTasks = boundedRows(taskRows, FACT_LIMITS.tasks);
+    const boundedMeetings = boundedRows(meetingRows, FACT_LIMITS.meetings);
+    const boundedCalendar = boundedRows(calendarRows, FACT_LIMITS.meetings);
+    const boundedProposals = boundedRows(proposalRows, FACT_LIMITS.proposals);
+    const boundedAnalyses = boundedRows(analysisRows, FACT_LIMITS.analyses);
+    const boundedActivities = boundedRows(activityRows, FACT_LIMITS.activities);
+    const boundedNotes = boundedRows(
+      strategicNoteRows,
+      FACT_LIMITS.strategicNotes,
+    );
+    const assigneeIds = [
+      ...new Set(
+        boundedTasks.items
+          .map((task) => task.assignedToUserId)
+          .filter((id): id is string => typeof id === 'string' && !!id),
+      ),
+    ];
+    const assignees = assigneeIds.length
+      ? await this.users
+          .find({ organizationId, _id: { $in: assigneeIds } })
+          .select('firstName lastName')
+          .lean()
+          .exec()
+      : [];
+    const assigneeNames = new Map(
+      assignees.map((user) => [
+        String(user._id),
+        `${user.firstName} ${user.lastName}`.trim(),
+      ]),
+    );
+
+    const taskFacts = boundedTasks.items.map((task) =>
+      createAiFact('task', 'TASK', task, {
         title: task.title,
-        description: this.text(task.description, 2_000),
+        description: boundedAiText(task.description, 2_000),
         assignedToUserId: task.assignedToUserId,
+        assigneeName: task.assignedToUserId
+          ? assigneeNames.get(task.assignedToUserId)
+          : undefined,
         department: task.department,
         priority: task.priority,
         status: task.status,
-        dueDate: this.iso(task.dueDate),
+        dueDate: aiIsoTimestamp(task.dueDate),
+        completedAt: aiIsoTimestamp(task.completedAt),
+        updatedAt: aiIsoTimestamp(
+          (task as unknown as Record<string, unknown>).updatedAt,
+        ),
         estimatedDurationMinutes: task.estimatedDurationMinutes,
         dependencies: Array.isArray(task.dependencies)
           ? task.dependencies.slice(0, 25)
@@ -213,36 +268,40 @@ export class ExecutiveBriefingFactsService {
       }),
     );
     const meetingFacts = [
-      ...meetingRows.map((meeting) =>
-        this.fact('meeting', 'PLATFORM_MEETING', meeting, {
+      ...boundedMeetings.items.map((meeting) =>
+        createAiFact('meeting', 'PLATFORM_MEETING', meeting, {
           platform: meeting.platform,
           title: meeting.title,
-          agenda: this.text(meeting.agenda, 2_000),
-          startsAt: this.iso(meeting.startsAt),
-          endsAt: this.iso(meeting.endsAt),
+          agenda: boundedAiText(meeting.agenda, 2_000),
+          startsAt: aiIsoTimestamp(meeting.startsAt),
+          endsAt: aiIsoTimestamp(meeting.endsAt),
           durationMinutes: meeting.durationMinutes,
           timezone: meeting.timezone,
           status: meeting.status,
           botRequested: meeting.botRequested,
         }),
       ),
-      ...calendarRows.map((event) =>
-        this.fact('calendar-event', 'CALENDAR_EVENT', event, {
+      ...boundedCalendar.items.map((event) =>
+        createAiFact('calendar-event', 'CALENDAR_EVENT', event, {
           provider: event.provider,
           title: event.title,
-          description: this.text(event.description, 2_000),
+          description: boundedAiText(event.description, 2_000),
           meetingType: event.meetingType,
           urgency: event.urgency,
-          startsAt: this.iso(event.startsAt),
-          endsAt: this.iso(event.endsAt),
+          startsAt: aiIsoTimestamp(event.startsAt),
+          endsAt: aiIsoTimestamp(event.endsAt),
           timezone: event.timezone,
           status: event.status,
         }),
       ),
     ];
-    const proposalFacts = proposalRows.map((proposal) =>
-      this.fact('proposal', 'AI_ACTION_PROPOSAL', proposal, {
+    const proposalFacts = boundedProposals.items.map((proposal) =>
+      createAiFact('proposal', 'AI_ACTION_PROPOSAL', proposal, {
         proposalId: proposal.proposalId,
+        title:
+          proposal.payload && typeof proposal.payload === 'object'
+            ? (proposal.payload as Record<string, unknown>).title
+            : undefined,
         actionType: proposal.actionType,
         proposedByAgent: proposal.proposedByAgent,
         source: proposal.source,
@@ -253,13 +312,25 @@ export class ExecutiveBriefingFactsService {
         status: proposal.status,
         targetResourceType: proposal.targetResourceType,
         targetResourceId: proposal.targetResourceId,
-        executionError: this.text(proposal.executionError, 1_000),
+        error: boundedAiText(proposal.executionError, 1_000),
+        updatedAt: aiIsoTimestamp(
+          (proposal as unknown as Record<string, unknown>).updatedAt,
+        ),
+        executedAt: aiIsoTimestamp(proposal.executedAt),
       }),
     );
-    const analysisFacts = analysisRows.map((analysis) =>
-      this.fact('analysis', 'AI_SOURCE_ANALYSIS', analysis, {
+    const analysisFacts = boundedAnalyses.items.map((analysis) =>
+      createAiFact('analysis', 'AI_SOURCE_ANALYSIS', analysis, {
+        title: 'AI source analysis',
+        sourceType:
+          analysis.source && typeof analysis.source === 'object'
+            ? (analysis.source as Record<string, unknown>).type
+            : undefined,
         source: analysis.source,
-        summary: this.text(analysis.summary, 5_000),
+        summary: boundedAiText(analysis.summary, 5_000),
+        analyzedAt: aiIsoTimestamp(
+          (analysis as unknown as Record<string, unknown>).updatedAt,
+        ),
         overallConfidence: analysis.overallConfidence,
         sentimentAnalysis: analysis.sentimentAnalysis,
         customerIntelligence: analysis.customerIntelligence,
@@ -269,12 +340,17 @@ export class ExecutiveBriefingFactsService {
           : [],
       }),
     );
-    const activityFacts = activityRows.map((activity) =>
-      this.fact(
+    const activityFacts = boundedActivities.items.map((activity) =>
+      createAiFact(
         'agent-activity',
         'AGENT_ACTIVITY',
         activity as unknown as Record<string, unknown>,
         {
+          title: `${activity.agentName || activity.agentType || 'AI agent'}: ${activity.operationType}`,
+          detail:
+            activity.status === 'FAILED'
+              ? boundedAiText(activity.failureMessage, 1_000)
+              : `AI operation ${activity.status.toLowerCase()}`,
           agentId: activity.agentId,
           agentName: activity.agentName,
           agentType: activity.agentType,
@@ -284,61 +360,132 @@ export class ExecutiveBriefingFactsService {
           sourceType: activity.sourceType,
           sourceId: activity.sourceId,
           status: activity.status,
-          startedAt: this.iso(activity.startedAt),
-          completedAt: this.iso(activity.completedAt),
+          startedAt: aiIsoTimestamp(activity.startedAt),
+          completedAt: aiIsoTimestamp(activity.completedAt),
           latencyMs: activity.latencyMs,
           attempt: activity.attempt,
           failureCode: activity.failureCode,
-          failureMessage: this.text(activity.failureMessage, 1_000),
+          failureMessage: boundedAiText(activity.failureMessage, 1_000),
           metadata: activity.metadata,
         },
       ),
     );
-    const aiHealthFacts: BriefingFact[] = [
+    const healthDerivation = `Calculated from ${aiHealth.truncated ? 'the first 10,000 persisted' : 'persisted'} AI runtime activity records in the period; this is not a model-accuracy score.`;
+    const healthMetrics: Array<{
+      key: string;
+      title: string;
+      value: number | null;
+      unit: 'COUNT' | 'PERCENT' | 'MINUTES';
+    }> = [
       {
-        id: `ai-health-${period.start}-${period.end}`,
-        sourceType: 'AI_RUNTIME_HEALTH',
-        sourceId: `runtime-health:${period.start}:${period.end}`,
-        capturedAt: activityEnd.toISOString(),
-        data: {
-          ...aiHealth,
-          derivation:
-            'Calculated from persisted AI runtime activity; this is not a model-accuracy score.',
-        },
+        key: 'total-runs',
+        title: 'AI runs',
+        value: aiHealth.totalRuns,
+        unit: 'COUNT',
+      },
+      {
+        key: 'completed-runs',
+        title: 'Completed AI runs',
+        value: aiHealth.completedRuns,
+        unit: 'COUNT',
+      },
+      {
+        key: 'succeeded',
+        title: 'Successful AI runs',
+        value: aiHealth.succeeded,
+        unit: 'COUNT',
+      },
+      {
+        key: 'failed',
+        title: 'Failed AI runs',
+        value: aiHealth.failed,
+        unit: 'COUNT',
+      },
+      {
+        key: 'running',
+        title: 'Running AI jobs',
+        value: aiHealth.running,
+        unit: 'COUNT',
+      },
+      {
+        key: 'skipped',
+        title: 'Skipped AI jobs',
+        value: aiHealth.skipped,
+        unit: 'COUNT',
+      },
+      {
+        key: 'success-rate',
+        title: 'AI job success rate',
+        value: aiHealth.successRatePercent,
+        unit: 'PERCENT',
+      },
+      {
+        key: 'average-latency',
+        title: 'Average AI job latency',
+        value:
+          aiHealth.averageLatencyMs === null
+            ? null
+            : Number((aiHealth.averageLatencyMs / 60_000).toFixed(2)),
+        unit: 'MINUTES',
+      },
+      {
+        key: 'p95-latency',
+        title: 'P95 AI job latency',
+        value:
+          aiHealth.p95LatencyMs === null
+            ? null
+            : Number((aiHealth.p95LatencyMs / 60_000).toFixed(2)),
+        unit: 'MINUTES',
       },
     ];
-    const strategicNoteFacts = strategicNoteRows.map((note) =>
-      this.fact(
+    const aiHealthFacts: BriefingFact[] = healthMetrics
+      .filter((metric) => metric.value !== null)
+      .map((metric) => ({
+        id: `ai-health-${metric.key}-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_AGGREGATE',
+        sourceId: `runtime-health:${metric.key}:${period.start}:${period.end}`,
+        capturedAt: activityEnd.toISOString(),
+        data: {
+          title: metric.title,
+          value: metric.value,
+          unit: metric.unit,
+          derivation: healthDerivation,
+        },
+      }));
+    const strategicNoteFacts = boundedNotes.items.map((note) =>
+      createAiFact(
         'strategic-note',
         'STRATEGIC_NOTE',
         note as unknown as Record<string, unknown>,
         {
+          title: note.title || 'CEO strategic note',
+          kind: note.kind || StrategicNoteKind.NOTE,
           createdByUserId: note.createdByUserId,
-          content: this.text(note.content, 5_000),
+          text: boundedAiText(note.content, 5_000),
           appliesTo: note.appliesTo,
-          validFrom: this.iso(note.validFrom),
-          validUntil: this.iso(note.validUntil),
+          validFrom: aiIsoTimestamp(note.validFrom),
+          validUntil: aiIsoTimestamp(note.validUntil),
         },
       ),
     );
-    const marketingFacts = taskRows
+    const marketingFacts = boundedTasks.items
       .filter((task) => task.department === TaskDepartment.MARKETING)
       .map((task) =>
-        this.fact('marketing-task', 'TASK', task, {
+        createAiFact('marketing-task', 'TASK', task, {
           title: task.title,
           status: task.status,
           priority: task.priority,
-          dueDate: this.iso(task.dueDate),
+          dueDate: aiIsoTimestamp(task.dueDate),
         }),
       );
-    const productDesignFacts = taskRows
+    const productDesignFacts = boundedTasks.items
       .filter((task) => task.department === TaskDepartment.DESIGN)
       .map((task) =>
-        this.fact('design-task', 'TASK', task, {
+        createAiFact('design-task', 'TASK', task, {
           title: task.title,
           status: task.status,
           priority: task.priority,
-          dueDate: this.iso(task.dueDate),
+          dueDate: aiIsoTimestamp(task.dueDate),
         }),
       );
     const unavailable = (): BriefingFactGroup => ({
@@ -346,14 +493,20 @@ export class ExecutiveBriefingFactsService {
       items: [],
     });
     const facts: ExecutiveBriefingFacts = {
-      tasks: this.available(taskFacts),
-      meetings: this.available(meetingFacts),
-      actionProposals: this.available(proposalFacts),
+      tasks: this.available(taskFacts, boundedTasks.truncated),
+      meetings: this.available(
+        meetingFacts,
+        boundedMeetings.truncated || boundedCalendar.truncated,
+      ),
+      actionProposals: this.available(
+        proposalFacts,
+        boundedProposals.truncated,
+      ),
       sourceAnalyses: {
         availability: BriefingFactAvailability.PARTIAL,
         items: analysisFacts,
       },
-      agentActivity: this.available(activityFacts),
+      agentActivity: this.available(activityFacts, boundedActivities.truncated),
       sales: unavailable(),
       customers: unavailable(),
       support: unavailable(),
@@ -369,13 +522,13 @@ export class ExecutiveBriefingFactsService {
       },
       roi: unavailable(),
       aiQuality: {
-        availability:
-          aiHealth.completedRuns > 0
-            ? BriefingFactAvailability.AVAILABLE
-            : BriefingFactAvailability.PARTIAL,
+        availability: BriefingFactAvailability.PARTIAL,
         items: aiHealthFacts,
       },
-      strategicNotes: this.available(strategicNoteFacts),
+      strategicNotes: this.available(
+        strategicNoteFacts,
+        boundedNotes.truncated,
+      ),
     };
     const scopeHash = this.scopeHash(
       organizationId,
@@ -431,39 +584,16 @@ export class ExecutiveBriefingFactsService {
     return this.hash(this.stableStringify({ organizationId, userId, role }));
   }
 
-  private available(items: BriefingFact[]): BriefingFactGroup {
-    return { availability: BriefingFactAvailability.AVAILABLE, items };
-  }
-
-  private fact(
-    prefix: string,
-    sourceType: string,
-    source: Record<string, unknown>,
-    data: Record<string, unknown>,
-  ): BriefingFact {
-    const sourceId = String(source._id);
+  private available(
+    items: BriefingFact[],
+    truncated = false,
+  ): BriefingFactGroup {
     return {
-      id: `${prefix}-${sourceId}`,
-      sourceType,
-      sourceId,
-      capturedAt:
-        this.iso(source.updatedAt) ||
-        this.iso(source.createdAt) ||
-        new Date(0).toISOString(),
-      data,
+      availability: truncated
+        ? BriefingFactAvailability.PARTIAL
+        : BriefingFactAvailability.AVAILABLE,
+      items,
     };
-  }
-
-  private iso(value: unknown) {
-    if (value instanceof Date) return value.toISOString();
-    if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) {
-      return new Date(value).toISOString();
-    }
-    return undefined;
-  }
-
-  private text(value: unknown, maxLength: number) {
-    return typeof value === 'string' ? value.slice(0, maxLength) : undefined;
   }
 
   private stableStringify(value: unknown): string {

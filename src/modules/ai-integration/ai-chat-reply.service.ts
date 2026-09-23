@@ -13,6 +13,7 @@ import { MessageType } from '../../common/enums/message-type.enum';
 import { Conversation } from '../../database/schemas/conversation.schema';
 import { Message } from '../../database/schemas/message.schema';
 import { AiAssistantMessage } from '../ai-actions/dto/ai-analysis-result.dto';
+import { EmailDraftsService } from '../email/email-drafts.service';
 
 type PersistAssistantReplyInput = {
   organizationId: string;
@@ -28,6 +29,7 @@ export class AiChatReplyService {
     private readonly messages: Model<Message>,
     @InjectModel(Conversation.name)
     private readonly conversations: Model<Conversation>,
+    private readonly emailDrafts: EmailDraftsService,
   ) {}
 
   async persist(input: PersistAssistantReplyInput) {
@@ -56,6 +58,7 @@ export class AiChatReplyService {
     const existing = await this.findExisting(input);
     if (existing) {
       this.assertSameLogicalReply(existing, input);
+      await this.ensureEmailDraft(existing, input, String(source.senderId));
       return { message: existing, created: false };
     }
 
@@ -74,6 +77,8 @@ export class AiChatReplyService {
         processingStatus: MessageProcessingStatus.COMPLETED,
         agentId: input.assistantMessage.agent.id,
         agentName: input.assistantMessage.agent.name,
+        agentType: input.assistantMessage.agent.type,
+        agentImageUrl: input.assistantMessage.agent.imageUrl,
         agentRunId: input.assistantMessage.runId,
         processedAt: new Date(),
       });
@@ -83,6 +88,7 @@ export class AiChatReplyService {
       const raced = await this.findExisting(input);
       if (!raced) throw error;
       this.assertSameLogicalReply(raced, input);
+      await this.ensureEmailDraft(raced, input, String(source.senderId));
       return { message: raced, created: false };
     }
 
@@ -111,7 +117,34 @@ export class AiChatReplyService {
         'AI reply was saved but the conversation could not be updated',
       );
     }
+    await this.ensureEmailDraft(created, input, String(source.senderId));
     return { message: created, created: true };
+  }
+
+  private async ensureEmailDraft(
+    message: Record<string, unknown>,
+    input: PersistAssistantReplyInput,
+    userId: string,
+  ) {
+    const draft = input.assistantMessage.emailDraft;
+    if (!draft) return;
+    const saved = await this.emailDrafts.ensureFromAiReply({
+      organizationId: input.organizationId,
+      userId,
+      conversationId: input.conversationId,
+      sourceMessageId: input.sourceMessageId,
+      aiResponseId: input.assistantMessage.responseId,
+      draft,
+    });
+    if (!saved) return;
+    if (message.emailDraftId === saved.id) return;
+    await this.messages
+      .updateOne(
+        { _id: message._id, organizationId: input.organizationId },
+        { $set: { emailDraftId: saved.id } },
+      )
+      .exec();
+    message.emailDraftId = saved.id;
   }
 
   private findExisting(input: PersistAssistantReplyInput) {
@@ -135,6 +168,8 @@ export class AiChatReplyService {
       existing.content === expected.content &&
       existing.agentId === expected.agent.id &&
       existing.agentName === expected.agent.name &&
+      (existing.agentType === undefined ||
+        existing.agentType === expected.agent.type) &&
       (existing.agentRunId || undefined) === (expected.runId || undefined);
     if (!same) {
       throw new BadRequestException(

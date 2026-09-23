@@ -72,23 +72,6 @@ describe('CallIntelligenceProposalsFacade', () => {
     );
   });
 
-  it('dispatches clarification answers through the refinement workflow', async () => {
-    clarifications.submitAnswer.mockResolvedValue({ status: 'ANALYZING' });
-
-    await facade.execute(organizationId, actor, proposalId, {
-      action: CallIntelligenceProposalCommand.ANSWER_CLARIFICATION,
-      questionId: 'meeting-start-time',
-      answer: '2026-09-18T10:00:00+06:00',
-    });
-
-    expect(clarifications.submitAnswer).toHaveBeenCalledWith({
-      organizationId,
-      proposalId,
-      questionId: 'meeting-start-time',
-      answer: '2026-09-18T10:00:00+06:00',
-    });
-  });
-
   it('uses the same refinement workflow for the explicit clarification route', async () => {
     clarifications.submitAnswer.mockResolvedValue({ status: 'ANALYZING' });
 
@@ -105,13 +88,15 @@ describe('CallIntelligenceProposalsFacade', () => {
     });
   });
 
-  it('requires the fields associated with reject and clarification commands', async () => {
+  it('requires a rejection reason and rejects clarification as an action command', async () => {
     const invalidReject = plainToInstance(ExecuteCallIntelligenceProposalDto, {
       action: CallIntelligenceProposalCommand.REJECT,
     });
     const invalidClarification = plainToInstance(
       ExecuteCallIntelligenceProposalDto,
-      { action: CallIntelligenceProposalCommand.ANSWER_CLARIFICATION },
+      {
+        action: 'ANSWER_CLARIFICATION',
+      },
     );
     const validApprove = plainToInstance(ExecuteCallIntelligenceProposalDto, {
       action: CallIntelligenceProposalCommand.APPROVE,

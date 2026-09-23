@@ -11,6 +11,11 @@ export type StoreMessageAttachmentInput = {
   mimeType: string;
   sizeBytes: number;
   category: MessageAttachmentCategory;
+  /** Optional root folder for another private-attachment domain. */
+  storageFolder?: string;
+  /** Optional storage scope. Defaults to conversationId for messages. */
+  storageScopeId?: string;
+  storageTags?: string[];
 };
 
 export type StoredMessageAttachment = {

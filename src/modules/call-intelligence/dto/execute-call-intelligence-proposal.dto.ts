@@ -15,7 +15,6 @@ export enum CallIntelligenceProposalCommand {
   APPROVE = 'APPROVE',
   REJECT = 'REJECT',
   RETRY = 'RETRY',
-  ANSWER_CLARIFICATION = 'ANSWER_CLARIFICATION',
 }
 
 export class ExecuteCallIntelligenceProposalDto {
@@ -36,32 +35,4 @@ export class ExecuteCallIntelligenceProposalDto {
   @MinLength(1)
   @MaxLength(1000)
   reason?: string;
-
-  @ApiPropertyOptional({
-    description: 'Required when action is ANSWER_CLARIFICATION',
-    maxLength: 128,
-  })
-  @ValidateIf(
-    (input: ExecuteCallIntelligenceProposalDto) =>
-      input.action === CallIntelligenceProposalCommand.ANSWER_CLARIFICATION,
-  )
-  @Transform(trimString)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  questionId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Required when action is ANSWER_CLARIFICATION',
-    maxLength: 2000,
-  })
-  @ValidateIf(
-    (input: ExecuteCallIntelligenceProposalDto) =>
-      input.action === CallIntelligenceProposalCommand.ANSWER_CLARIFICATION,
-  )
-  @Transform(trimString)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(2000)
-  answer?: string;
 }

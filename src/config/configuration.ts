@@ -101,6 +101,12 @@ export default () => {
   const microsoftOAuthRedirectUri =
     process.env.MICROSOFT_OAUTH_REDIRECT_URI ||
     `${appBaseUrl}/api/v1/calendar/outlook/oauth/callback`;
+  const googleEmailOAuthRedirectUri =
+    process.env.GOOGLE_EMAIL_OAUTH_REDIRECT_URI ||
+    `${appBaseUrl}/api/v1/email/connections/GOOGLE/callback`;
+  const microsoftEmailOAuthRedirectUri =
+    process.env.MICROSOFT_EMAIL_OAUTH_REDIRECT_URI ||
+    `${appBaseUrl}/api/v1/email/connections/OUTLOOK/callback`;
   const meetingOAuthStateSecret =
     process.env.MEETING_OAUTH_STATE_SECRET ||
     process.env.RECALLAI_OAUTH_STATE_SECRET ||
@@ -477,6 +483,8 @@ export default () => {
       apiKey: cloudinaryApiKey,
       apiSecret: cloudinaryApiSecret,
       messageFolder: process.env.CLOUDINARY_MESSAGE_FOLDER || 'noltra/messages',
+      supportFolder:
+        process.env.CLOUDINARY_SUPPORT_FOLDER || 'noltra/support-requests',
       profileAvatarFolder:
         process.env.CLOUDINARY_PROFILE_AVATAR_FOLDER || 'noltra/avatars',
       organizationLogoFolder:
@@ -526,6 +534,23 @@ export default () => {
 
     integrations: {
       encryptionKey: integrationEncryptionKey,
+    },
+
+    email: {
+      frontendIntegrationsUrl:
+        process.env.MEETING_INTEGRATIONS_FRONTEND_URL ||
+        `${frontendUrl}/dashboard/integrations`,
+      google: {
+        clientId: googleOAuthClientId,
+        clientSecret: googleOAuthClientSecret,
+        redirectUri: googleEmailOAuthRedirectUri,
+      },
+      microsoft: {
+        clientId: microsoftOAuthClientId,
+        clientSecret: microsoftOAuthClientSecret,
+        redirectUri: microsoftEmailOAuthRedirectUri,
+        authority: `https://login.microsoftonline.com/${microsoftOAuthTenant}`,
+      },
     },
 
     recall: {

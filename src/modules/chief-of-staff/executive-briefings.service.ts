@@ -51,7 +51,8 @@ export class ExecutiveBriefingsService {
     const shouldQueue =
       reserved.created ||
       reserved.record.status === ExecutiveBriefingStatus.QUEUED ||
-      reserved.record.status === ExecutiveBriefingStatus.FAILED;
+      (reserved.record.status === ExecutiveBriefingStatus.FAILED &&
+        reserved.record.failureRetryable === true);
     if (shouldQueue) {
       if (reserved.record.status === ExecutiveBriefingStatus.FAILED) {
         await this.repository.requeueFailed(organizationId, briefingId);

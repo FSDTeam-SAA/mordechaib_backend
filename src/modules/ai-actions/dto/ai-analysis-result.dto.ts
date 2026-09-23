@@ -65,8 +65,13 @@ export type AiAnalysisAction = {
 export type AiAssistantMessage = {
   responseId: string;
   content: string;
-  agent: { id: string; name: string; type: AgentType };
+  agent: { id: string; name: string; type: AgentType; imageUrl?: string };
   runId?: string;
+  emailDraft?: {
+    to: string[];
+    subject: string;
+    body: string;
+  };
 };
 
 export type AiAnalysisResult = {

@@ -1,5 +1,10 @@
 # AI Chief of Staff: AI Backend Implementation Contract
 
+> Historical implementation-gap contract. Main Backend now persists
+> `assistantMessage` and optional structured `assistantMessage.emailDraft`.
+> Use `AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` for the current frontend API
+> and `EMAIL_DRAFT_AND_SEND_HANDOFF.md` for the current AI email-draft shape.
+
 ## Purpose and authority
 
 This document is the implementation handoff from Main Backend to AI Backend
@@ -51,24 +56,24 @@ the end-to-end flow is not implemented.
 
 ## Mismatch resolution matrix
 
-| Area | Conflict or ambiguity | Canonical decision |
-| --- | --- | --- |
-| Analyze response | Older response has only `requestId`, `source`, `actions`, and `analysis` | Preserve all existing fields and add optional `assistantMessage` only for `USER_MESSAGE` |
-| Response wrapping | Some APIs use `{ success, data }` | AI-to-Main responses must be raw JSON |
-| Chat knowledge | Existing message context has conversation, attachments, and pending proposals but no general Task/Meeting/CRM/finance facts | Answer only from supplied context/facts; explicitly state unavailable data |
-| Briefing route | Older notes mention `/api/v1/ai/chief-of-staff/briefings` | Canonical new route is `POST /api/v1/ai/briefings/generate` |
-| Action types | UI contains email and decision language | Executable `actions` remain only `CREATE_TASK` and `SCHEDULE_MEETING` |
-| Approval ownership | UI displays Approval, Sign-off, Escalation, and Review | These are presentation categories; only a real Main Backend proposal ID is executable |
-| Proposal IDs | AI does not know MongoDB proposal IDs during source analysis | Never invent a proposal ID; Main Backend creates it after ingestion |
-| Refinement identity | A refinement could accidentally create a new action | Preserve the original `actionId` and `actionType` exactly |
-| Risk level | Older examples use only LOW/HIGH-style values; no-data examples need UNKNOWN | Use `UNKNOWN | LOW | MEDIUM | HIGH | CRITICAL`; use `UNKNOWN` when evidence is absent |
-| Missing metrics | Mockups contain plausible numbers | Missing data is `UNAVAILABLE`, never zero or an estimate |
-| Attachment handling | Main Backend supplies attachment metadata and short-lived URLs, but extraction is incomplete | Do not claim file understanding unless usable extracted text/transcription was supplied or AI securely processed the URL |
-| Raw call audio | Normal Main flow transcribes locally and then sends `CALL_TRANSCRIPT` | Do not claim raw `CALL_AUDIO` analysis unless actual audio transport is present |
-| Timeout | Main Backend AI HTTP timeout defaults to 30 seconds | Analyze-source must meet the budget or return a retryable failure; briefing generation is invoked from a background job |
-| Idempotency | A process-local cache is not safe across replicas | Use durable/shared idempotency appropriate to the deployed topology |
-| Agent status | Catalog status `ACTIVE` may be mistaken for runtime health | `ACTIVE` means assignable catalog entry only, not operational health |
-| Timezone | Relative-date examples previously crossed the wrong UTC day | Use the supplied effective timezone and emit offset-aware ISO timestamps |
+| Area                | Conflict or ambiguity                                                                                                       | Canonical decision                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Analyze response    | Older response has only `requestId`, `source`, `actions`, and `analysis`                                                    | Preserve all existing fields and add optional `assistantMessage` only for `USER_MESSAGE`                                 |
+| Response wrapping   | Some APIs use `{ success, data }`                                                                                           | AI-to-Main responses must be raw JSON                                                                                    |
+| Chat knowledge      | Existing message context has conversation, attachments, and pending proposals but no general Task/Meeting/CRM/finance facts | Answer only from supplied context/facts; explicitly state unavailable data                                               |
+| Briefing route      | Older notes mention `/api/v1/ai/chief-of-staff/briefings`                                                                   | Canonical new route is `POST /api/v1/ai/briefings/generate`                                                              |
+| Action types        | UI contains email and decision language                                                                                     | Executable `actions` remain only `CREATE_TASK` and `SCHEDULE_MEETING`                                                    |
+| Approval ownership  | UI displays Approval, Sign-off, Escalation, and Review                                                                      | These are presentation categories; only a real Main Backend proposal ID is executable                                    |
+| Proposal IDs        | AI does not know MongoDB proposal IDs during source analysis                                                                | Never invent a proposal ID; Main Backend creates it after ingestion                                                      |
+| Refinement identity | A refinement could accidentally create a new action                                                                         | Preserve the original `actionId` and `actionType` exactly                                                                |
+| Risk level          | Older examples use only LOW/HIGH-style values; no-data examples need UNKNOWN                                                | Use `UNKNOWN                                                                                                             | LOW | MEDIUM | HIGH | CRITICAL`; use `UNKNOWN` when evidence is absent |
+| Missing metrics     | Mockups contain plausible numbers                                                                                           | Missing data is `UNAVAILABLE`, never zero or an estimate                                                                 |
+| Attachment handling | Main Backend supplies attachment metadata and short-lived URLs, but extraction is incomplete                                | Do not claim file understanding unless usable extracted text/transcription was supplied or AI securely processed the URL |
+| Raw call audio      | Normal Main flow transcribes locally and then sends `CALL_TRANSCRIPT`                                                       | Do not claim raw `CALL_AUDIO` analysis unless actual audio transport is present                                          |
+| Timeout             | Main Backend AI HTTP timeout defaults to 30 seconds                                                                         | Analyze-source must meet the budget or return a retryable failure; briefing generation is invoked from a background job  |
+| Idempotency         | A process-local cache is not safe across replicas                                                                           | Use durable/shared idempotency appropriate to the deployed topology                                                      |
+| Agent status        | Catalog status `ACTIVE` may be mistaken for runtime health                                                                  | `ACTIVE` means assignable catalog entry only, not operational health                                                     |
+| Timezone            | Relative-date examples previously crossed the wrong UTC day                                                                 | Use the supplied effective timezone and emit offset-aware ISO timestamps                                                 |
 
 ## 1. Existing analyze-source request
 
@@ -591,12 +596,15 @@ categories, not new action types.
 
 ## 9. Email behavior
 
-Email is not an executable action in the current MVP.
+Email remains outside executable AI `actions`.
 
 - Do not return `DRAFT_EMAIL`, `SEND_EMAIL`, or any email action in `actions`.
-- Do not say an Outlook/Gmail draft was created, stored, or sent.
-- Suggested email text is allowed only inside `assistantMessage`, clearly
-  labeled as an unsaved suggestion.
+- To propose an email, return the optional structured
+  `assistantMessage.emailDraft` defined in `EMAIL_DRAFT_AND_SEND_HANDOFF.md`.
+- Main Backend validates and stores the platform draft. AI Backend must never
+  claim it was sent.
+- Only the authenticated owner can explicitly send through Main Backend after
+  reviewing the stored draft.
 
 ## 10. Attachments and calls
 
@@ -628,14 +636,14 @@ present merely because `source.type` is `CALL_AUDIO` or `audioAvailable=true`.
 
 Return JSON errors with these meanings:
 
-| HTTP | Meaning |
-| --- | --- |
+| HTTP  | Meaning                                                                 |
+| ----- | ----------------------------------------------------------------------- |
 | `400` | Invalid schema, source identity, period, type, fact, or output contract |
-| `401` | Missing or invalid shared secret |
-| `409` | Same idempotency key reused with different canonical input |
-| `422` | Structurally valid input cannot produce any valid required contract |
-| `429` | AI service rate-limited; Main Backend may retry |
-| `503` | Model/orchestrator dependency unavailable; Main Backend may retry |
+| `401` | Missing or invalid shared secret                                        |
+| `409` | Same idempotency key reused with different canonical input              |
+| `422` | Structurally valid input cannot produce any valid required contract     |
+| `429` | AI service rate-limited; Main Backend may retry                         |
+| `503` | Model/orchestrator dependency unavailable; Main Backend may retry       |
 
 Missing optional domains such as finance, CRM, vendor, or support must not
 cause `422`. Return a successful partial briefing with those sections marked
