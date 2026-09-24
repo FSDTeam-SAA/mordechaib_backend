@@ -2,7 +2,7 @@
 
 > Historical implementation-gap contract. Main Backend now persists
 > `assistantMessage` and optional structured `assistantMessage.emailDraft`.
-> Use `AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` for the current frontend API
+> Use `FRONTEND_API_GUIDELINE.md` for the current frontend API
 > and `EMAIL_DRAFT_AND_SEND_HANDOFF.md` for the current AI email-draft shape.
 
 ## Purpose and authority
