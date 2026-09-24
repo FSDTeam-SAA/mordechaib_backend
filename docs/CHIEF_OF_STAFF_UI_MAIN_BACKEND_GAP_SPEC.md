@@ -2,7 +2,7 @@
 
 > Historical implementation-gap specification. For current frontend routes,
 > request/response bodies, state transitions, and implemented email behavior,
-> use `AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` as the canonical frontend
+> use `FRONTEND_API_GUIDELINE.md` as the canonical frontend
 > contract.
 
 ## Purpose and authority
@@ -645,7 +645,7 @@ sends only after an explicit owner request to the dedicated email-draft API.
 
 Google and Outlook connections, request/response bodies, revision handling,
 audit, and ambiguous-send behavior are defined in
-`AI_CHIEF_OF_STAFF_FRONTEND_API_GUIDE.md` and
+`FRONTEND_API_GUIDELINE.md` and
 `EMAIL_DRAFT_AND_SEND_HANDOFF.md`.
 
 ## Security, privacy, and reliability requirements
