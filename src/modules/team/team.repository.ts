@@ -70,9 +70,10 @@ export class TeamRepository {
     const filter: FilterQuery<TeamMember> = {};
 
     if (filters.search) {
+      const escaped = filters.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { email: { $regex: filters.search, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+        { email: { $regex: escaped, $options: 'i' } },
       ];
     }
     if (filters.status) filter.status = filters.status;
