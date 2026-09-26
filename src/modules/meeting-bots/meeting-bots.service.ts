@@ -42,6 +42,7 @@ import {
 } from './storage/meeting-audio-storage.interface';
 import { ZoomAuthService } from './zoom-auth.service';
 import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
+import { PlatformMeetingsRepository } from './platform-meetings.repository';
 
 @Injectable()
 export class MeetingBotsService {
@@ -56,6 +57,8 @@ export class MeetingBotsService {
     @Inject(MEETING_AUDIO_STORAGE)
     private readonly audioStorage: MeetingAudioStorage,
     @Optional() private readonly aiJobs?: AiJobsQueue,
+    @Optional()
+    private readonly platformMeetings?: PlatformMeetingsRepository,
   ) {}
 
   async create(
@@ -460,12 +463,18 @@ export class MeetingBotsService {
       }
       const failure =
         event === 'bot.fatal' ? recallFailure(subCode, message) : undefined;
-      await this.repository.updateByRecallBotId(botId, {
+      const updated = await this.repository.updateByRecallBotId(botId, {
         status: mapRecallBotStatus(event),
         recallStatusCode: code,
         recallSubCode: subCode,
         ...(failure || {}),
       });
+      if (updated && (event === 'bot.call_ended' || event === 'bot.done')) {
+        await this.platformMeetings?.markCompletedByMeetingBotId(
+          updated.organizationId,
+          String(updated._id),
+        );
+      }
       return;
     }
 
@@ -577,6 +586,10 @@ export class MeetingBotsService {
       transcriptCompletedAt: new Date(),
       status: MeetingBotStatus.COMPLETED,
     });
+    await this.platformMeetings?.markCompletedByMeetingBotId(
+      meeting.organizationId,
+      String(meeting._id),
+    );
     const analysisJob = await this.aiJobs?.enqueueSourceAnalysis({
       organizationId: meeting.organizationId,
       sourceType:

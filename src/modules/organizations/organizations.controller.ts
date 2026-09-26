@@ -5,11 +5,11 @@ import {
   Get,
   Param,
   Patch,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -31,7 +31,7 @@ import {
   RequestUser,
 } from '../../common/types/request-context.type';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
-import { ORGANIZATION_LOGO_UPLOAD_OPTIONS } from './organization-logo-upload.config';
+import { ORGANIZATION_ASSET_UPLOAD_OPTIONS } from './organization-logo-upload.config';
 import { OrganizationsService } from './organizations.service';
 
 @ApiTags('Organizations')
@@ -58,12 +58,20 @@ export class OrganizationsController {
   @Patch('me')
   @UseGuards(RolesGuard)
   @Roles(UserRole.OWNER, UserRole.ADMIN)
-  @UseInterceptors(FileInterceptor('logo', ORGANIZATION_LOGO_UPLOAD_OPTIONS))
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'logo', maxCount: 1 },
+        { name: 'favicon', maxCount: 1 },
+      ],
+      ORGANIZATION_ASSET_UPLOAD_OPTIONS,
+    ),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     required: true,
     description:
-      'Copy `updatedAt` from GET /organizations/me into `expectedUpdatedAt`, then send only the company fields to change. This prevents overwriting newer settings. Upload `logo` as a JPEG, PNG, or WebP file (maximum 5 MB).',
+      'Copy `updatedAt` from GET /organizations/me into `expectedUpdatedAt`, then send only the company fields to change. This prevents overwriting newer settings. Upload `logo` as JPEG, PNG, or WebP and `favicon` as PNG or ICO (maximum 5 MB each).',
     schema: {
       type: 'object',
       required: ['expectedUpdatedAt'],
@@ -89,6 +97,18 @@ export class OrganizationsController {
         },
         timezone: { type: 'string', maxLength: 80, example: 'Asia/Dhaka' },
         language: { type: 'string', example: 'en' },
+        maintenanceMode: { type: 'boolean', example: false },
+        defaultCurrency: { type: 'string', example: 'USD' },
+        dateFormat: {
+          type: 'string',
+          enum: ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'],
+          example: 'MM/DD/YYYY',
+        },
+        timeFormat: {
+          type: 'string',
+          enum: ['12H', '24H'],
+          example: '12H',
+        },
         businessHoursStart: { type: 'string', example: '09:00' },
         businessHoursEnd: { type: 'string', example: '17:00' },
         city: { type: 'string', maxLength: 100, example: 'Dhaka' },
@@ -111,19 +131,34 @@ export class OrganizationsController {
           description:
             'Company logo file. JPEG, PNG, or WebP; maximum 5 MB. Stored in Cloudinary.',
         },
+        favicon: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'Favicon file. PNG or ICO; maximum 5 MB. Stored in Cloudinary.',
+        },
       },
     },
   })
   @ApiOperation({
-    summary: 'Update company settings and/or upload a company logo',
+    summary: 'Update company settings and/or upload branding assets',
   })
   updateMe(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
     @Body() dto: UpdateOnboardingDto,
-    @UploadedFile() logo: Express.Multer.File | undefined,
+    @UploadedFiles()
+    files:
+      | {
+          logo?: Express.Multer.File[];
+          favicon?: Express.Multer.File[];
+        }
+      | undefined,
   ) {
-    return this.service.updateSettings(organization.id, dto, user.id, logo);
+    return this.service.updateSettings(organization.id, dto, user.id, {
+      logo: files?.logo?.[0],
+      favicon: files?.favicon?.[0],
+    });
   }
 
   @UseGuards(RolesGuard)

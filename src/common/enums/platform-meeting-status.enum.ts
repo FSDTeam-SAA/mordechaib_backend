@@ -2,6 +2,7 @@ export enum PlatformMeetingStatus {
   CREATING = 'CREATING',
   READY = 'READY',
   SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
   CANCELLED = 'CANCELLED',
 }

@@ -11,6 +11,11 @@ import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { OrganizationLogoStorageService } from './organization-logo-storage.service';
 import { OrganizationsRepository } from './organizations.repository';
 
+type OrganizationBrandingFiles = {
+  logo?: Express.Multer.File;
+  favicon?: Express.Multer.File;
+};
+
 @Injectable()
 export class OrganizationsService {
   constructor(
@@ -45,20 +50,21 @@ export class OrganizationsService {
     id: string,
     input: UpdateOnboardingDto,
     updatedBy: string,
-    logo?: Express.Multer.File,
+    branding?: OrganizationBrandingFiles,
   ) {
-    return this.updateOnboarding(id, input, updatedBy, logo);
+    return this.updateOnboarding(id, input, updatedBy, branding);
   }
 
   async updateOnboarding(
     id: string,
     input: UpdateOnboardingDto,
     updatedBy: string,
-    logo?: Express.Multer.File,
+    branding?: OrganizationBrandingFiles,
   ) {
     const organization = await this.findCurrent(id);
     const { expectedUpdatedAt: expectedUpdatedAtValue, ...changes } = input;
     const expectedUpdatedAt = new Date(expectedUpdatedAtValue);
+    const { logo, favicon } = branding ?? {};
 
     if (!this.hasExpectedUpdatedAt(organization.updatedAt, expectedUpdatedAt)) {
       throw new ConflictException(
@@ -68,6 +74,11 @@ export class OrganizationsService {
 
     if (logo && changes.logoUrl !== undefined) {
       throw new BadRequestException('Send either logo or logoUrl, not both');
+    }
+    if (favicon && changes.faviconUrl !== undefined) {
+      throw new BadRequestException(
+        'Send either favicon or faviconUrl, not both',
+      );
     }
 
     if (typeof changes.timezone === 'string') {
@@ -82,16 +93,28 @@ export class OrganizationsService {
       throw new BadRequestException('companyName cannot be empty');
     }
 
-    if (!logo && Object.values(changes).every((value) => value === undefined)) {
+    if (
+      !logo &&
+      !favicon &&
+      Object.values(changes).every((value) => value === undefined)
+    ) {
       throw new BadRequestException('No organization changes were provided');
     }
 
-    const resolvedInput = logo
-      ? {
-          ...changes,
-          logoUrl: await this.organizationLogoStorage.upload(id, logo),
-        }
-      : changes;
+    const resolvedInput = {
+      ...changes,
+      ...(logo
+        ? { logoUrl: await this.organizationLogoStorage.upload(id, logo) }
+        : {}),
+      ...(favicon
+        ? {
+            faviconUrl: await this.organizationLogoStorage.uploadFavicon(
+              id,
+              favicon,
+            ),
+          }
+        : {}),
+    };
 
     let nextStep = organization.onboardingStep;
 

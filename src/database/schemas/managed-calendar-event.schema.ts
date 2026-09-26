@@ -87,6 +87,15 @@ export class ManagedCalendarEvent {
   @Prop()
   failureMessage?: string;
 
+  @Prop({ default: false, index: true })
+  importedFromProvider!: boolean;
+
+  @Prop()
+  providerUpdatedAt?: Date;
+
+  @Prop()
+  lastSyncedAt?: Date;
+
   @Prop({ ref: AiActionProposal.name, index: true })
   aiActionProposalId?: string;
 

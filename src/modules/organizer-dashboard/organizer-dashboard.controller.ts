@@ -80,9 +80,14 @@ export class OrganizerDashboardController {
 
   @Get('task-overview')
   @Header('Cache-Control', 'private, max-age=15')
-  @ApiOperation({ summary: 'Get mutually exclusive task overview counts' })
-  taskOverview(@CurrentOrg() organization: RequestOrganization) {
-    return this.dashboard.taskOverview(organization.id);
+  @ApiOperation({
+    summary: 'Get task dashboard counts, weekly trends, and breakdowns',
+  })
+  taskOverview(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.dashboard.taskOverview(organization.id, user.id);
   }
 
   @Get('top-priorities')

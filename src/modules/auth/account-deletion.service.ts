@@ -183,6 +183,7 @@ export class AccountDeletionService {
         userIds,
         attachments,
         hasOrganizationLogo: Boolean(organization?.logoUrl),
+        hasOrganizationFavicon: Boolean(organization?.faviconUrl),
       }),
       this.removeLocalRecordingFiles(recordings),
     ]);
@@ -195,6 +196,7 @@ export class AccountDeletionService {
     userIds: string[];
     attachments: StoredAttachment[];
     hasOrganizationLogo: boolean;
+    hasOrganizationFavicon: boolean;
   }) {
     if (!this.hasCloudinaryConfiguration()) return;
 
@@ -205,6 +207,10 @@ export class AccountDeletionService {
     const logoFolder = this.folder(
       'cloudinary.organizationLogoFolder',
       'noltra/organization-logos',
+    );
+    const faviconFolder = this.folder(
+      'cloudinary.organizationFaviconFolder',
+      'noltra/organization-favicons',
     );
     const operations: Array<Promise<unknown>> = [
       ...input.userIds.map((userId) =>
@@ -217,6 +223,17 @@ export class AccountDeletionService {
         ? [
             cloudinary.uploader.destroy(
               `${logoFolder}/${input.organizationId}`,
+              {
+                resource_type: 'image',
+                invalidate: true,
+              },
+            ),
+          ]
+        : []),
+      ...(input.hasOrganizationFavicon
+        ? [
+            cloudinary.uploader.destroy(
+              `${faviconFolder}/${input.organizationId}-favicon`,
               {
                 resource_type: 'image',
                 invalidate: true,

@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { AgentActivityStatus } from '../../common/enums/agent-activity.enum';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
+import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AiActionProposalStatus } from '../../database/schemas/ai-action-proposal.schema';
 import { AgentsService } from '../agents/agents.service';
@@ -219,5 +220,99 @@ describe('OrganizerDashboardService', () => {
       status: TaskStatus.TODO,
       isOverdue: true,
     });
+  });
+
+  it('returns grounded weekly task dashboard analytics', async () => {
+    auth.getMe.mockResolvedValue({ timezone: 'Asia/Dhaka' });
+    organizations.findCurrent.mockResolvedValue({ timezone: 'UTC' });
+    repository.taskOverview.mockResolvedValue({
+      snapshot: {
+        total: 11,
+        completed: 2,
+        inProgress: 3,
+        pending: 5,
+        overdue: 1,
+      },
+      current: {
+        total: 10,
+        completed: 2,
+        inProgress: 3,
+        pending: 4,
+        overdue: 1,
+      },
+      previous: {
+        total: 8,
+        completed: 1,
+        inProgress: 2,
+        pending: 4,
+        overdue: 1,
+      },
+      series: [
+        {
+          date: '2026-09-23',
+          total: 3,
+          completed: 1,
+          inProgress: 1,
+          pending: 1,
+          overdue: 0,
+        },
+      ],
+      departments: [
+        { department: TaskDepartment.SALES, count: 4 },
+        { department: TaskDepartment.MARKETING, count: 2 },
+      ],
+    });
+
+    const result = await service.taskOverview(
+      'org-1',
+      'user-1',
+      new Date('2026-09-23T06:00:00.000Z'),
+    );
+
+    expect(repository.taskOverview).toHaveBeenCalledWith(
+      'org-1',
+      new Date('2026-09-23T06:00:00.000Z'),
+      {
+        start: new Date('2026-09-20T18:00:00.000Z'),
+        end: new Date('2026-09-27T18:00:00.000Z'),
+        timezone: 'Asia/Dhaka',
+      },
+      {
+        start: new Date('2026-09-13T18:00:00.000Z'),
+        end: new Date('2026-09-20T18:00:00.000Z'),
+        timezone: 'Asia/Dhaka',
+      },
+      'Asia/Dhaka',
+    );
+    expect(result).toMatchObject({
+      timezone: 'Asia/Dhaka',
+      total: 11,
+      period: {
+        type: 'THIS_WEEK',
+        counts: { total: 10 },
+        comparison: {
+          total: { current: 10, previous: 8, changePercent: 25 },
+        },
+      },
+      productivity: {
+        completionRate: 20,
+        overallScore: { availability: 'UNAVAILABLE', value: null },
+      },
+    });
+    expect(result.period.series).toHaveLength(7);
+    expect(result.taskBreakdown.items).toEqual(
+      expect.arrayContaining([
+        {
+          department: TaskDepartment.SALES,
+          count: 4,
+          percentage: 40,
+        },
+        {
+          department: TaskDepartment.STRATEGY,
+          count: 0,
+          percentage: 0,
+        },
+      ]),
+    );
   });
 });

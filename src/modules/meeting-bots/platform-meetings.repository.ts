@@ -131,6 +131,23 @@ export class PlatformMeetingsRepository {
       .exec();
   }
 
+  markCompletedByMeetingBotId(organizationId: string, meetingBotId: string) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          organizationId,
+          meetingBotId,
+          status: {
+            $in: [PlatformMeetingStatus.READY, PlatformMeetingStatus.SCHEDULED],
+          },
+        },
+        { $set: { status: PlatformMeetingStatus.COMPLETED } },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
   async list(
     organizationId: string,
     page: number,

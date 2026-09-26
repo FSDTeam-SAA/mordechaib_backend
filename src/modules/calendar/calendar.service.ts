@@ -21,6 +21,7 @@ import { CalendarEventsRepository } from './calendar-events.repository';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
 import { ListCalendarEventsQueryDto } from './dto/list-calendar-events-query.dto';
 import { UpdateCalendarEventDto } from './dto/update-calendar-event.dto';
+import { SyncCalendarDto } from './dto/sync-calendar.dto';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
@@ -216,6 +217,106 @@ export class CalendarService {
     return {
       ...result,
       items: result.items.map((event) => this.toEventResponse(event)),
+    };
+  }
+
+  async syncEvents(
+    organizationId: string,
+    userId: string,
+    input: SyncCalendarDto,
+    now = new Date(),
+  ) {
+    const from = input.from
+      ? new Date(input.from)
+      : new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+    const to = input.to
+      ? new Date(input.to)
+      : new Date(now.getTime() + 365 * 24 * 60 * 60_000);
+    if (from >= to) throw new BadRequestException('from must be before to');
+    if (to.getTime() - from.getTime() > 730 * 24 * 60 * 60_000) {
+      throw new BadRequestException(
+        'Calendar sync range cannot exceed 730 days',
+      );
+    }
+
+    const connections = await this.repository.list(organizationId);
+    const providers = Object.values(CalendarProviderType).filter(
+      (provider) =>
+        (!input.provider || input.provider === provider) &&
+        connections.some(
+          (connection) =>
+            String(connection.provider) === provider &&
+            connection.status === 'CONNECTED',
+        ),
+    );
+    if (!providers.length) {
+      throw new ServiceUnavailableException(
+        input.provider
+          ? 'The selected calendar provider is not connected'
+          : 'Connect a Google or Outlook calendar before synchronizing',
+      );
+    }
+
+    const results = [];
+    for (const provider of providers) {
+      try {
+        const accessToken = await this.getAccessToken(organizationId, provider);
+        const externalEvents = await this.providerFor(provider).listEvents(
+          accessToken,
+          { from, to },
+        );
+        let synchronized = 0;
+        for (let index = 0; index < externalEvents.length; index += 25) {
+          const stored = await Promise.all(
+            externalEvents
+              .slice(index, index + 25)
+              .map((event) =>
+                this.events.syncUpsert(
+                  organizationId,
+                  userId,
+                  provider,
+                  event,
+                  now,
+                  this.hash(`${organizationId}|${provider}|SYNC|${event.id}`),
+                ),
+              ),
+          );
+          synchronized += stored.filter(Boolean).length;
+        }
+        results.push({
+          provider,
+          status: 'SYNCHRONIZED' as const,
+          synchronized,
+          skipped: externalEvents.length - synchronized,
+        });
+      } catch (error) {
+        results.push({
+          provider,
+          status: 'FAILED' as const,
+          synchronized: 0,
+          error: this.errorMessage(error),
+        });
+      }
+    }
+
+    if (results.every((result) => result.status === 'FAILED')) {
+      throw new ServiceUnavailableException({
+        message: 'No connected calendar could be synchronized',
+        providers: results,
+      });
+    }
+
+    return {
+      availability: results.some((result) => result.status === 'FAILED')
+        ? 'PARTIAL'
+        : 'AVAILABLE',
+      synchronizedAt: now.toISOString(),
+      range: { from: from.toISOString(), to: to.toISOString() },
+      providers: results,
+      totalSynchronized: results.reduce(
+        (total, result) => total + result.synchronized,
+        0,
+      ),
     };
   }
 
