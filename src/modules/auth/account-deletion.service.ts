@@ -26,6 +26,8 @@ type LocalRecording = { localFilePath?: string };
 // excluded: deleting one customer must never delete another customer's data.
 const ORGANIZATION_COLLECTIONS = [
   'integrations',
+  'integration_oauth_states',
+  'crm_deals',
   'call_logs',
   'approvals',
   'tasks',

@@ -7,20 +7,25 @@ import {
 } from '../../../common/enums/support-request.enum';
 
 export class ListSupportRequestsQueryDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  page = 1;
+  page: number = 1;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    type: Number,
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
   @IsOptional()
-  limit = 20;
+  limit: number = 20;
 
   @ApiPropertyOptional({ enum: SupportRequestStatus })
   @IsEnum(SupportRequestStatus)

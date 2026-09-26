@@ -1672,37 +1672,37 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 
 This index is the resource-first map for the completed backend. A **collection** is the MongoDB collection that stores the authoritative record. A few endpoints are computed views or provider proxies and therefore have no new collection of their own. All paths are relative to `/api/v1`.
 
-| Collection / resource                                            | What it stores                                                   | Canonical frontend endpoints                                                   |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `users`                                                          | User profile, role, preferences, verification state              | `/auth/*`, `/users`, `/team`                                                   |
-| `auth_sessions`, `auth_tokens`                                   | Refresh sessions and reset/verification codes                    | `/auth/login`, `/auth/refresh`, password and verification routes               |
-| `organizations`                                                  | Company profile, onboarding and organization settings            | `/organizations/me`                                                            |
-| `notification_preferences`                                       | Per-user notification settings                                   | `/settings/notifications`                                                      |
-| `ai_settings`                                                    | Organization AI configuration                                    | `/settings/ai`                                                                 |
-| `tasks`                                                          | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                       |
-| `approvals`                                                      | Generic organization approval queue                              | `/approvals`                                                                   |
-| `call_logs`, `call_recordings`                                   | Outbound call records and recording references                   | `/calls`                                                                       |
-| `integrations`                                                   | Connected CRM/Meta integration metadata                          | `/integrations`, `/meta/*`, `/crm/contacts`                                    |
-| `managed_calendar_events`                                        | Platform-managed calendar events                                 | `/calendar/events`                                                             |
-| `platform_meetings`                                              | Provider-created Google Meet/Zoom meetings                       | `/meetings`                                                                    |
-| `meeting_bots`, `meeting_transcripts`                            | Recall bot jobs, transcript and temporary audio access           | `/meeting-bots`                                                                |
-| `recall_zoom_connections`, `meeting_oauth_states`                | Organization calendar/provider connections and OAuth state       | connection routes in section 7 and `/calendar/connections`                     |
-| `conversations`, `messages`, `message_attachments`               | AI chat threads, messages and private attachments                | `/messages/*`                                                                  |
-| `ai_action_proposals`, `ai_source_analyses`                      | AI action proposals and source analysis                          | `/call-intelligence/proposals/*`                                               |
-| `agents`, `agent_activities`                                     | Agent catalog and runtime telemetry                              | `/agents`, Chief of Staff insight routes                                       |
-| `executive_briefings`, `strategic_notes`                         | Generated briefings and CEO direction                            | `/chief-of-staff/*`                                                            |
-| `email_connections`, `email_drafts`, `email_oauth_states`        | Owner mail connections, drafts and send audit state              | `/email/*`                                                                     |
-| `support_requests`                                               | User-submitted Help & Support tickets and private attachments    | `/support/requests/*`                                                          |
-| `subscription_plans`, `organization_subscriptions`               | Plan catalog and organization subscription state                 | `/subscription-plans`, `/subscriptions`, `/billing`                            |
-| `addon_products`                                                 | Public/commercial add-on catalog                                 | `/addon-products`, `/billing/addons`                                           |
-| `invoices`, `revenue_snapshots`                                  | Stripe invoice cache and platform revenue summaries              | `/invoices`, `/subscription-analytics`                                         |
-| `cancellation_requests`                                          | Subscription cancellation workflow                               | `/subscriptions/me/cancel`, `/subscriptions-admin/cancellation-requests`       |
-| `usage_records`, `call_usage_periods`                            | Product and Twilio metered usage                                 | `/usage`, `/twilio/usage`                                                      |
-| `setup_packages`, `onboarding_setups`, `onboarding_availability` | Paid setup catalog, customer onboarding and booking availability | `/setup-packages`, `/onboarding-setups`                                        |
-| `twilio_accounts`, `twilio_phone_numbers`, `twilio_settings`     | Managed Twilio connection, number and call configuration         | `/twilio/*`                                                                    |
-| `audit_logs`                                                     | Security and business audit events                               | `/audit-logs`                                                                  |
-| `package_inquiries`                                              | Public sales/package leads                                       | `/package-inquiries`                                                           |
-| computed resources                                               | Health, organizer dashboard, pricing estimate and provider data  | `/health`, `/organizer-dashboard/*`, `/subscription-plans/estimate`, `/meta/*` |
+| Collection / resource                                            | What it stores                                                   | Canonical frontend endpoints                                                    |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `users`                                                          | User profile, role, preferences, verification state              | `/auth/*`, `/users`, `/team`                                                    |
+| `auth_sessions`, `auth_tokens`                                   | Refresh sessions and reset/verification codes                    | `/auth/login`, `/auth/refresh`, password and verification routes                |
+| `organizations`                                                  | Company profile, onboarding and organization settings            | `/organizations/me`                                                             |
+| `notification_preferences`                                       | Per-user notification settings                                   | `/settings/notifications`                                                       |
+| `ai_settings`                                                    | Organization AI configuration                                    | `/settings/ai`                                                                  |
+| `tasks`                                                          | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                        |
+| `approvals`                                                      | Generic organization approval queue                              | `/approvals`                                                                    |
+| `call_logs`, `call_recordings`                                   | Outbound call records and recording references                   | `/calls`                                                                        |
+| `integrations`, `integration_oauth_states`, `crm_deals`          | CRM connections, one-time OAuth state, and normalized deal cache | `/integrations`, `/crm/connections/*`, `/crm/analytics/revenue`, `/crm/*/deals` |
+| `managed_calendar_events`                                        | Platform-managed calendar events                                 | `/calendar/events`                                                              |
+| `platform_meetings`                                              | Provider-created Google Meet/Zoom meetings                       | `/meetings`                                                                     |
+| `meeting_bots`, `meeting_transcripts`                            | Recall bot jobs, transcript and temporary audio access           | `/meeting-bots`                                                                 |
+| `recall_zoom_connections`, `meeting_oauth_states`                | Organization calendar/provider connections and OAuth state       | connection routes in section 7 and `/calendar/connections`                      |
+| `conversations`, `messages`, `message_attachments`               | AI chat threads, messages and private attachments                | `/messages/*`                                                                   |
+| `ai_action_proposals`, `ai_source_analyses`                      | AI action proposals and source analysis                          | `/call-intelligence/proposals/*`                                                |
+| `agents`, `agent_activities`                                     | Agent catalog and runtime telemetry                              | `/agents`, Chief of Staff insight routes                                        |
+| `executive_briefings`, `strategic_notes`                         | Generated briefings and CEO direction                            | `/chief-of-staff/*`                                                             |
+| `email_connections`, `email_drafts`, `email_oauth_states`        | Owner mail connections, drafts and send audit state              | `/email/*`                                                                      |
+| `support_requests`                                               | User-submitted Help & Support tickets and private attachments    | `/support/requests/*`                                                           |
+| `subscription_plans`, `organization_subscriptions`               | Plan catalog and organization subscription state                 | `/subscription-plans`, `/subscriptions`, `/billing`                             |
+| `addon_products`                                                 | Public/commercial add-on catalog                                 | `/addon-products`, `/billing/addons`                                            |
+| `invoices`, `revenue_snapshots`                                  | Stripe invoice cache and platform revenue summaries              | `/invoices`, `/subscription-analytics`                                          |
+| `cancellation_requests`                                          | Subscription cancellation workflow                               | `/subscriptions/me/cancel`, `/subscriptions-admin/cancellation-requests`        |
+| `usage_records`, `call_usage_periods`                            | Product and Twilio metered usage                                 | `/usage`, `/twilio/usage`                                                       |
+| `setup_packages`, `onboarding_setups`, `onboarding_availability` | Paid setup catalog, customer onboarding and booking availability | `/setup-packages`, `/onboarding-setups`                                         |
+| `twilio_accounts`, `twilio_phone_numbers`, `twilio_settings`     | Managed Twilio connection, number and call configuration         | `/twilio/*`                                                                     |
+| `audit_logs`                                                     | Security and business audit events                               | `/audit-logs`                                                                   |
+| `package_inquiries`                                              | Public sales/package leads                                       | `/package-inquiries`                                                            |
+| computed resources                                               | Health, organizer dashboard, pricing estimate and provider data  | `/health`, `/organizer-dashboard/*`, `/subscription-plans/estimate`, `/meta/*`  |
 
 ### 17.1 Universal response shapes
 
@@ -1800,12 +1800,12 @@ Successful login example:
 
 ### 18.3 `organizations` — company profile
 
-| Endpoint                                          | Access                                | Request body                                                                   | Response data                 |
-| ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------- |
-| `GET /organizations/me`                           | Authenticated                         | none                                                                           | current organization document |
-| `GET /organizations/:organizationId`              | Authenticated, same organization only | path must equal token organization ID                                          | current organization document |
+| Endpoint                                          | Access                                | Request body                                     | Response data                 |
+| ------------------------------------------------- | ------------------------------------- | ------------------------------------------------ | ----------------------------- |
+| `GET /organizations/me`                           | Authenticated                         | none                                             | current organization document |
+| `GET /organizations/:organizationId`              | Authenticated, same organization only | path must equal token organization ID            | current organization document |
 | `PATCH /organizations/me`                         | Org `OWNER` or `ADMIN`                | multipart form with optional settings and `logo` | updated organization          |
-| `PATCH /organizations/onboarding/:organizationId` | Org `OWNER` or `ADMIN`                | same onboarding/settings body without file                                     | updated organization          |
+| `PATCH /organizations/onboarding/:organizationId` | Org `OWNER` or `ADMIN`                | same onboarding/settings body without file       | updated organization          |
 
 Organization update fields: `companyName`, `website`, `phoneNumber`, `emailAddress`, `timezone`, `language`, `businessHoursStart`, `businessHoursEnd`, `city`, `street`, `state`, `postalCode`, `industry`, `businessSize`, and optional JPEG/PNG/WebP `logo` up to 5 MB. The backend manages `updatedAt`; do not send it from the frontend.
 
@@ -1961,13 +1961,60 @@ For an AI-created task whose payload omits `department`, Main Backend derives th
 
 Phone numbers must be E.164. `agentPhone` defaults to the organization forwarding number when omitted. This endpoint does not fabricate CRM contacts; `contactId` is optional.
 
-### 19.4 `integrations` — manual CRM contact foundation
+### 19.4 `integrations` and `crm_deals` — HubSpot/Salesforce CRM
 
-| Endpoint             | Request body                                                             | Response data                    |
-| -------------------- | ------------------------------------------------------------------------ | -------------------------------- |
-| `POST /crm/contacts` | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | provider/contact creation result |
+CRM connections belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; deal routes always state their provider explicitly.
 
-This is only an integration foundation. It is not a completed CRM pipeline, churn, forecast, or customer-intelligence API. Render unavailable states for those features as specified in section 14.
+| Endpoint                                   | Request body / query                                                     | Response data                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `GET /integrations`                        | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
+| `GET /crm/connections/HUBSPOT/connect`     | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/SALESFORCE/connect`  | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/:provider/callback`  | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
+| `DELETE /crm/connections/:provider`        | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
+| `PATCH /crm/connections/:provider/default` | none                                                                     | selected default CRM connection                                                                         |
+| `POST /crm/connections/:provider/sync`     | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
+| `GET /crm/analytics/revenue`               | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
+| `POST /crm/:provider/deals`                | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
+| `PATCH /crm/:provider/deals/:externalId`   | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
+| `POST /crm/contacts`                       | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
+
+`:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connect, disconnect, set-default, manual-sync, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
+
+Deal create body:
+
+```json
+{
+  "name": "Enterprise renewal",
+  "amount": 60000,
+  "currency": "USD",
+  "providerStage": "Proposal",
+  "closeDate": "2026-10-31T00:00:00.000Z",
+  "ownerId": "provider-owner-id"
+}
+```
+
+`currency`, `providerStage`, `closeDate`, and `ownerId` are optional. Update accepts any non-empty subset. CRM revenue is returned separately per currency; the frontend must not sum different currencies.
+
+Revenue response shape:
+
+```json
+{
+  "availability": "AVAILABLE",
+  "groupBy": "stage",
+  "range": { "from": "2026-01-01T00:00:00.000Z" },
+  "currencies": [
+    {
+      "currency": "USD",
+      "totalAmount": 60000,
+      "dealCount": 1,
+      "items": [{ "key": "OPEN", "amount": 60000, "dealCount": 1 }]
+    }
+  ]
+}
+```
+
+CRM data is eventually consistent: `lastSyncedAt`, `syncStatus`, and `reconnectRequired` must be shown in the UI. `crm_deals` is the local analysis cache; provider confirmation completes before a platform deal write updates that cache.
 
 ### 19.5 `call_recordings`, `meeting_bots`, `meeting_transcripts`, and `ai_source_analyses` — call intelligence
 
