@@ -1,6 +1,5 @@
 import { Transform } from 'class-transformer';
 import {
-  IsDateString,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -23,14 +22,6 @@ const DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
 const TIME_FORMATS = ['12H', '24H'] as const;
 
 export class UpdateOnboardingDto {
-  @Transform(trimString)
-  @IsDateString(
-    {},
-    { message: 'expectedUpdatedAt must be an ISO-8601 datetime' },
-  )
-  @IsNotEmpty()
-  expectedUpdatedAt!: string;
-
   @Transform(trimString)
   @IsOptional()
   @IsString()
