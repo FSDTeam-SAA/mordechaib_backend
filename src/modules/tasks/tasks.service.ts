@@ -12,6 +12,7 @@ import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TasksRepository } from './tasks.repository';
 import { TaskStatus } from '../../common/enums/task-status.enum';
+import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -24,8 +25,12 @@ export class TasksService {
   ) {}
 
   async create(organizationId: string, userId: string, dto: CreateTaskDto) {
+    const persistence = this.toPersistence(dto);
+    if (dto.status === TaskStatus.COMPLETED) {
+      persistence.completedAt = new Date();
+    }
     const task = await this.repository.create({
-      ...this.toPersistence(dto),
+      ...persistence,
       organizationId,
       createdByUserId: userId,
     });
@@ -49,8 +54,12 @@ export class TasksService {
     if (existing) return this.toResponse(existing);
 
     try {
+      const inferredDepartment = this.agentDepartment(trace.proposedByAgent);
       const task = await this.repository.create({
         ...this.toPersistence(dto),
+        ...(!dto.department && inferredDepartment
+          ? { department: inferredDepartment }
+          : {}),
         organizationId,
         createdByUserId: userId,
         aiActionProposalId: trace.aiActionProposalId,
@@ -68,7 +77,16 @@ export class TasksService {
     }
   }
 
-  async findAll(organizationId: string, query: ListTasksQueryDto) {
+  async findAll(
+    organizationId: string,
+    query: ListTasksQueryDto,
+    now = new Date(),
+  ) {
+    if (query.status && query.statusGroup) {
+      throw new BadRequestException(
+        'status and statusGroup cannot be used together',
+      );
+    }
     const dueFrom = query.dueFrom ? new Date(query.dueFrom) : undefined;
     const dueTo = query.dueTo ? new Date(query.dueTo) : undefined;
     if (dueFrom && dueTo && dueFrom > dueTo) {
@@ -82,6 +100,8 @@ export class TasksService {
       {
         search: query.search?.trim(),
         status: query.status,
+        statusGroup: query.statusGroup,
+        asOf: query.statusGroup ? now : undefined,
         priority: query.priority,
         department: query.department,
         assignedToUserId: query.assignedToUserId,
@@ -92,7 +112,7 @@ export class TasksService {
 
     return {
       ...result,
-      items: result.items.map((item) => this.toResponse(item)),
+      items: result.items.map((item) => this.toResponse(item, now)),
     };
   }
 
@@ -110,18 +130,31 @@ export class TasksService {
     }
 
     const previous =
-      dto.status === TaskStatus.COMPLETED
+      dto.status !== undefined
         ? await this.repository.findById(organizationId, id)
         : undefined;
     const persistence = this.toPersistence(dto);
-    if (previous && previous.status !== TaskStatus.COMPLETED) {
+    if (
+      previous &&
+      dto.status === TaskStatus.COMPLETED &&
+      previous.status !== TaskStatus.COMPLETED
+    ) {
       persistence.completedAt = new Date();
     }
-    const updated = await this.repository.updateById(
-      organizationId,
-      id,
-      persistence,
-    );
+    const unsetFields =
+      previous &&
+      previous.status === TaskStatus.COMPLETED &&
+      dto.status !== TaskStatus.COMPLETED
+        ? ['completedAt']
+        : [];
+    const updated = unsetFields.length
+      ? await this.repository.updateById(
+          organizationId,
+          id,
+          persistence,
+          unsetFields,
+        )
+      : await this.repository.updateById(organizationId, id, persistence);
     if (!updated) throw new NotFoundException('Task not found');
     if (
       previous &&
@@ -162,6 +195,13 @@ export class TasksService {
     );
   }
 
+  private agentDepartment(agent: AiProposalAgent) {
+    const department = String(agent.type) as TaskDepartment;
+    return Object.values(TaskDepartment).includes(department)
+      ? department
+      : undefined;
+  }
+
   private toPersistence(dto: CreateTaskDto | UpdateTaskDto) {
     const input: Record<string, unknown> = { ...dto };
 
@@ -180,7 +220,10 @@ export class TasksService {
     return input;
   }
 
-  private toResponse(task: TaskItem | Record<string, unknown>) {
+  private toResponse(
+    task: TaskItem | Record<string, unknown>,
+    now = new Date(),
+  ) {
     const record =
       'toObject' in task && typeof task.toObject === 'function'
         ? (task.toObject() as Record<string, unknown>)
@@ -188,6 +231,15 @@ export class TasksService {
     const { _id, __v, organizationId, ...response } = record;
     void __v;
     void organizationId;
-    return { id: String(_id), ...response };
+    const dueDate = response.dueDate
+      ? new Date(String(response.dueDate))
+      : undefined;
+    return {
+      id: String(_id),
+      ...response,
+      isOverdue:
+        response.status !== TaskStatus.COMPLETED &&
+        Boolean(dueDate && dueDate.getTime() < now.getTime()),
+    };
   }
 }

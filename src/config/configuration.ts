@@ -437,6 +437,8 @@ export default () => {
       rememberMeRefreshExpiresIn:
         process.env.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN || '30d',
       passwordResetExpiresIn: process.env.PASSWORD_RESET_EXPIRES_IN || '1h',
+      passwordResetGrantExpiresIn:
+        process.env.PASSWORD_RESET_GRANT_EXPIRES_IN || '15m',
       emailVerificationExpiresIn:
         process.env.EMAIL_VERIFICATION_EXPIRES_IN || '10m',
       bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 12),
@@ -490,6 +492,9 @@ export default () => {
       organizationLogoFolder:
         process.env.CLOUDINARY_ORGANIZATION_LOGO_FOLDER ||
         'noltra/organization-logos',
+      organizationFaviconFolder:
+        process.env.CLOUDINARY_ORGANIZATION_FAVICON_FOLDER ||
+        'noltra/organization-favicons',
       downloadUrlTtlSeconds: cloudinaryDownloadUrlTtlSeconds,
     },
 

@@ -3,9 +3,11 @@ import { AgentActivityStatus } from '../../common/enums/agent-activity.enum';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { ExecutiveBriefingType } from '../../common/enums/executive-briefing.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
+import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import {
   localDateKeys,
+  localWeekRange,
   trailingLocalDaysRange,
 } from '../../common/helpers/local-date-range.helper';
 import {
@@ -252,9 +254,108 @@ export class OrganizerDashboardService {
     };
   }
 
-  async taskOverview(organizationId: string, now = new Date()) {
-    const counts = await this.repository.taskOverview(organizationId, now);
-    return { asOf: now.toISOString(), ...counts };
+  async taskOverview(organizationId: string, userId: string, now = new Date()) {
+    const [profile, organization] = await Promise.all([
+      this.auth.getMe(userId),
+      this.organizations.findCurrent(organizationId),
+    ]);
+    const timezone = profile.timezone || organization.timezone || 'UTC';
+    const currentPeriod = localWeekRange(now, timezone);
+    const previousPeriod = localWeekRange(
+      new Date(currentPeriod.start.getTime() - 1),
+      timezone,
+    );
+    const overview = await this.repository.taskOverview(
+      organizationId,
+      now,
+      currentPeriod,
+      previousPeriod,
+      timezone,
+    );
+    const series = this.fillTaskSeries(
+      localDateKeys(currentPeriod.start, 7, timezone),
+      overview.series,
+    );
+    const departments = new Map(
+      overview.departments.map((item) => [item.department, item.count]),
+    );
+    const breakdownKeys: Array<TaskDepartment | 'UNASSIGNED'> = [
+      ...Object.values(TaskDepartment),
+      'UNASSIGNED',
+    ];
+    const departmentBreakdown = breakdownKeys.map((department) => {
+      const count = departments.get(department) || 0;
+      return {
+        department,
+        count,
+        percentage: this.percentage(count, overview.current.total),
+      };
+    });
+
+    return {
+      asOf: now.toISOString(),
+      timezone,
+      ...overview.snapshot,
+      snapshot: overview.snapshot,
+      period: {
+        type: 'THIS_WEEK',
+        basis: 'DUE_DATE_COHORT_CURRENT_STATUS',
+        start: currentPeriod.start.toISOString(),
+        end: currentPeriod.end.toISOString(),
+        dueToInclusive: new Date(currentPeriod.end.getTime() - 1).toISOString(),
+        counts: overview.current,
+        previous: {
+          start: previousPeriod.start.toISOString(),
+          end: previousPeriod.end.toISOString(),
+          counts: overview.previous,
+        },
+        comparison: {
+          total: this.taskMetricComparison(
+            overview.current.total,
+            overview.previous.total,
+          ),
+          pending: this.taskMetricComparison(
+            overview.current.pending,
+            overview.previous.pending,
+          ),
+          inProgress: this.taskMetricComparison(
+            overview.current.inProgress,
+            overview.previous.inProgress,
+          ),
+          completed: this.taskMetricComparison(
+            overview.current.completed,
+            overview.previous.completed,
+          ),
+          overdue: this.taskMetricComparison(
+            overview.current.overdue,
+            overview.previous.overdue,
+          ),
+        },
+        series,
+      },
+      productivity: {
+        period: 'THIS_WEEK',
+        counts: overview.current,
+        completionRate: this.percentage(
+          overview.current.completed,
+          overview.current.total,
+        ),
+        overallScore: {
+          availability: 'UNAVAILABLE',
+          value: null,
+          reason: 'PRODUCTIVITY_SCORE_METHODOLOGY_NOT_CONFIGURED',
+        },
+      },
+      taskBreakdown: {
+        period: 'THIS_WEEK',
+        items: departmentBreakdown,
+        averageScore: {
+          availability: 'UNAVAILABLE',
+          value: null,
+          reason: 'TASK_SCORE_METHODOLOGY_NOT_CONFIGURED',
+        },
+      },
+    };
   }
 
   async topPriorities(
@@ -291,6 +392,48 @@ export class OrganizerDashboardService {
   ) {
     const indexed = new Map(values.map((item) => [item.date, item.value]));
     return keys.map((date) => ({ date, value: indexed.get(date) || 0 }));
+  }
+
+  private fillTaskSeries(
+    keys: string[],
+    values: Array<{
+      date: string;
+      total: number;
+      completed: number;
+      inProgress: number;
+      pending: number;
+      overdue: number;
+    }>,
+  ) {
+    const indexed = new Map(values.map((item) => [item.date, item]));
+    return keys.map(
+      (date) =>
+        indexed.get(date) || {
+          date,
+          total: 0,
+          completed: 0,
+          inProgress: 0,
+          pending: 0,
+          overdue: 0,
+        },
+    );
+  }
+
+  private taskMetricComparison(current: number, previous: number) {
+    return {
+      current,
+      previous,
+      changePercent:
+        previous === 0
+          ? current === 0
+            ? 0
+            : null
+          : Number((((current - previous) / previous) * 100).toFixed(2)),
+    };
+  }
+
+  private percentage(value: number, total: number) {
+    return total === 0 ? 0 : Number(((value / total) * 100).toFixed(2));
   }
 
   private comparison(series: Array<{ date: string; value: number }>) {

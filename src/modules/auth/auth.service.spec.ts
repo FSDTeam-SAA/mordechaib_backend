@@ -46,6 +46,7 @@ describe('AuthService email verification', () => {
       findByEmail: jest.fn(),
       findByEmailWithPassword: jest.fn(),
       findById: jest.fn(),
+      updatePassword: jest.fn(),
       create: jest.fn(),
       markEmailVerified: jest.fn(),
       updateLastLogin: jest.fn(),
@@ -55,11 +56,13 @@ describe('AuthService email verification', () => {
       create: jest.fn(),
       findByRefreshTokenHash: jest.fn(),
       revoke: jest.fn(),
+      revokeAllForUser: jest.fn(),
     };
     tokens = {
       invalidateActive: jest.fn().mockResolvedValue(undefined),
       create: jest.fn().mockResolvedValue(undefined),
       consumeForUser: jest.fn(),
+      consume: jest.fn(),
     };
     organizations = {
       createPendingOrganization: jest
@@ -76,6 +79,7 @@ describe('AuthService email verification', () => {
       'auth.refreshExpiresIn': '7d',
       'auth.rememberMeRefreshExpiresIn': '30d',
       'auth.passwordResetExpiresIn': '1h',
+      'auth.passwordResetGrantExpiresIn': '15m',
       'auth.emailVerificationExpiresIn': '10m',
       'auth.bcryptRounds': 10,
       'auth.exposeDevelopmentTokens': true,
@@ -185,6 +189,64 @@ describe('AuthService email verification', () => {
 
     await expect(service.verifyEmail(email, '123456')).rejects.toBeInstanceOf(
       UnauthorizedException,
+    );
+  });
+
+  it('issues a short-lived reset token after verifying the matching OTP', async () => {
+    repository.findByEmail.mockResolvedValue(user());
+    tokens.consumeForUser.mockResolvedValue({ userId });
+
+    const result = await service.verifyPasswordResetOtp(email, '123456');
+
+    expect(tokens.consumeForUser).toHaveBeenCalledWith(
+      userId,
+      createHash('sha256').update('123456').digest('hex'),
+      AuthTokenType.PASSWORD_RESET,
+    );
+    expect(tokens.invalidateActive).toHaveBeenCalledWith(
+      userId,
+      AuthTokenType.PASSWORD_RESET_VERIFIED,
+    );
+    expect(tokens.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId,
+        type: AuthTokenType.PASSWORD_RESET_VERIFIED,
+        tokenHash: createHash('sha256').update(result.resetToken).digest('hex'),
+        expiresAt: expect.any(Date),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        resetToken: expect.any(String),
+        expiresIn: 15 * 60,
+      }),
+    );
+  });
+
+  it('resets the password with a verified reset token and no OTP in the body', async () => {
+    tokens.consume.mockResolvedValue({ userId });
+    repository.findById.mockResolvedValue(user());
+    repository.updatePassword.mockResolvedValue(user());
+
+    await expect(
+      service.resetPassword('verified-reset-token', {
+        newPassword: 'NewPassword1!',
+      }),
+    ).resolves.toEqual({ message: 'Password reset successfully' });
+
+    expect(tokens.consume).toHaveBeenCalledWith(
+      createHash('sha256')
+        .update('verified-reset-token')
+        .digest('hex'),
+      AuthTokenType.PASSWORD_RESET_VERIFIED,
+    );
+    expect(repository.updatePassword).toHaveBeenCalledWith(
+      userId,
+      expect.any(String),
+    );
+    expect(sessions.revokeAllForUser).toHaveBeenCalledWith(
+      userId,
+      'PASSWORD_RESET',
     );
   });
 

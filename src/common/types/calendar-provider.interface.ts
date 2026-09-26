@@ -25,6 +25,19 @@ export type CalendarEventResult = {
   htmlUrl?: string;
 };
 
+export type SyncedCalendarEvent = {
+  id: string;
+  title: string;
+  description?: string;
+  startsAt?: Date;
+  endsAt?: Date;
+  timezone?: string;
+  attendees: string[];
+  htmlUrl?: string;
+  cancelled: boolean;
+  providerUpdatedAt?: Date;
+};
+
 export interface CalendarProvider {
   readonly provider: CalendarProviderType;
   refreshAccessToken(refreshToken: string): Promise<{
@@ -42,4 +55,8 @@ export interface CalendarProvider {
     input: UpdateCalendarEventInput,
   ): Promise<CalendarEventResult>;
   cancelEvent(accessToken: string, eventId: string): Promise<void>;
+  listEvents(
+    accessToken: string,
+    range: { from: Date; to: Date },
+  ): Promise<SyncedCalendarEvent[]>;
 }

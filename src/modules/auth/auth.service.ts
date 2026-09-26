@@ -41,6 +41,7 @@ export class AuthService {
   private readonly refreshTokenExpiresIn: number;
   private readonly rememberMeRefreshTokenExpiresIn: number;
   private readonly passwordResetExpiresIn: number;
+  private readonly passwordResetGrantExpiresIn: number;
   private readonly emailVerificationExpiresIn: number;
   private readonly bcryptRounds: number;
   private readonly exposeDevelopmentTokens: boolean;
@@ -67,6 +68,9 @@ export class AuthService {
     );
     this.passwordResetExpiresIn = parseDurationToSeconds(
       config.getOrThrow<string>('auth.passwordResetExpiresIn'),
+    );
+    this.passwordResetGrantExpiresIn = parseDurationToSeconds(
+      config.getOrThrow<string>('auth.passwordResetGrantExpiresIn'),
     );
     this.emailVerificationExpiresIn = parseDurationToSeconds(
       config.getOrThrow<string>('auth.emailVerificationExpiresIn'),
@@ -332,6 +336,10 @@ export class AuthService {
     let passwordResetCode: string | undefined;
 
     if (user && user.status === UserStatus.ACTIVE) {
+      await this.tokensRepository.invalidateActive(
+        String(user._id),
+        AuthTokenType.PASSWORD_RESET_VERIFIED,
+      );
       passwordResetCode = await this.issueOneTimeToken(
         String(user._id),
         AuthTokenType.PASSWORD_RESET,
@@ -354,13 +362,48 @@ export class AuthService {
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
-    const token = await this.tokensRepository.consume(
-      this.hashToken(dto.code),
+  async verifyPasswordResetOtp(email: string, code: string) {
+    const user = await this.repository.findByEmail(email);
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Invalid or expired password reset code');
+    }
+
+    const otp = await this.tokensRepository.consumeForUser(
+      String(user._id),
+      this.hashToken(code),
       AuthTokenType.PASSWORD_RESET,
     );
-    if (!token)
+    if (!otp) {
       throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
+    const resetToken = this.generateOpaqueToken();
+    await this.tokensRepository.invalidateActive(
+      String(user._id),
+      AuthTokenType.PASSWORD_RESET_VERIFIED,
+    );
+    await this.tokensRepository.create({
+      userId: String(user._id),
+      type: AuthTokenType.PASSWORD_RESET_VERIFIED,
+      tokenHash: this.hashToken(resetToken),
+      expiresAt: new Date(
+        Date.now() + this.passwordResetGrantExpiresIn * 1000,
+      ),
+    });
+    return { resetToken, expiresIn: this.passwordResetGrantExpiresIn };
+  }
+
+  async resetPassword(resetToken: string | undefined, dto: ResetPasswordDto) {
+    if (!resetToken) {
+      throw new UnauthorizedException('Password reset verification is required');
+    }
+    const token = await this.tokensRepository.consume(
+      this.hashToken(resetToken),
+      AuthTokenType.PASSWORD_RESET_VERIFIED,
+    );
+    if (!token) {
+      throw new UnauthorizedException('Password reset verification has expired');
+    }
 
     const user = await this.repository.findById(token.userId);
     if (!user)

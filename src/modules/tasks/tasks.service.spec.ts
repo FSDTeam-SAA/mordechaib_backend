@@ -5,6 +5,8 @@ import { TasksRepository } from './tasks.repository';
 import { TasksService } from './tasks.service';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TaskStatusGroup } from '../../common/enums/task-status-group.enum';
+import { TaskDepartment } from '../../common/enums/task-department.enum';
 
 describe('TasksService', () => {
   let repository: Record<string, jest.Mock>;
@@ -60,12 +62,38 @@ describe('TasksService', () => {
       expect.objectContaining({
         createdByUserId: 'approver-1',
         aiActionProposalId: 'proposal-object-id',
+        department: TaskDepartment.SALES,
         proposedByAgent: {
           id: 'sales-agent',
           name: 'Sales Agent',
           type: AgentType.SALES,
         },
       }),
+    );
+  });
+
+  it('infers a strategy task department from a strategy agent', async () => {
+    repository.findByAiActionProposalId.mockResolvedValue(null);
+    repository.create.mockImplementation((input) =>
+      Promise.resolve({ _id: 'task-1', ...input }),
+    );
+
+    await service.createFromAiProposal(
+      'org-1',
+      'approver-1',
+      { title: 'Review market positioning' },
+      {
+        aiActionProposalId: 'proposal-object-id',
+        proposedByAgent: {
+          id: 'strategy-agent',
+          name: 'Dexter',
+          type: AgentType.STRATEGY,
+        },
+      },
+    );
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ department: TaskDepartment.STRATEGY }),
     );
   });
 
@@ -121,12 +149,41 @@ describe('TasksService', () => {
     expect(repository.list).toHaveBeenCalledWith('org-1', 1, 20, {
       search: 'finance',
       status: TaskStatus.IN_PROGRESS,
+      statusGroup: undefined,
+      asOf: undefined,
       priority: undefined,
       department: undefined,
       assignedToUserId: undefined,
       dueFrom: undefined,
       dueTo: undefined,
     });
+  });
+
+  it('rejects conflicting exact-status and dashboard-group filters', async () => {
+    await expect(
+      service.findAll('org-1', {
+        page: 1,
+        limit: 20,
+        status: TaskStatus.TODO,
+        statusGroup: TaskStatusGroup.PENDING,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.list).not.toHaveBeenCalled();
+  });
+
+  it('sets completedAt when a task is created as completed', async () => {
+    repository.create.mockImplementation((input) =>
+      Promise.resolve({ _id: 'task-1', ...input }),
+    );
+
+    await service.create('org-1', 'user-1', {
+      title: 'Already completed',
+      status: TaskStatus.COMPLETED,
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ completedAt: expect.any(Date) }),
+    );
   });
 
   it('rejects an invalid due-date range', async () => {
@@ -197,6 +254,35 @@ describe('TasksService', () => {
 
     expect(notifications.notifyAgentTaskCompleted).toHaveBeenCalledWith(
       expect.objectContaining({ status: TaskStatus.COMPLETED }),
+    );
+  });
+
+  it('clears completedAt when a completed task is reopened', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d2',
+      organizationId: 'org-1',
+      title: 'Reopened task',
+      status: TaskStatus.COMPLETED,
+      completedAt: new Date('2026-09-20T10:00:00.000Z'),
+      createdByUserId: 'user-1',
+    });
+    repository.updateById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d2',
+      organizationId: 'org-1',
+      title: 'Reopened task',
+      status: TaskStatus.IN_PROGRESS,
+      createdByUserId: 'user-1',
+    });
+
+    await service.update('org-1', '66cc9bdfa847ea856c7b41d2', {
+      status: TaskStatus.IN_PROGRESS,
+    });
+
+    expect(repository.updateById).toHaveBeenCalledWith(
+      'org-1',
+      '66cc9bdfa847ea856c7b41d2',
+      { status: TaskStatus.IN_PROGRESS },
+      ['completedAt'],
     );
   });
 });

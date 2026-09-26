@@ -20,6 +20,9 @@ import { RequestUser } from '../../common/types/request-context.type';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
 import { ListCalendarEventsQueryDto } from './dto/list-calendar-events-query.dto';
 import { UpdateCalendarEventDto } from './dto/update-calendar-event.dto';
+import { SyncCalendarDto } from './dto/sync-calendar.dto';
+import { CalendarDashboardQueryDto } from './dto/calendar-dashboard-query.dto';
+import { CalendarDashboardService } from './calendar-dashboard.service';
 import { CalendarService } from './calendar.service';
 
 @ApiTags('Calendar Integrations')
@@ -27,7 +30,21 @@ import { CalendarService } from './calendar.service';
 @Controller('calendar')
 @UseGuards(OrganizationGuard)
 export class CalendarController {
-  constructor(private readonly calendarService: CalendarService) {}
+  constructor(
+    private readonly calendarService: CalendarService,
+    private readonly dashboard: CalendarDashboardService,
+  ) {}
+
+  @Get('dashboard')
+  @ApiOperation({
+    summary: 'Get the unified calendar dashboard for an explicit date range',
+  })
+  dashboardView(
+    @CurrentOrg() org: { id: string },
+    @Query() query: CalendarDashboardQueryDto,
+  ) {
+    return this.dashboard.get(org.id, query);
+  }
 
   @Post('events')
   @UseGuards(RolesGuard)
@@ -43,6 +60,20 @@ export class CalendarController {
     @Body() dto: CreateCalendarEventDto,
   ) {
     return this.calendarService.createEvent(org.id, user.id, dto);
+  }
+
+  @Post('sync')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Synchronize connected Google and Outlook calendar events',
+  })
+  syncEvents(
+    @CurrentOrg() org: { id: string },
+    @CurrentUser() user: RequestUser,
+    @Body() dto: SyncCalendarDto,
+  ) {
+    return this.calendarService.syncEvents(org.id, user.id, dto);
   }
 
   @Get('events')
