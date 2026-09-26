@@ -9,6 +9,7 @@ import {
   CalendarEventResult,
   CalendarProvider,
   CreateCalendarEventInput,
+  SyncedCalendarEvent,
   UpdateCalendarEventInput,
 } from '../../../common/types/calendar-provider.interface';
 
@@ -29,6 +30,23 @@ export type MicrosoftProfile = {
 };
 
 type OutlookEventResponse = { id?: string; webLink?: string };
+
+type OutlookEventListItem = {
+  id?: string;
+  subject?: string;
+  bodyPreview?: string;
+  webLink?: string;
+  isCancelled?: boolean;
+  lastModifiedDateTime?: string;
+  start?: { dateTime?: string; timeZone?: string };
+  end?: { dateTime?: string; timeZone?: string };
+  attendees?: Array<{ emailAddress?: { address?: string } }>;
+};
+
+type OutlookEventListResponse = {
+  value?: OutlookEventListItem[];
+  '@odata.nextLink'?: string;
+};
 
 @Injectable()
 export class OutlookCalendarProvider implements CalendarProvider {
@@ -131,6 +149,75 @@ export class OutlookCalendarProvider implements CalendarProvider {
       { method: 'DELETE' },
       [404, 410],
     );
+  }
+
+  async listEvents(
+    accessToken: string,
+    range: { from: Date; to: Date },
+  ): Promise<SyncedCalendarEvent[]> {
+    const query = new URLSearchParams({
+      startDateTime: range.from.toISOString(),
+      endDateTime: range.to.toISOString(),
+      $top: '1000',
+      $select:
+        'id,subject,bodyPreview,start,end,attendees,webLink,isCancelled,lastModifiedDateTime',
+    });
+    let nextUrl: string | undefined =
+      `https://graph.microsoft.com/v1.0/me/calendarView?${query.toString()}`;
+    const items: SyncedCalendarEvent[] = [];
+    while (nextUrl) {
+      const page: OutlookEventListResponse =
+        await this.request<OutlookEventListResponse>(nextUrl, accessToken, {
+          headers: { Prefer: 'outlook.timezone="UTC"' },
+        });
+      for (const event of page.value || []) {
+        const normalized = this.syncedEvent(event);
+        if (normalized) items.push(normalized);
+      }
+      nextUrl = page['@odata.nextLink'];
+    }
+    return items;
+  }
+
+  private syncedEvent(event: OutlookEventListItem) {
+    if (!event.id) return undefined;
+    const startsAt = this.microsoftDate(event.start?.dateTime);
+    const endsAt = this.microsoftDate(event.end?.dateTime);
+    const cancelled = event.isCancelled === true;
+    if ((!startsAt || !endsAt || endsAt <= startsAt) && !cancelled) {
+      return undefined;
+    }
+    return {
+      id: event.id,
+      title: event.subject?.trim() || '(Untitled event)',
+      description: event.bodyPreview,
+      startsAt,
+      endsAt,
+      ...(startsAt && endsAt
+        ? {
+            startsAt,
+            endsAt,
+            timezone: event.start?.timeZone || event.end?.timeZone || 'UTC',
+          }
+        : {}),
+      attendees: (event.attendees || [])
+        .map((attendee) => attendee.emailAddress?.address?.trim().toLowerCase())
+        .filter((email): email is string => !!email),
+      htmlUrl: event.webLink,
+      cancelled,
+      providerUpdatedAt: event.lastModifiedDateTime
+        ? new Date(event.lastModifiedDateTime)
+        : undefined,
+    } satisfies SyncedCalendarEvent;
+  }
+
+  private microsoftDate(value?: string) {
+    if (!value) return undefined;
+    const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+      ? value
+      : `${value}Z`;
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
   private eventBody(input: UpdateCalendarEventInput) {

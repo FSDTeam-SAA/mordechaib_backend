@@ -9,6 +9,7 @@ import {
   CalendarEventResult,
   CalendarProvider,
   CreateCalendarEventInput,
+  SyncedCalendarEvent,
   UpdateCalendarEventInput,
 } from '../../../common/types/calendar-provider.interface';
 
@@ -21,6 +22,23 @@ type GoogleTokenResponse = {
 };
 
 type GoogleEventResponse = { id?: string; htmlLink?: string };
+
+type GoogleEventListItem = {
+  id?: string;
+  status?: string;
+  summary?: string;
+  description?: string;
+  htmlLink?: string;
+  updated?: string;
+  start?: { dateTime?: string; date?: string; timeZone?: string };
+  end?: { dateTime?: string; date?: string; timeZone?: string };
+  attendees?: Array<{ email?: string }>;
+};
+
+type GoogleEventListResponse = {
+  items?: GoogleEventListItem[];
+  nextPageToken?: string;
+};
 
 @Injectable()
 export class GoogleCalendarProvider implements CalendarProvider {
@@ -82,6 +100,73 @@ export class GoogleCalendarProvider implements CalendarProvider {
       { method: 'DELETE' },
       [404, 410],
     );
+  }
+
+  async listEvents(
+    accessToken: string,
+    range: { from: Date; to: Date },
+  ): Promise<SyncedCalendarEvent[]> {
+    const items: SyncedCalendarEvent[] = [];
+    let pageToken: string | undefined;
+    do {
+      const query = new URLSearchParams({
+        timeMin: range.from.toISOString(),
+        timeMax: range.to.toISOString(),
+        singleEvents: 'true',
+        showDeleted: 'true',
+        orderBy: 'startTime',
+        maxResults: '2500',
+      });
+      if (pageToken) query.set('pageToken', pageToken);
+      const page = await this.request<GoogleEventListResponse>(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?${query.toString()}`,
+        accessToken,
+      );
+      for (const event of page.items || []) {
+        const normalized = this.syncedEvent(event);
+        if (normalized) items.push(normalized);
+      }
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return items;
+  }
+
+  private syncedEvent(event: GoogleEventListItem) {
+    if (!event.id) return undefined;
+    const startsAt = this.googleDate(event.start);
+    const endsAt = this.googleDate(event.end);
+    const cancelled = event.status === 'cancelled';
+    if ((!startsAt || !endsAt || endsAt <= startsAt) && !cancelled) {
+      return undefined;
+    }
+    return {
+      id: event.id,
+      title: event.summary?.trim() || '(Untitled event)',
+      description: event.description,
+      startsAt,
+      endsAt,
+      ...(startsAt && endsAt
+        ? {
+            startsAt,
+            endsAt,
+            timezone: event.start?.timeZone || event.end?.timeZone || 'UTC',
+          }
+        : {}),
+      attendees: (event.attendees || [])
+        .map((attendee) => attendee.email?.trim().toLowerCase())
+        .filter((email): email is string => !!email),
+      htmlUrl: event.htmlLink,
+      cancelled,
+      providerUpdatedAt: event.updated ? new Date(event.updated) : undefined,
+    } satisfies SyncedCalendarEvent;
+  }
+
+  private googleDate(value?: { dateTime?: string; date?: string }) {
+    const raw =
+      value?.dateTime || (value?.date ? `${value.date}T00:00:00Z` : '');
+    if (!raw) return undefined;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
   private eventBody(input: UpdateCalendarEventInput) {

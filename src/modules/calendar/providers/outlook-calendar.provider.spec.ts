@@ -81,4 +81,45 @@ describe('OutlookCalendarProvider', () => {
       htmlUrl: 'https://outlook.office.com/calendar/item/1',
     });
   });
+
+  it('normalizes Outlook calendarView events for synchronization', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          value: [
+            {
+              id: 'outlook-event-1',
+              subject: 'Customer review',
+              start: {
+                dateTime: '2026-09-26T10:00:00.0000000',
+                timeZone: 'UTC',
+              },
+              end: { dateTime: '2026-09-26T10:30:00.0000000', timeZone: 'UTC' },
+              attendees: [{ emailAddress: { address: 'Guest@Example.com' } }],
+              isCancelled: false,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const items = await provider.listEvents('access-token', {
+      from: new Date('2026-09-01T00:00:00.000Z'),
+      to: new Date('2026-10-01T00:00:00.000Z'),
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'outlook-event-1',
+        attendees: ['guest@example.com'],
+        cancelled: false,
+      }),
+    ]);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toEqual(
+      expect.objectContaining({ Prefer: 'outlook.timezone="UTC"' }),
+    );
+  });
 });

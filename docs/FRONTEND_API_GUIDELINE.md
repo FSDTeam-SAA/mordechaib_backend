@@ -1,7 +1,7 @@
 # Frontend API Guideline
 
-Version: 2.0  
-Last reviewed against Main Backend: 2026-09-24
+Version: 2.1
+Last reviewed against Main Backend: 2026-09-25
 
 ## 1. Purpose and scope
 
@@ -140,6 +140,9 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 | List meetings                | `GET /meetings`                                                       |
 | Get created meeting          | `GET /meetings/:id`                                                   |
 | Meeting provider connections | provider routes in section 7                                          |
+| Calendar dashboard           | `GET /calendar/dashboard`                                             |
+| Synchronize calendars        | `POST /calendar/sync`                                                 |
+| Calendar event CRUD          | `/calendar/events` routes in section 19.6                             |
 | List email connections       | `GET /email/connections`                                              |
 | Connect email provider       | `GET /email/connections/:provider/connect`                            |
 | Create/list/read/edit draft  | `/email/drafts` routes in section 8                                   |
@@ -153,6 +156,11 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 | Agent catalog                | `GET /agents`                                                         |
 | Integration cards            | `GET /integrations`                                                   |
 | Notification bell count      | `GET /notifications/unread-count`                                     |
+| Task dashboard analytics     | `GET /organizer-dashboard/task-overview`                              |
+| List/filter tasks            | `GET /tasks`                                                          |
+| Create a task                | `POST /tasks`                                                         |
+| Read/edit/delete a task      | `/tasks/:id` routes in section 19                                     |
+| Task-page upcoming meetings  | `GET /organizer-dashboard/upcoming-meetings`                          |
 | Submit support request       | `POST /support/requests`                                              |
 | Recent support requests      | `GET /support/requests`                                               |
 | Support request details      | `GET /support/requests/:requestId`                                    |
@@ -627,8 +635,14 @@ Relevant response fields:
 Meeting statuses:
 
 ```text
-CREATING | READY | SCHEDULED | FAILED | CANCELLED
+CREATING | READY | SCHEDULED | COMPLETED | FAILED | CANCELLED
 ```
+
+Every platform-created meeting requests a meeting bot in the current product
+flow. The Main Backend changes the platform meeting to `COMPLETED` when the bot
+reports that the call ended/done, or when its transcript completes. The
+frontend must render the returned status and must not derive completion only
+from the current clock.
 
 ### 7.3 List meetings
 
@@ -1665,7 +1679,7 @@ This index is the resource-first map for the completed backend. A **collection**
 | `organizations`                                                  | Company profile, onboarding and organization settings            | `/organizations/me`                                                            |
 | `notification_preferences`                                       | Per-user notification settings                                   | `/settings/notifications`                                                      |
 | `ai_settings`                                                    | Organization AI configuration                                    | `/settings/ai`                                                                 |
-| `task_items`                                                     | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                       |
+| `tasks`                                                          | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                       |
 | `approvals`                                                      | Generic organization approval queue                              | `/approvals`                                                                   |
 | `call_logs`, `call_recordings`                                   | Outbound call records and recording references                   | `/calls`                                                                       |
 | `integrations`                                                   | Connected CRM/Meta integration metadata                          | `/integrations`, `/meta/*`, `/crm/contacts`                                    |
@@ -1729,7 +1743,10 @@ For mutation endpoints, replace optimistic state with the server response. A `20
 
 ### 18.1 `users`, `auth_sessions`, and `auth_tokens` — authentication
 
-These collections hold account identity and secure session/token state. Passwords, token hashes, and verification codes are never returned.
+These collections hold account identity and secure session/token state. Passwords,
+stored token hashes, and emailed verification codes are never returned. A
+short-lived reset token is returned only after successful password-OTP
+verification.
 
 | Endpoint                         | Access        | Request body                                                               | Response data                                                   |
 | -------------------------------- | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------- |
@@ -1739,13 +1756,20 @@ These collections hold account identity and secure session/token state. Password
 | `POST /auth/logout`              | Authenticated | none                                                                       | logout confirmation                                             |
 | `POST /auth/logout-all`          | Authenticated | none                                                                       | all current-user sessions revoked                               |
 | `POST /auth/forgot-password`     | Public        | `{ email }`                                                                | generic accepted response; do not reveal account existence      |
-| `POST /auth/reset-password`      | Public        | `{ code, newPassword }`                                                    | success confirmation                                            |
+| `POST /auth/verify-reset-otp`    | Public        | `{ email, code }`                                                          | short-lived reset token                                         |
+| `POST /auth/reset-password`      | Public        | `{ newPassword }` plus `x-password-reset-token` header                     | success confirmation                                            |
 | `PATCH /auth/change-password`    | Authenticated | `{ currentPassword, newPassword }`                                         | updated session/security response                               |
 | `POST /auth/verify-email`        | Public        | `{ email, code }`                                                          | verified user/session response                                  |
 | `POST /auth/resend-verification` | Public        | `{ email }`                                                                | generic accepted response                                       |
 | `DELETE /auth/me`                | Authenticated | `{ password, confirmation: "DELETE" }`                                     | account deletion confirmation                                   |
 
 Password rule for register, reset, and change: 8–72 characters and at least one uppercase, lowercase, number, and special character.
+
+Password reset flow: call `POST /auth/forgot-password`, verify the email OTP
+with `POST /auth/verify-reset-otp`, then retain the returned `resetToken` only
+until the password form is submitted. Call `POST /auth/reset-password` with
+that value in `x-password-reset-token`; the reset form body contains only
+`newPassword`. The reset token expires after 15 minutes by default.
 
 Successful login example:
 
@@ -1861,17 +1885,17 @@ Do not send unknown settings fields: global validation rejects non-whitelisted b
 
 ## 19. Operations: Tasks, Approvals, Calls, CRM Foundation, and Calendar
 
-### 19.1 `task_items` — task management
+### 19.1 `tasks` — task management
 
-`task_items` is the authoritative operational task collection. All task routes are organization-scoped; create/update/delete allow `OWNER`, `ADMIN`, and `MEMBER`.
+`tasks` is the authoritative operational task collection. All task routes are organization-scoped; create/update/delete allow `OWNER`, `ADMIN`, and `MEMBER`.
 
-| Endpoint            | Request body / query                                                                                  | Response data         |
-| ------------------- | ----------------------------------------------------------------------------------------------------- | --------------------- |
-| `POST /tasks`       | task body below                                                                                       | created task          |
-| `GET /tasks`        | `page`, `limit`, `search`, `status`, `priority`, `department`, `assignedToUserId`, `dueFrom`, `dueTo` | paginated tasks       |
-| `GET /tasks/:id`    | none                                                                                                  | one task              |
-| `PATCH /tasks/:id`  | any subset of create body                                                                             | updated task          |
-| `DELETE /tasks/:id` | none                                                                                                  | deletion confirmation |
+| Endpoint            | Request body / query                                                                                                   | Response data         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `POST /tasks`       | task body below                                                                                                        | created task          |
+| `GET /tasks`        | `page`, `limit`, `search`, `status` or `statusGroup`, `priority`, `department`, `assignedToUserId`, `dueFrom`, `dueTo` | paginated tasks       |
+| `GET /tasks/:id`    | none                                                                                                                   | one task              |
+| `PATCH /tasks/:id`  | any subset of create body                                                                                              | updated task          |
+| `DELETE /tasks/:id` | none                                                                                                                   | deletion confirmation |
 
 Create example:
 
@@ -1902,7 +1926,20 @@ Create example:
 }
 ```
 
-Task response includes its organization ID, creator/assignee, title, status, priority, department, dates, nested task fields, and timestamps. Use enum values returned by the API; never invent a task status.
+Task status values are `DRAFT`, `TODO`, `IN_PROGRESS`, `WAITING`, `BLOCKED`, and `COMPLETED`. Department values are `SALES`, `FINANCE`, `OPERATIONS`, `STRATEGY`, `SUPPORT`, `DESIGN`, `MARKETING`, and `OTHER`.
+
+For the dashboard tabs, use one `statusGroup` value instead of combining multiple status requests:
+
+- `PENDING`: non-overdue `DRAFT`, `TODO`, `WAITING`, and `BLOCKED` tasks.
+- `IN_PROGRESS`: non-overdue `IN_PROGRESS` tasks.
+- `COMPLETED`: completed tasks.
+- `OVERDUE`: every non-completed task whose due date has passed.
+
+`status` and `statusGroup` are mutually exclusive. `dueFrom` and `dueTo` filter the task due date; both endpoints are inclusive. Every returned task includes a derived `isOverdue` boolean. The response intentionally omits `organizationId`, but includes creator/assignee IDs, title, status, priority, department, dates, nested task fields, AI proposal/agent metadata when applicable, and timestamps.
+
+When a task first becomes `COMPLETED`, the backend sets `completedAt`. Reopening the task clears `completedAt`, so completion analytics do not retain a stale timestamp.
+
+For an AI-created task whose payload omits `department`, Main Backend derives the department when `proposedByAgent.type` exactly matches a task department (including `STRATEGY`). An explicit AI payload department is preserved. The current AI Backend contract does not yet list `STRATEGY` as an explicit task-department value, so it should omit that field for a Strategy Agent task until its own whitelist is updated.
 
 ### 19.2 `approvals` — generic approval queue
 
@@ -1968,17 +2005,273 @@ Details response shape:
 
 For meeting-source audio, use `GET /meeting-bots/:meetingBotId/audio`, not the call audio endpoint. Request `includeTranscript=true` only when the user opens the transcript panel.
 
-### 19.6 `managed_calendar_events` — calendar event CRUD
+### 19.6 Calendar dashboard, synchronization, and event CRUD
+
+**Collections/resources:** `managed_calendar_events`, `platform_meetings`,
+`meeting_bots`, `tasks`, `ai_action_proposals`, and `ai_source_analyses`.
+
+For the Calendar screen, use `GET /calendar/dashboard` as the canonical read
+model. It merges and deduplicates platform meetings and synchronized calendar
+events. Do not build this screen by merging `/meetings` and `/calendar/events`
+in the browser.
 
 | Endpoint                      | Access                 | Request body / query                                                        | Response data                            |
 | ----------------------------- | ---------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |
+| `GET /calendar/dashboard`     | Authenticated          | explicit range and display options                                          | unified Calendar-screen read model       |
+| `POST /calendar/sync`         | Org `OWNER` or `ADMIN` | optional provider/range body                                                | Google/Outlook synchronization result    |
 | `POST /calendar/events`       | Org `OWNER` or `ADMIN` | event body below                                                            | created event                            |
 | `GET /calendar/events`        | Authenticated          | list query                                                                  | event list                               |
 | `GET /calendar/events/:id`    | Authenticated          | none                                                                        | one event                                |
 | `PATCH /calendar/events/:id`  | Org `OWNER` or `ADMIN` | changed event fields                                                        | updated event                            |
-| `DELETE /calendar/events/:id` | Org `OWNER` or `ADMIN` | none                                                                        | cancellation/deletion result             |
+| `DELETE /calendar/events/:id` | Org `OWNER` or `ADMIN` | none                                                                        | cancelled event                          |
 | `GET /calendar/connections`   | Authenticated          | none                                                                        | Google/Outlook calendar connection cards |
 | `PATCH /calendar/default`     | Org `OWNER` or `ADMIN` | `{ "provider": "GOOGLE_CALENDAR" }` or `{ "provider": "OUTLOOK_CALENDAR" }` | selected default calendar                |
+
+#### 19.6.1 Synchronize Google/Outlook events
+
+The Sync Calendar quick action calls:
+
+```http
+POST /calendar/sync
+Content-Type: application/json
+```
+
+Synchronize every connected provider using the default range:
+
+```json
+{}
+```
+
+Or synchronize one provider and an explicit range:
+
+```json
+{
+  "provider": "GOOGLE_CALENDAR",
+  "from": "2026-09-01T00:00:00.000Z",
+  "to": "2026-10-01T00:00:00.000Z"
+}
+```
+
+`provider` is `GOOGLE_CALENDAR` or `OUTLOOK_CALENDAR`. If omitted, every
+connected calendar is synchronized. If the range is omitted, the backend uses
+30 days before the request through 365 days after it. An explicit range cannot
+exceed 730 days.
+
+Response:
+
+```json
+{
+  "availability": "AVAILABLE",
+  "synchronizedAt": "2026-09-25T08:00:00.000Z",
+  "range": {
+    "from": "2026-09-01T00:00:00.000Z",
+    "to": "2026-10-01T00:00:00.000Z"
+  },
+  "providers": [
+    {
+      "provider": "GOOGLE_CALENDAR",
+      "status": "SYNCHRONIZED",
+      "synchronized": 18,
+      "skipped": 0
+    }
+  ],
+  "totalSynchronized": 18
+}
+```
+
+Provider events are idempotently upserted by organization, provider, and
+provider event ID. Deleted/cancelled provider events update an existing local
+record to `CANCELLED`; a deletion notification with no matching local record
+is safely skipped.
+
+When one connected provider fails and another succeeds, the request succeeds
+with `availability: "PARTIAL"`; the failed provider entry has `status:
+"FAILED"`, `synchronized: 0`, and `error`. If every selected provider fails,
+the route returns `503`. Re-fetch `GET /calendar/dashboard` after every full or
+partial success.
+
+This is an explicit user action. The frontend must not assume a periodic
+background sync exists.
+
+#### 19.6.2 Calendar dashboard read model
+
+```http
+GET /calendar/dashboard?from=2026-09-01T00:00:00.000Z&to=2026-10-01T00:00:00.000Z&timezone=Asia%2FDhaka&bufferMinutes=15&upcomingLimit=8&conflictLimit=20
+```
+
+Query:
+
+| Field           | Required | Rule                                          |
+| --------------- | -------- | --------------------------------------------- |
+| `from`          | yes      | ISO-8601 range start                          |
+| `to`            | yes      | ISO-8601 range end; range maximum is 730 days |
+| `timezone`      | no       | valid IANA timezone; default `UTC`            |
+| `bufferMinutes` | no       | `0..240`; default `15`                        |
+| `upcomingLimit` | no       | `1..50`; default `8`                          |
+| `conflictLimit` | no       | `1..100`; default `20`                        |
+
+Use the visible day/week/month/year boundary for `from` and `to`. Keep the
+same explicit timezone while navigating the calendar.
+
+Condensed response shape:
+
+```json
+{
+  "asOf": "2026-09-25T08:00:00.000Z",
+  "timezone": "Asia/Dhaka",
+  "range": {
+    "from": "2026-09-01T00:00:00.000Z",
+    "to": "2026-10-01T00:00:00.000Z"
+  },
+  "dataAvailability": { "availability": "AVAILABLE" },
+  "summary": {
+    "total": 20,
+    "scheduled": 11,
+    "completed": 5,
+    "cancelled": 4,
+    "failed": 0,
+    "series": [
+      {
+        "date": "2026-09-25",
+        "total": 3,
+        "scheduled": 2,
+        "completed": 1,
+        "cancelled": 0
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "MEETING_OR_EVENT_ID",
+      "sourceType": "PLATFORM_MEETING",
+      "title": "Client review",
+      "description": "Review delivery and next steps",
+      "startsAt": "2026-09-27T09:00:00.000Z",
+      "endsAt": "2026-09-27T09:30:00.000Z",
+      "durationMinutes": 30,
+      "timezone": "Asia/Dhaka",
+      "participantEmails": ["client@example.com"],
+      "status": "SCHEDULED",
+      "provider": "GOOGLE_MEET",
+      "eventUrl": "https://calendar.google.com/..."
+    }
+  ],
+  "upcoming": [],
+  "conflicts": {
+    "items": [
+      {
+        "type": "OVERLAP",
+        "meetingIds": ["MEETING_ID_1", "MEETING_ID_2"],
+        "meetings": ["Sales review", "Client follow-up"],
+        "startsAt": "2026-09-27T09:15:00.000Z",
+        "overlapMinutes": 15
+      }
+    ],
+    "travelTime": {
+      "availability": "UNAVAILABLE",
+      "reason": "MEETING_LOCATIONS_NOT_CAPTURED"
+    }
+  },
+  "taskAndCalls": {
+    "tasksCreatedFromCalls": 2,
+    "upcomingDeadlines": 3,
+    "aiReminders": 1,
+    "followUpsPending": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "FOLLOW_UP_WORKFLOW_NOT_CONFIGURED"
+    },
+    "crmUpdatesToday": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "CRM_FOUNDATION_NOT_IMPLEMENTED"
+    }
+  },
+  "priority": {
+    "availability": "PARTIAL",
+    "classified": 8,
+    "unclassified": 12,
+    "counts": { "high": 2, "medium": 5, "low": 1 },
+    "averageScore": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "MEETING_PRIORITY_SCORE_METHODOLOGY_NOT_CONFIGURED"
+    },
+    "confidenceScores": {
+      "availability": "UNAVAILABLE",
+      "items": [],
+      "reason": "AI_MEETING_SCORING_NOT_IMPLEMENTED"
+    }
+  },
+  "automation": {
+    "notesGenerated": 4,
+    "actionItemsCreated": 7,
+    "tasksAssigned": 3,
+    "followUpEmailsSent": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "EMAILS_NOT_LINKED_TO_MEETINGS"
+    },
+    "crmRecordsUpdated": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "CRM_FOUNDATION_NOT_IMPLEMENTED"
+    },
+    "customerHealthUpdated": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "CUSTOMER_FOUNDATION_NOT_IMPLEMENTED"
+    }
+  },
+  "aiScheduling": {
+    "availability": "UNAVAILABLE",
+    "suggestions": [],
+    "reason": "AI_SCHEDULING_CONTRACT_NOT_IMPLEMENTED"
+  }
+}
+```
+
+Response usage:
+
+- `summary` powers Total, Scheduled, Completed, and Cancelled cards and their
+  date series. Missing dates are zero; the backend does not emit empty dates.
+- `summary.total` includes scheduled, completed, and cancelled records;
+  `failed` is reported separately and is not included in `total`.
+- `items` powers the calendar grid, selected-day agenda, and status table.
+- `upcoming` is already sorted and limited.
+- `sourceType` determines details/actions: `PLATFORM_MEETING` uses
+  `/meetings/:id`; `CALENDAR_EVENT` uses `/calendar/events/:id`.
+- Edit with the matching `PATCH` route and cancel with the matching `DELETE`
+  route. There is no separate frontend “mark complete” call; bot lifecycle is
+  authoritative for platform meetings.
+- Normalized item statuses are `SCHEDULED`, `COMPLETED`, `CANCELLED`, or
+  `FAILED`.
+- `COMPLETED` is authoritative for platform meetings because every current
+  platform flow uses a bot. A synchronized standalone external event has no
+  bot completion signal and remains scheduled or cancelled; do not infer a
+  completed state in the browser.
+- `participantEmails` is the current participant identity. Do not expect CRM
+  names or phone numbers yet.
+- `conflicts.items[].type` is `OVERLAP` or `INSUFFICIENT_BUFFER`. Travel-time
+  conflicts remain unavailable until meeting locations are captured.
+- `priority.availability` can be `PARTIAL` because urgency exists for managed
+  calendar events but not every platform/external meeting. Do not manufacture
+  values for `unclassified` meetings.
+- `priority.averageScore`, `priority.confidenceScores`, meeting-linked
+  follow-up email counts, CRM updates, and customer-health updates can return
+  `UNAVAILABLE`; render an unavailable/hidden state instead of `0`.
+- `aiScheduling` remains unavailable until the AI Backend implements the
+  Calendar Intelligence contract. The frontend must not call the AI Backend
+  directly.
+- If either underlying source exceeds the safety limit, `dataAvailability` is
+  `PARTIAL` with reason `CALENDAR_RANGE_RESULT_LIMIT_REACHED`; narrow the
+  visible range.
+- `tasksCreatedFromCalls`, meeting analysis/notes, action items, and assigned
+  task automation counts use records produced within the requested range.
+  `upcomingDeadlines` and `aiReminders` count open tasks due from `asOf` up to
+  `to`.
+
+#### 19.6.3 Direct event CRUD
 
 Event create example:
 
@@ -1997,7 +2290,97 @@ Event create example:
 }
 ```
 
-Reuse `idempotencyKey` when retrying the same event create request. Use `POST /meetings` from section 7 when the platform must create a provider Google Meet or Zoom URL.
+Reuse `idempotencyKey` when retrying the same event create request. Use
+`POST /meetings` from section 7 when the platform must create a provider
+Google Meet or Zoom URL.
+
+`GET /calendar/events` supports `page`, `limit`, `provider`, `meetingType`,
+`status`, `from`, and `to`. It remains useful for resource-specific
+administration, but do not use it alone for the Calendar dashboard because it
+does not include `platform_meetings`.
+
+List response:
+
+```json
+{
+  "items": [
+    {
+      "id": "CALENDAR_EVENT_ID",
+      "provider": "GOOGLE_CALENDAR",
+      "providerEventId": "provider-event-id",
+      "providerEventUrl": "https://calendar.google.com/...",
+      "title": "Quarterly planning",
+      "meetingType": "OTHER",
+      "urgency": "MEDIUM",
+      "startsAt": "2026-10-01T10:00:00.000Z",
+      "endsAt": "2026-10-01T10:30:00.000Z",
+      "timezone": "Asia/Dhaka",
+      "attendees": ["guest@example.com"],
+      "status": "SCHEDULED",
+      "importedFromProvider": false
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20,
+  "pages": 1
+}
+```
+
+`PATCH /calendar/events/:id` accepts any changed create fields except
+`idempotencyKey`. `DELETE /calendar/events/:id` cancels the provider event and
+returns the event with `status: "CANCELLED"`; it is not a hard delete.
+
+#### 19.6.4 Calendar connection selector
+
+```http
+GET /calendar/connections
+```
+
+```json
+{
+  "defaultProvider": "GOOGLE_CALENDAR",
+  "connections": [
+    {
+      "provider": "GOOGLE_CALENDAR",
+      "connected": true,
+      "status": "CONNECTED",
+      "isDefault": true,
+      "account": {
+        "id": "provider-account-id",
+        "email": "owner@example.com",
+        "name": "Owner"
+      },
+      "connectedByUserId": "USER_ID",
+      "expiresAt": "2026-09-25T09:00:00.000Z"
+    },
+    {
+      "provider": "OUTLOOK_CALENDAR",
+      "connected": false,
+      "status": "DISCONNECTED",
+      "isDefault": false,
+      "account": {}
+    }
+  ]
+}
+```
+
+Select a connected provider as the organization default:
+
+```http
+PATCH /calendar/default
+Content-Type: application/json
+```
+
+```json
+{
+  "provider": "OUTLOOK_CALENDAR"
+}
+```
+
+The response has the same shape as `GET /calendar/connections`. Use the OAuth
+routes in section 7.1 when a provider is disconnected; do not call OAuth
+callbacks from frontend JavaScript.
 
 ## 20. Commercial Catalog, Billing, Subscription, Invoice, and Usage
 
@@ -2273,17 +2656,72 @@ Shared Meta list query fields: `date` or paired `fromDate`/`toDate` (`YYYY-MM-DD
 
 No dedicated dashboard collection exists. The backend derives this read model from tasks, meetings, AI telemetry, call intelligence and briefings. All routes require org `OWNER` or `ADMIN`.
 
-| Endpoint                                      | Query                            | Response data                                           |
-| --------------------------------------------- | -------------------------------- | ------------------------------------------------------- |
-| `GET /organizer-dashboard/summary`            | `days` (`2..30`, default `7`)    | KPI cards, trends, and current dashboard summary        |
-| `GET /organizer-dashboard/workforce`          | `page`, `limit`, `activityHours` | global agent catalog with organization runtime activity |
-| `GET /organizer-dashboard/upcoming-meetings`  | `limit` (`1..20`, default `4`)   | deduplicated upcoming meetings                          |
-| `GET /organizer-dashboard/today-briefing`     | none                             | latest eligible today briefing or empty state           |
-| `GET /organizer-dashboard/recent-voice-notes` | `limit` (`1..20`, default `4`)   | recent call-intelligence voice-note cards               |
-| `GET /organizer-dashboard/task-overview`      | none                             | mutually exclusive task status counts                   |
-| `GET /organizer-dashboard/top-priorities`     | `limit` (`1..20`, default `4`)   | ranked task priorities                                  |
+| Endpoint                                      | Query                            | Response data                                                         |
+| --------------------------------------------- | -------------------------------- | --------------------------------------------------------------------- |
+| `GET /organizer-dashboard/summary`            | `days` (`2..30`, default `7`)    | KPI cards, trends, and current dashboard summary                      |
+| `GET /organizer-dashboard/workforce`          | `page`, `limit`, `activityHours` | global agent catalog with organization runtime activity               |
+| `GET /organizer-dashboard/upcoming-meetings`  | `limit` (`1..20`, default `4`)   | deduplicated upcoming meetings                                        |
+| `GET /organizer-dashboard/today-briefing`     | none                             | latest eligible today briefing or empty state                         |
+| `GET /organizer-dashboard/recent-voice-notes` | `limit` (`1..20`, default `4`)   | recent call-intelligence voice-note cards                             |
+| `GET /organizer-dashboard/task-overview`      | none                             | task counts, local-week trends, productivity and department breakdown |
+| `GET /organizer-dashboard/top-priorities`     | `limit` (`1..20`, default `4`)   | ranked task priorities                                                |
 
 Dashboard responses are read models. Do not PATCH them; mutate the underlying task, meeting, briefing, or proposal resource through its own canonical endpoint.
+
+The task overview keeps the original top-level all-time snapshot fields for compatibility and adds a timezone-aware current-week model:
+
+```json
+{
+  "asOf": "2026-09-24T10:00:00.000Z",
+  "timezone": "Asia/Dhaka",
+  "total": 11,
+  "completed": 2,
+  "inProgress": 3,
+  "pending": 5,
+  "overdue": 1,
+  "snapshot": {
+    "total": 11,
+    "completed": 2,
+    "inProgress": 3,
+    "pending": 5,
+    "overdue": 1
+  },
+  "period": {
+    "type": "THIS_WEEK",
+    "basis": "DUE_DATE_COHORT_CURRENT_STATUS",
+    "start": "2026-09-20T18:00:00.000Z",
+    "end": "2026-09-27T18:00:00.000Z",
+    "dueToInclusive": "2026-09-27T17:59:59.999Z",
+    "counts": {},
+    "previous": { "start": "...", "end": "...", "counts": {} },
+    "comparison": {
+      "total": { "current": 10, "previous": 8, "changePercent": 25 }
+    },
+    "series": []
+  },
+  "productivity": {
+    "period": "THIS_WEEK",
+    "counts": {},
+    "completionRate": 20,
+    "overallScore": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "PRODUCTIVITY_SCORE_METHODOLOGY_NOT_CONFIGURED"
+    }
+  },
+  "taskBreakdown": {
+    "period": "THIS_WEEK",
+    "items": [{ "department": "SALES", "count": 4, "percentage": 40 }],
+    "averageScore": {
+      "availability": "UNAVAILABLE",
+      "value": null,
+      "reason": "TASK_SCORE_METHODOLOGY_NOT_CONFIGURED"
+    }
+  }
+}
+```
+
+The weekly series and comparison use tasks whose `dueDate` falls inside each local week and classify them by their current status. `changePercent` is `null` when the previous value is zero and the current value is non-zero. Scores remain explicitly unavailable until a product-approved methodology exists; the frontend must not substitute a fabricated number.
 
 ### 22.5 `audit_logs` — organization audit trail
 
