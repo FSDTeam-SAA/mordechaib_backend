@@ -3,6 +3,7 @@ import { HydratedDocument } from 'mongoose';
 import { BusinessIndustry } from '../../common/enums/business-industry.enum';
 import { BusinessSize } from '../../common/enums/business-size.enum';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
+import { OrganizationStatus } from '../../common/enums/organization-status.enum';
 
 export type OrganizationDocument = HydratedDocument<Organization>;
 
@@ -18,8 +19,24 @@ export class Organization {
   @Prop({ default: 'UTC' })
   timezone!: string;
 
-  @Prop({ default: 'ACTIVE' })
-  status!: string;
+  @Prop({
+    default: OrganizationStatus.ACTIVE,
+    enum: Object.values(OrganizationStatus),
+    index: true,
+  })
+  status!: OrganizationStatus;
+
+  @Prop({ default: false, index: true })
+  isInternal!: boolean;
+
+  @Prop()
+  suspendedAt?: Date;
+
+  @Prop()
+  suspendedBy?: string;
+
+  @Prop({ trim: true })
+  suspendedReason?: string;
 
   @Prop({ default: 'STARTER' })
   plan!: string;

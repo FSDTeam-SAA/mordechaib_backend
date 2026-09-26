@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -62,15 +61,8 @@ export class OrganizationsService {
     branding?: OrganizationBrandingFiles,
   ) {
     const organization = await this.findCurrent(id);
-    const { expectedUpdatedAt: expectedUpdatedAtValue, ...changes } = input;
-    const expectedUpdatedAt = new Date(expectedUpdatedAtValue);
+    const changes = input;
     const { logo, favicon } = branding ?? {};
-
-    if (!this.hasExpectedUpdatedAt(organization.updatedAt, expectedUpdatedAt)) {
-      throw new ConflictException(
-        'Your company settings were updated elsewhere. Refresh them and try again.',
-      );
-    }
 
     if (logo && changes.logoUrl !== undefined) {
       throw new BadRequestException('Send either logo or logoUrl, not both');
@@ -153,13 +145,10 @@ export class OrganizationsService {
             ? { onboardingStep: nextStep }
             : {}),
       },
-      expectedUpdatedAt,
     );
 
     if (!updated) {
-      throw new ConflictException(
-        'Your company settings were updated elsewhere. Refresh them and try again.',
-      );
+      throw new NotFoundException('Organization not found');
     }
 
     await this.auditLogs.create({
@@ -177,9 +166,5 @@ export class OrganizationsService {
     });
 
     return updated;
-  }
-
-  private hasExpectedUpdatedAt(actual: Date | undefined, expected: Date) {
-    return actual?.getTime() === expected.getTime();
   }
 }

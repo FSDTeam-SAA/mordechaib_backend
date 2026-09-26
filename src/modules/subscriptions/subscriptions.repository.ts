@@ -106,11 +106,18 @@ export class SubscriptionsRepository {
     organizationId: string,
     planId: string,
     snapshotLimits: OrganizationSubscription['snapshotLimits'],
+    billingInterval?: 'month' | 'year',
   ) {
     return this.subscriptionModel
       .findOneAndUpdate(
         { organizationId },
-        { $set: { planId, snapshotLimits } },
+        {
+          $set: {
+            planId,
+            snapshotLimits,
+            ...(billingInterval ? { billingInterval } : {}),
+          },
+        },
         { new: true },
       )
       .exec();
