@@ -156,6 +156,19 @@ export class SubscriptionsService {
     );
   }
 
+  updatePlanFromPlatformAdmin(
+    organizationId: string,
+    plan: SubscriptionPlan,
+    billingInterval: 'month' | 'year',
+  ) {
+    return this.repository.updatePlan(
+      organizationId,
+      String((plan as unknown as { _id: unknown })._id),
+      this.buildSnapshot(plan),
+      billingInterval,
+    );
+  }
+
   private buildSnapshot(plan: SubscriptionPlan) {
     return {
       priceUsd: plan.priceUsd,

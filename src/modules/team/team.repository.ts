@@ -160,6 +160,7 @@ export class TeamRepository {
     const created = await this.organizationModel.create({
       name: PLATFORM_ORGANIZATION_NAME,
       status: 'ACTIVE',
+      isInternal: true,
     });
     return String(created._id);
   }
