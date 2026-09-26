@@ -1804,10 +1804,10 @@ Successful login example:
 | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------- |
 | `GET /organizations/me`                           | Authenticated                         | none                                                                           | current organization document |
 | `GET /organizations/:organizationId`              | Authenticated, same organization only | path must equal token organization ID                                          | current organization document |
-| `PATCH /organizations/me`                         | Org `OWNER` or `ADMIN`                | multipart form with required `expectedUpdatedAt`, optional settings and `logo` | updated organization          |
+| `PATCH /organizations/me`                         | Org `OWNER` or `ADMIN`                | multipart form with optional settings and `logo` | updated organization          |
 | `PATCH /organizations/onboarding/:organizationId` | Org `OWNER` or `ADMIN`                | same onboarding/settings body without file                                     | updated organization          |
 
-Organization update fields: `companyName`, `website`, `phoneNumber`, `emailAddress`, `timezone`, `language`, `businessHoursStart`, `businessHoursEnd`, `city`, `street`, `state`, `postalCode`, `industry`, `businessSize`, and optional JPEG/PNG/WebP `logo` up to 5 MB. The `expectedUpdatedAt` concurrency rule is identical to profile update.
+Organization update fields: `companyName`, `website`, `phoneNumber`, `emailAddress`, `timezone`, `language`, `businessHoursStart`, `businessHoursEnd`, `city`, `street`, `state`, `postalCode`, `industry`, `businessSize`, and optional JPEG/PNG/WebP `logo` up to 5 MB. The backend manages `updatedAt`; do not send it from the frontend.
 
 Representative response:
 

@@ -71,18 +71,10 @@ export class OrganizationsController {
   @ApiBody({
     required: true,
     description:
-      'Copy `updatedAt` from GET /organizations/me into `expectedUpdatedAt`, then send only the company fields to change. This prevents overwriting newer settings. Upload `logo` as JPEG, PNG, or WebP and `favicon` as PNG or ICO (maximum 5 MB each).',
+      'Send only the company fields to change. The backend updates `updatedAt` automatically. Upload `logo` as JPEG, PNG, or WebP and `favicon` as PNG or ICO (maximum 5 MB each).',
     schema: {
       type: 'object',
-      required: ['expectedUpdatedAt'],
       properties: {
-        expectedUpdatedAt: {
-          type: 'string',
-          format: 'date-time',
-          description:
-            'The updatedAt value returned by the most recent GET /organizations/me.',
-          example: '2026-09-19T10:30:00.000Z',
-        },
         companyName: { type: 'string', maxLength: 120, example: 'Noltra AI' },
         website: {
           type: 'string',
