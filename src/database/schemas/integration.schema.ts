@@ -45,6 +45,11 @@ export class Integration {
   @Prop({ default: false, index: true })
   isDefaultCalendar?: boolean;
 
+  // Calendar and CRM defaults are independent. A single organization may use
+  // both a default calendar and a default CRM provider at the same time.
+  @Prop({ default: false, index: true })
+  isDefaultCrm?: boolean;
+
   @Prop({ type: Object, default: {} })
   metadata?: Record<string, unknown>;
 }
@@ -56,5 +61,12 @@ IntegrationSchema.index(
   {
     unique: true,
     partialFilterExpression: { isDefaultCalendar: true },
+  },
+);
+IntegrationSchema.index(
+  { organizationId: 1, isDefaultCrm: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDefaultCrm: true },
   },
 );

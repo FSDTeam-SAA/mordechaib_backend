@@ -52,13 +52,13 @@ const INTEGRATION_CARDS = [
     provider: IntegrationProvider.SALESFORCE,
     label: 'Salesforce',
     lookup: [IntegrationProvider.SALESFORCE],
-    connectPath: undefined,
+    connectPath: '/crm/connections/SALESFORCE/connect',
   },
   {
     provider: IntegrationProvider.HUBSPOT,
     label: 'HubSpot CRM',
     lookup: [IntegrationProvider.HUBSPOT],
-    connectPath: undefined,
+    connectPath: '/crm/connections/HUBSPOT/connect',
   },
   {
     provider: 'CUSTOM_CRM_API',
@@ -138,6 +138,11 @@ export class IntegrationsService {
           },
           connectedByUserId: metadata.connectedByUserId,
           expiresAt: connection?.expiresAt,
+          isDefaultCrm: Boolean(connection?.isDefaultCrm),
+          lastSyncedAt: metadata.lastSyncedAt,
+          syncStatus: metadata.syncStatus,
+          lastSyncError: metadata.lastSyncError,
+          reconnectRequired: metadata.reconnectRequired === true,
         };
       }),
     };

@@ -282,6 +282,22 @@ export default () => {
     );
   }
   if (
+    Boolean(process.env.HUBSPOT_CLIENT_ID?.trim()) !==
+    Boolean(process.env.HUBSPOT_CLIENT_SECRET?.trim())
+  ) {
+    throw new Error(
+      'HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET must be configured together',
+    );
+  }
+  if (
+    Boolean(process.env.SALESFORCE_CLIENT_ID?.trim()) !==
+    Boolean(process.env.SALESFORCE_CLIENT_SECRET?.trim())
+  ) {
+    throw new Error(
+      'SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET must be configured together',
+    );
+  }
+  if (
     microsoftOAuthClientId &&
     microsoftOAuthRedirectUri !==
       `${appBaseUrl}/api/v1/calendar/outlook/oauth/callback`
@@ -539,6 +555,53 @@ export default () => {
 
     integrations: {
       encryptionKey: integrationEncryptionKey,
+      frontendUrl: `${frontendUrl}/dashboard/integrations`,
+    },
+
+    crm: {
+      syncIntervalMinutes: positiveInteger(
+        process.env.CRM_SYNC_INTERVAL_MINUTES,
+        30,
+        'CRM_SYNC_INTERVAL_MINUTES',
+      ),
+      requestTimeoutMs: positiveInteger(
+        process.env.CRM_REQUEST_TIMEOUT_MS,
+        20_000,
+        'CRM_REQUEST_TIMEOUT_MS',
+      ),
+      hubspot: {
+        clientId: process.env.HUBSPOT_CLIENT_ID?.trim(),
+        clientSecret: process.env.HUBSPOT_CLIENT_SECRET?.trim(),
+        redirectUri:
+          process.env.HUBSPOT_OAUTH_REDIRECT_URI ||
+          `${appBaseUrl}/api/v1/crm/connections/HUBSPOT/callback`,
+        scopes: (
+          process.env.HUBSPOT_OAUTH_SCOPES ||
+          'oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write'
+        )
+          .split(/[ ,]+/)
+          .map((scope) => scope.trim())
+          .filter(Boolean),
+      },
+      salesforce: {
+        clientId: process.env.SALESFORCE_CLIENT_ID?.trim(),
+        clientSecret: process.env.SALESFORCE_CLIENT_SECRET?.trim(),
+        loginUrl: (
+          process.env.SALESFORCE_LOGIN_URL || 'https://login.salesforce.com'
+        )
+          .trim()
+          .replace(/\/+$/, ''),
+        redirectUri:
+          process.env.SALESFORCE_OAUTH_REDIRECT_URI ||
+          `${appBaseUrl}/api/v1/crm/connections/SALESFORCE/callback`,
+        scopes: (
+          process.env.SALESFORCE_OAUTH_SCOPES ||
+          'api refresh_token offline_access id'
+        )
+          .split(/[ ,]+/)
+          .map((scope) => scope.trim())
+          .filter(Boolean),
+      },
     },
 
     email: {
