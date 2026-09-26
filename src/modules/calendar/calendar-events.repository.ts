@@ -5,6 +5,7 @@ import { CalendarEventStatus } from '../../common/enums/calendar-event-status.en
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
+import { SyncedCalendarEvent } from '../../common/types/calendar-provider.interface';
 import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
 
 export type ReserveCalendarEvent = {
@@ -126,6 +127,68 @@ export class CalendarEventsRepository {
       this.model.countDocuments(query).exec(),
     ]);
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  syncUpsert(
+    organizationId: string,
+    userId: string,
+    provider: CalendarProviderType,
+    event: SyncedCalendarEvent,
+    syncedAt: Date,
+    idempotencyHash: string,
+  ) {
+    if (!event.startsAt || !event.endsAt || !event.timezone) {
+      return this.model
+        .findOneAndUpdate(
+          { organizationId, provider, providerEventId: event.id },
+          {
+            $set: {
+              status: CalendarEventStatus.CANCELLED,
+              providerUpdatedAt: event.providerUpdatedAt,
+              lastSyncedAt: syncedAt,
+            },
+            $unset: { failureCode: 1, failureMessage: 1 },
+          },
+          { new: true, runValidators: true },
+        )
+        .lean()
+        .exec();
+    }
+    return this.model
+      .findOneAndUpdate(
+        { organizationId, provider, providerEventId: event.id },
+        {
+          $set: {
+            title: event.title,
+            description: event.description,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+            timezone: event.timezone,
+            attendees: event.attendees,
+            providerEventUrl: event.htmlUrl,
+            status: event.cancelled
+              ? CalendarEventStatus.CANCELLED
+              : CalendarEventStatus.SCHEDULED,
+            providerUpdatedAt: event.providerUpdatedAt,
+            lastSyncedAt: syncedAt,
+          },
+          $setOnInsert: {
+            organizationId,
+            createdByUserId: userId,
+            idempotencyHash,
+            provider,
+            providerEventId: event.id,
+            meetingType: MeetingType.OTHER,
+            urgency: MeetingUrgency.MEDIUM,
+            reminderMinutesBeforeStart: 0,
+            importedFromProvider: true,
+          },
+          $unset: { failureCode: 1, failureMessage: 1 },
+        },
+        { new: true, upsert: true, runValidators: true },
+      )
+      .lean()
+      .exec();
   }
 
   private isDuplicateKeyError(error: unknown) {

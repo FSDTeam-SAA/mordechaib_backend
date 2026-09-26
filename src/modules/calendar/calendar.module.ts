@@ -8,6 +8,8 @@ import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { ConfigModule } from '@nestjs/config';
 import { CalendarEventsRepository } from './calendar-events.repository';
 import { SettingsModule } from '../settings/settings.module';
+import { CalendarDashboardRepository } from './calendar-dashboard.repository';
+import { CalendarDashboardService } from './calendar-dashboard.service';
 
 @Module({
   imports: [ConfigModule, SettingsModule],
@@ -18,6 +20,8 @@ import { SettingsModule } from '../settings/settings.module';
     GoogleCalendarProvider,
     OutlookCalendarProvider,
     CalendarEventsRepository,
+    CalendarDashboardRepository,
+    CalendarDashboardService,
   ],
   exports: [
     CalendarService,

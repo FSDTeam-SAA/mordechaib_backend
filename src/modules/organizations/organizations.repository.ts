@@ -77,6 +77,11 @@ export class OrganizationsRepository {
     setOrUnset('timezone', input.timezone);
     setOrUnset('language', input.language);
     setOrUnset('logoUrl', input.logoUrl);
+    setOrUnset('faviconUrl', input.faviconUrl);
+    setOrUnset('maintenanceMode', input.maintenanceMode);
+    setOrUnset('defaultCurrency', input.defaultCurrency);
+    setOrUnset('dateFormat', input.dateFormat);
+    setOrUnset('timeFormat', input.timeFormat);
     setOrUnset('businessHours.start', input.businessHoursStart);
     setOrUnset('businessHours.end', input.businessHoursEnd);
     setOrUnset('address.city', input.city);

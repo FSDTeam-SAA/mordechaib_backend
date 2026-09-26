@@ -13,6 +13,7 @@ import {
 import { TaskDepartment } from '../../../common/enums/task-department.enum';
 import { TaskPriority } from '../../../common/enums/task-priority.enum';
 import { TaskStatus } from '../../../common/enums/task-status.enum';
+import { TaskStatusGroup } from '../../../common/enums/task-status-group.enum';
 
 export class ListTasksQueryDto {
   @ApiPropertyOptional({ default: 1, minimum: 1 })
@@ -38,6 +39,15 @@ export class ListTasksQueryDto {
   @IsOptional()
   @IsEnum(TaskStatus)
   status?: TaskStatus;
+
+  @ApiPropertyOptional({
+    enum: TaskStatusGroup,
+    description:
+      'Dashboard grouping. PENDING includes DRAFT, TODO, WAITING, and BLOCKED; overdue work is returned only by OVERDUE.',
+  })
+  @IsOptional()
+  @IsEnum(TaskStatusGroup)
+  statusGroup?: TaskStatusGroup;
 
   @ApiPropertyOptional({ enum: TaskPriority })
   @IsOptional()

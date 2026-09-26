@@ -33,18 +33,21 @@ describe('CalendarService', () => {
       createEvent: jest.fn(),
       updateEvent: jest.fn(),
       cancelEvent: jest.fn(),
+      listEvents: jest.fn(),
     };
     outlook = {
       refreshAccessToken: jest.fn(),
       createEvent: jest.fn(),
       updateEvent: jest.fn(),
       cancelEvent: jest.fn(),
+      listEvents: jest.fn(),
     };
     events = {
       reserve: jest.fn(),
       findById: jest.fn(),
       update: jest.fn(),
       list: jest.fn(),
+      syncUpsert: jest.fn(),
     };
     const config = {
       get: jest.fn((_key: string, fallback?: unknown) => fallback),
@@ -69,6 +72,58 @@ describe('CalendarService', () => {
     settings.getNotifications.mockResolvedValue({ meetingReminders: false });
 
     await expect(service.resolveReminderMinutes('user-1', 60)).resolves.toBe(0);
+  });
+
+  it('synchronizes connected provider events with idempotent local upserts', async () => {
+    repository.list.mockResolvedValue([
+      {
+        provider: CalendarProviderType.GOOGLE_CALENDAR,
+        status: 'CONNECTED',
+      },
+    ]);
+    repository.findConnected.mockResolvedValue({
+      provider: CalendarProviderType.GOOGLE_CALENDAR,
+      status: 'CONNECTED',
+      accessToken: encryptText('google-access', encryptionKey),
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+    });
+    google.listEvents.mockResolvedValue([
+      {
+        id: 'provider-event-1',
+        title: 'External review',
+        startsAt: new Date('2026-09-26T10:00:00.000Z'),
+        endsAt: new Date('2026-09-26T10:30:00.000Z'),
+        timezone: 'UTC',
+        attendees: ['guest@example.com'],
+        cancelled: false,
+      },
+    ]);
+    events.syncUpsert.mockResolvedValue({ _id: 'local-event-1' });
+
+    const result = await service.syncEvents(
+      'org-1',
+      'user-1',
+      {
+        provider: CalendarProviderType.GOOGLE_CALENDAR,
+        from: '2026-09-01T00:00:00.000Z',
+        to: '2026-10-01T00:00:00.000Z',
+      },
+      new Date('2026-09-25T00:00:00.000Z'),
+    );
+
+    expect(google.listEvents).toHaveBeenCalledWith('google-access', {
+      from: new Date('2026-09-01T00:00:00.000Z'),
+      to: new Date('2026-10-01T00:00:00.000Z'),
+    });
+    expect(events.syncUpsert).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      CalendarProviderType.GOOGLE_CALENDAR,
+      expect.objectContaining({ id: 'provider-event-1' }),
+      new Date('2026-09-25T00:00:00.000Z'),
+      expect.any(String),
+    );
+    expect(result.totalSynchronized).toBe(1);
   });
 
   it('refreshes an expired Outlook token and creates the event with the new token', async () => {

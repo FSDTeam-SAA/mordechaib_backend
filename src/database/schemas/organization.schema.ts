@@ -39,6 +39,21 @@ export class Organization {
   @Prop({ trim: true })
   logoUrl?: string;
 
+  @Prop({ trim: true })
+  faviconUrl?: string;
+
+  @Prop({ default: false })
+  maintenanceMode!: boolean;
+
+  @Prop({ trim: true, uppercase: true, default: 'USD' })
+  defaultCurrency!: string;
+
+  @Prop({ default: 'MM/DD/YYYY' })
+  dateFormat!: string;
+
+  @Prop({ default: '12H' })
+  timeFormat!: string;
+
   @Prop({ type: { start: String, end: String }, _id: false })
   businessHours?: {
     start: string;

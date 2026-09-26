@@ -30,18 +30,50 @@ export class OrganizationLogoStorageService {
   }
 
   async upload(organizationId: string, file: Express.Multer.File) {
+    return this.uploadAsset(file, {
+      folderKey: 'cloudinary.organizationLogoFolder',
+      defaultFolder: 'noltra/organization-logos',
+      publicId: organizationId,
+      allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [{ width: 512, height: 512, crop: 'limit' }],
+      tag: 'noltra-organization-logo',
+      label: 'Company logo',
+    });
+  }
+
+  async uploadFavicon(organizationId: string, file: Express.Multer.File) {
+    return this.uploadAsset(file, {
+      folderKey: 'cloudinary.organizationFaviconFolder',
+      defaultFolder: 'noltra/organization-favicons',
+      publicId: `${organizationId}-favicon`,
+      allowedFormats: ['png', 'ico'],
+      transformation: [{ width: 64, height: 64, crop: 'limit' }],
+      tag: 'noltra-organization-favicon',
+      label: 'Favicon',
+    });
+  }
+
+  private async uploadAsset(
+    file: Express.Multer.File,
+    input: {
+      folderKey: string;
+      defaultFolder: string;
+      publicId: string;
+      allowedFormats: string[];
+      transformation: UploadApiOptions['transformation'];
+      tag: string;
+      label: string;
+    },
+  ) {
     this.assertConfigured();
     if (!file.buffer?.length) {
       throw new BadGatewayException(
-        'Company logo upload did not include image data',
+        `${input.label} upload did not include image data`,
       );
     }
 
     const folder = this.config
-      .get<string>(
-        'cloudinary.organizationLogoFolder',
-        'noltra/organization-logos',
-      )
+      .get<string>(input.folderKey, input.defaultFolder)
       .replace(/^\/+|\/+$/g, '');
 
     try {
@@ -49,25 +81,25 @@ export class OrganizationLogoStorageService {
         resource_type: 'image',
         type: 'upload',
         folder,
-        public_id: organizationId,
+        public_id: input.publicId,
         overwrite: true,
         invalidate: true,
         use_filename: false,
         unique_filename: false,
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-        transformation: [{ width: 512, height: 512, crop: 'limit' }],
-        tags: ['noltra-organization-logo'],
+        allowed_formats: input.allowedFormats,
+        transformation: input.transformation,
+        tags: [input.tag],
       });
       if (!response.secure_url) {
-        throw new Error('Cloudinary returned no secure company logo URL');
+        throw new Error(`Cloudinary returned no secure ${input.label} URL`);
       }
       return response.secure_url;
     } catch (error) {
       if (error instanceof BadGatewayException) throw error;
       this.logger.error(
-        `Cloudinary company logo upload failed: ${this.safeErrorMessage(error)}`,
+        `Cloudinary ${input.label.toLowerCase()} upload failed: ${this.safeErrorMessage(error)}`,
       );
-      throw new BadGatewayException('Company logo upload failed');
+      throw new BadGatewayException(`${input.label} upload failed`);
     }
   }
 

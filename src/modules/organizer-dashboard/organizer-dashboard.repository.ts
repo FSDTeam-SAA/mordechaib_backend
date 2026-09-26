@@ -5,6 +5,7 @@ import { CalendarEventStatus } from '../../common/enums/calendar-event-status.en
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { TaskPriority } from '../../common/enums/task-priority.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
+import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { localDateKey } from '../../common/helpers/local-date-range.helper';
 import {
   AiActionProposal,
@@ -235,7 +236,30 @@ export class OrganizerDashboardRepository {
       .slice(0, limit);
   }
 
-  async taskOverview(organizationId: string, asOf: Date) {
+  async taskOverview(
+    organizationId: string,
+    asOf: Date,
+    currentPeriod: DateRange,
+    previousPeriod: DateRange,
+    timezone: string,
+  ) {
+    const [snapshot, current, previous, series, departments] =
+      await Promise.all([
+        this.taskCounts(organizationId, asOf),
+        this.taskCounts(organizationId, asOf, currentPeriod),
+        this.taskCounts(organizationId, asOf, previousPeriod),
+        this.taskSeries(organizationId, asOf, currentPeriod, timezone),
+        this.taskDepartmentBreakdown(organizationId, currentPeriod),
+      ]);
+
+    return { snapshot, current, previous, series, departments };
+  }
+
+  private async taskCounts(
+    organizationId: string,
+    asOf: Date,
+    period?: DateRange,
+  ) {
     const [result] = await this.tasks
       .aggregate<{
         total: number;
@@ -244,7 +268,14 @@ export class OrganizerDashboardRepository {
         pending: number;
         overdue: number;
       }>([
-        { $match: { organizationId } },
+        {
+          $match: {
+            organizationId,
+            ...(period
+              ? { dueDate: { $gte: period.start, $lt: period.end } }
+              : {}),
+          },
+        },
         {
           $group: {
             _id: null,
@@ -260,6 +291,9 @@ export class OrganizerDashboardRepository {
                   {
                     $and: [
                       { $ne: ['$status', TaskStatus.COMPLETED] },
+                      {
+                        $ne: [{ $ifNull: ['$dueDate', null] }, null],
+                      },
                       { $lt: ['$dueDate', asOf] },
                     ],
                   },
@@ -330,6 +364,133 @@ export class OrganizerDashboardRepository {
         overdue: 0,
       }
     );
+  }
+
+  private taskSeries(
+    organizationId: string,
+    asOf: Date,
+    period: DateRange,
+    timezone: string,
+  ) {
+    return this.tasks
+      .aggregate<{
+        date: string;
+        total: number;
+        completed: number;
+        inProgress: number;
+        pending: number;
+        overdue: number;
+      }>([
+        {
+          $match: {
+            organizationId,
+            dueDate: { $gte: period.start, $lt: period.end },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                date: '$dueDate',
+                format: '%Y-%m-%d',
+                timezone,
+              },
+            },
+            total: { $sum: 1 },
+            completed: {
+              $sum: {
+                $cond: [{ $eq: ['$status', TaskStatus.COMPLETED] }, 1, 0],
+              },
+            },
+            overdue: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $ne: ['$status', TaskStatus.COMPLETED] },
+                      { $lt: ['$dueDate', asOf] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            inProgress: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$status', TaskStatus.IN_PROGRESS] },
+                      { $gte: ['$dueDate', asOf] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            pending: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      {
+                        $in: [
+                          '$status',
+                          [
+                            TaskStatus.DRAFT,
+                            TaskStatus.TODO,
+                            TaskStatus.WAITING,
+                            TaskStatus.BLOCKED,
+                          ],
+                        ],
+                      },
+                      { $gte: ['$dueDate', asOf] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            date: '$_id',
+            total: 1,
+            completed: 1,
+            inProgress: 1,
+            pending: 1,
+            overdue: 1,
+          },
+        },
+        { $sort: { date: 1 } },
+      ])
+      .exec();
+  }
+
+  private taskDepartmentBreakdown(organizationId: string, period: DateRange) {
+    return this.tasks
+      .aggregate<{ department: TaskDepartment | 'UNASSIGNED'; count: number }>([
+        {
+          $match: {
+            organizationId,
+            dueDate: { $gte: period.start, $lt: period.end },
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$department', 'UNASSIGNED'] },
+            count: { $sum: 1 },
+          },
+        },
+        { $project: { _id: 0, department: '$_id', count: 1 } },
+        { $sort: { count: -1, department: 1 } },
+      ])
+      .exec();
   }
 
   topPriorities(organizationId: string, asOf: Date, limit: number) {

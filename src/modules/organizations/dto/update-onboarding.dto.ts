@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
   IsDateString,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsNotEmpty,
@@ -17,6 +18,9 @@ import { trimString } from '../../../common/transformers/trim-string.transformer
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const PHONE_PATTERN = /^\+?[1-9]\d{7,14}$/;
+const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+const DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
+const TIME_FORMATS = ['12H', '24H'] as const;
 
 export class UpdateOnboardingDto {
   @Transform(trimString)
@@ -80,6 +84,42 @@ export class UpdateOnboardingDto {
   @IsUrl({ require_protocol: true })
   @MaxLength(500)
   logoUrl?: string | null;
+
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') return value;
+    const faviconUrl = value.trim();
+    return faviconUrl === '' ? undefined : faviconUrl;
+  })
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(500)
+  faviconUrl?: string | null;
+
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
+  @IsOptional()
+  @IsBoolean()
+  maintenanceMode?: boolean;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsOptional()
+  @Matches(CURRENCY_PATTERN, {
+    message: 'defaultCurrency must be a three-letter ISO currency code',
+  })
+  defaultCurrency?: string | null;
+
+  @IsOptional()
+  @IsEnum(DATE_FORMATS)
+  dateFormat?: (typeof DATE_FORMATS)[number] | null;
+
+  @IsOptional()
+  @IsEnum(TIME_FORMATS)
+  timeFormat?: (typeof TIME_FORMATS)[number] | null;
 
   @IsOptional()
   @Matches(TIME_PATTERN, {

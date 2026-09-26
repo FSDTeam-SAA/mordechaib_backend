@@ -9,7 +9,12 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -24,6 +29,7 @@ import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
+import { VerifyPasswordResetOtpDto } from './dto/verify-password-reset-otp.dto';
 
 @ApiTags('Authentication')
 @ApiBearerAuth()
@@ -99,9 +105,30 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
   @HttpCode(HttpStatus.OK)
+  @Post('verify-reset-otp')
+  @ApiOperation({
+    summary: 'Verify a password-reset OTP and issue a short-lived reset token',
+  })
+  verifyResetOtp(@Body() dto: VerifyPasswordResetOtpDto) {
+    return this.service.verifyPasswordResetOtp(dto.email, dto.code);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
+  @HttpCode(HttpStatus.OK)
   @Post('reset-password')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.service.resetPassword(dto);
+  @ApiHeader({
+    name: 'x-password-reset-token',
+    required: true,
+    description:
+      'Short-lived token returned by POST /auth/verify-reset-otp. Send it in this header; the request body contains only newPassword.',
+  })
+  @ApiOperation({ summary: 'Set a new password after OTP verification' })
+  resetPassword(
+    @Headers('x-password-reset-token') resetToken: string | undefined,
+    @Body() dto: ResetPasswordDto,
+  ) {
+    return this.service.resetPassword(resetToken, dto);
   }
 
   @Patch('change-password')
