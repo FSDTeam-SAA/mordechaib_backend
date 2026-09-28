@@ -22,7 +22,7 @@ import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TasksService } from './tasks.service';
 
-@ApiTags('Tasks')
+@ApiTags('Task Management')
 @ApiBearerAuth()
 @Controller('tasks')
 @UseGuards(OrganizationGuard)

@@ -17,7 +17,6 @@ import {
 } from './dto/dashboard-list-query.dto';
 import { OrganizerDashboardService } from './organizer-dashboard.service';
 
-@ApiTags('Organizer Dashboard')
 @ApiBearerAuth()
 @Controller('organizer-dashboard')
 @UseGuards(OrganizationGuard, RolesGuard)
@@ -26,6 +25,7 @@ export class OrganizerDashboardController {
   constructor(private readonly dashboard: OrganizerDashboardService) {}
 
   @Get('summary')
+  @ApiTags('Organizer Dashboard')
   @Header('Cache-Control', 'private, max-age=30')
   @ApiOperation({ summary: 'Get organizer dashboard KPI cards and trends' })
   summary(
@@ -37,6 +37,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('workforce')
+  @ApiTags('Organizer Dashboard')
   @Header('Cache-Control', 'private, max-age=120')
   @ApiOperation({
     summary: 'Get the global AI workforce with organizer runtime activity',
@@ -49,6 +50,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('upcoming-meetings')
+  @ApiTags('Task Management')
   @Header('Cache-Control', 'private, max-age=15')
   @ApiOperation({ summary: 'Get deduplicated upcoming organizer meetings' })
   upcomingMeetings(
@@ -59,6 +61,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('today-briefing')
+  @ApiTags('Organizer Dashboard')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: "Get the organizer's latest briefing for today" })
   todayBriefing(
@@ -69,6 +72,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('recent-voice-notes')
+  @ApiTags('Organizer Dashboard')
   @Header('Cache-Control', 'private, max-age=15')
   @ApiOperation({ summary: 'Get recent call intelligence voice-note cards' })
   recentVoiceNotes(
@@ -79,6 +83,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('task-overview')
+  @ApiTags('Task Management')
   @Header('Cache-Control', 'private, max-age=15')
   @ApiOperation({
     summary: 'Get task dashboard counts, weekly trends, and breakdowns',
@@ -91,6 +96,7 @@ export class OrganizerDashboardController {
   }
 
   @Get('top-priorities')
+  @ApiTags('Organizer Dashboard')
   @Header('Cache-Control', 'private, max-age=15')
   @ApiOperation({ summary: 'Get ranked organizer task priorities' })
   topPriorities(
