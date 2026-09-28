@@ -235,7 +235,9 @@ export class SupportRequestsRepository {
     const [items, total] = await Promise.all([
       this.requests
         .find(filter)
-        .select('-description -attachments')
+        .select(
+          'ticketId organizationId createdByUserId category subject status resolutionNote statusChangedAt attachmentCount createdAt updatedAt',
+        )
         .sort({ updatedAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
