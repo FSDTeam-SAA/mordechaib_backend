@@ -43,6 +43,9 @@ export class SupportRequestAttachment {
   @Prop({ required: true, select: false })
   storageFormat!: string;
 
+  @Prop({ trim: true, maxlength: 2_048 })
+  url?: string;
+
   @Prop({
     required: true,
     enum: Object.values(SupportAttachmentStatus),

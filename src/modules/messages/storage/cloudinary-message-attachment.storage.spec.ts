@@ -113,6 +113,45 @@ describe('CloudinaryMessageAttachmentStorage', () => {
     );
   });
 
+  it('stores a public asset and returns its permanent Cloudinary URL', async () => {
+    const upload = cloudinary.uploader.upload as jest.Mock;
+    upload.mockResolvedValue({
+      public_id: 'noltra/support/org-1/request-1/upload-1',
+      asset_id: 'asset-1',
+      resource_type: 'image',
+      type: 'upload',
+      format: 'png',
+      bytes: 100,
+      secure_url:
+        'https://res.cloudinary.com/cloud-name/image/upload/noltra/support/org-1/request-1/upload-1.png',
+    });
+    const storage = new CloudinaryMessageAttachmentStorage(config);
+
+    const result = await storage.store({
+      organizationId: 'org-1',
+      conversationId: 'request-1',
+      storageFolder: 'noltra/support',
+      uploadId: 'upload-1',
+      localPath: 'temporary.png',
+      originalName: 'error.png',
+      mimeType: 'image/png',
+      sizeBytes: 100,
+      category: MessageAttachmentCategory.IMAGE,
+      visibility: 'PUBLIC',
+    });
+
+    expect(upload).toHaveBeenCalledWith(
+      'temporary.png',
+      expect.objectContaining({ type: 'upload' }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        storageDeliveryType: 'upload',
+        url: 'https://res.cloudinary.com/cloud-name/image/upload/noltra/support/org-1/request-1/upload-1.png',
+      }),
+    );
+  });
+
   it('returns a short-lived authenticated download URL', async () => {
     const privateDownloadUrl = cloudinary.utils
       .private_download_url as jest.Mock;

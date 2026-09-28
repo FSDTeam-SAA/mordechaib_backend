@@ -40,6 +40,7 @@ type StoredAttachment = {
   storageDeliveryType: string;
   storageFormat: string;
   sizeBytes: number;
+  url?: string;
 };
 
 @Injectable()
@@ -87,6 +88,7 @@ export class SupportRequestsService {
           mimeType,
           sizeBytes: file.size,
           category,
+          visibility: 'PUBLIC',
         });
         uploaded.push({
           originalName,
@@ -156,7 +158,7 @@ export class SupportRequestsService {
       id,
     );
     if (!request) throw new NotFoundException('Support request not found');
-    return this.publicRequest(request, true);
+    return this.detailedRequest(request);
   }
 
   async getAttachmentForUser(
@@ -234,7 +236,7 @@ export class SupportRequestsService {
     this.assertObjectId(id, 'requestId');
     const request = await this.repository.findForAdmin(id);
     if (!request) throw new NotFoundException('Support request not found');
-    return this.publicRequest(request, true);
+    return this.detailedRequest(request);
   }
 
   async getAttachmentForAdmin(
@@ -299,6 +301,39 @@ export class SupportRequestsService {
     };
   }
 
+  private async detailedRequest(value: object) {
+    const response = this.publicRequest(value, true) as Record<string, unknown>;
+    const source = value as unknown as Record<string, unknown>;
+    const storedAttachments = (source.attachments || []) as Array<
+      Record<string, unknown>
+    >;
+    const publicAttachments = (response.attachments || []) as Array<
+      Record<string, unknown>
+    >;
+
+    return {
+      ...response,
+      attachments: await Promise.all(
+        publicAttachments.map(async (attachment) => {
+          const stored = storedAttachments.find(
+            (item) => String(item._id) === String(attachment.id),
+          );
+          if (!stored) return attachment;
+          if (typeof stored.url === 'string' && stored.url) {
+            return { ...attachment, url: stored.url };
+          }
+          // Legacy support attachments were stored as authenticated assets.
+          // Keep them viewable until they are re-uploaded as public assets.
+          const download = await this.storage.getDownload(
+            this.storageReference(stored),
+            AttachmentDisposition.INLINE,
+          );
+          return { ...attachment, url: download.downloadUrl };
+        }),
+      ),
+    };
+  }
+
   private publicRequest(value: object, includeDetails: boolean) {
     const data = value as unknown as Record<string, unknown>;
     const attachments = (data.attachments || []) as Array<
@@ -331,6 +366,9 @@ export class SupportRequestsService {
                 mimeType: item.mimeType,
                 sizeBytes: item.sizeBytes,
                 createdAt: item.createdAt,
+                ...(typeof item.url === 'string' && item.url
+                  ? { url: item.url }
+                  : {}),
               })),
           }
         : {}),
