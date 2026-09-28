@@ -43,6 +43,7 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
     this.assertConfigured();
     const resourceType = this.resourceType(input.category);
     const extension = this.extension(input.originalName);
+    const isPublic = input.visibility === 'PUBLIC';
     const folder = [
       input.storageFolder ||
         this.config.get<string>('cloudinary.messageFolder', 'noltra/messages'),
@@ -53,7 +54,7 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
       .join('/');
     const options = {
       resource_type: resourceType,
-      type: 'authenticated' as const,
+      type: isPublic ? ('upload' as const) : ('authenticated' as const),
       folder,
       // Cloudinary includes the extension in a raw asset's public ID. Image and
       // video public IDs must remain extension-free so transformations and
@@ -77,6 +78,10 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
             })
           : await cloudinary.uploader.upload(input.localPath, options);
 
+      if (isPublic && !response.secure_url) {
+        throw new Error('Cloudinary returned no secure public URL');
+      }
+
       return {
         storageProvider: 'CLOUDINARY',
         storageKey: response.public_id,
@@ -85,6 +90,7 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
         storageDeliveryType: response.type,
         storageFormat: response.format || extension || 'bin',
         sizeBytes: response.bytes,
+        ...(isPublic ? { url: response.secure_url } : {}),
       };
     } catch (error) {
       this.logger.error(

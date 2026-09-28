@@ -16,6 +16,8 @@ export type StoreMessageAttachmentInput = {
   /** Optional storage scope. Defaults to conversationId for messages. */
   storageScopeId?: string;
   storageTags?: string[];
+  /** Defaults to PRIVATE. PUBLIC assets return a permanent provider URL. */
+  visibility?: 'PRIVATE' | 'PUBLIC';
 };
 
 export type StoredMessageAttachment = {
@@ -26,6 +28,7 @@ export type StoredMessageAttachment = {
   storageDeliveryType: string;
   storageFormat: string;
   sizeBytes: number;
+  url?: string;
 };
 
 export type MessageAttachmentStorageReference = {
