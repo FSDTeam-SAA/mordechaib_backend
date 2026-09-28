@@ -1474,9 +1474,35 @@ Use `updatedAt` for the table's Updated column and format it as relative time in
 GET /support/requests/:requestId
 ```
 
-The response has the same detailed shape as the create response. It contains full `description` and active attachment metadata. Provider storage keys are never returned.
+The response contains the full `description` and active attachment metadata. Each newly uploaded support attachment includes its permanent public Cloudinary `url`, so the Details modal can immediately render the image or a View File action. Provider storage keys are never returned.
+
+```json
+{
+  "id": "66f2d80f6b62081a43c82411",
+  "ticketId": "SUP-20260923-A1B2C3D4",
+  "category": "TECHNICAL",
+  "subject": "Dashboard report is not loading",
+  "description": "The report stays blank after selecting a date range.",
+  "status": "OPEN",
+  "attachmentCount": 1,
+  "attachments": [
+    {
+      "id": "66f2d82f6b62081a43c82420",
+      "originalName": "error.png",
+      "mimeType": "image/png",
+      "sizeBytes": 152340,
+      "createdAt": "2026-09-23T10:00:00.000Z",
+      "url": "https://res.cloudinary.com/example/image/upload/noltra/support-requests/error.png"
+    }
+  ],
+  "createdAt": "2026-09-23T10:00:00.000Z",
+  "updatedAt": "2026-09-23T10:03:00.000Z"
+}
+```
 
 Render `description` as text. Do not use `dangerouslySetInnerHTML` with this value.
+
+The `url` has no application-level expiry and remains available until the support request attachment is deleted from Cloudinary.
 
 ### 13.6 View or download a private attachment
 

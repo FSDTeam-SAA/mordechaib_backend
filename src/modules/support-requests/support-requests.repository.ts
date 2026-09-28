@@ -9,6 +9,9 @@ import { SupportRequest } from '../../database/schemas/support-request.schema';
 import { ListSupportRequestsAdminQueryDto } from './dto/list-support-requests-admin-query.dto';
 import { ListSupportRequestsQueryDto } from './dto/list-support-requests-query.dto';
 
+const ATTACHMENT_STORAGE_SELECTION =
+  '+attachments.storageKey +attachments.storageAssetId +attachments.storageResourceType +attachments.storageDeliveryType +attachments.storageFormat';
+
 @Injectable()
 export class SupportRequestsRepository {
   constructor(
@@ -76,6 +79,7 @@ export class SupportRequestsRepository {
         createdByUserId: userId,
         deletedAt: { $exists: false },
       })
+      .select(ATTACHMENT_STORAGE_SELECTION)
       .lean()
       .exec();
   }
@@ -83,6 +87,7 @@ export class SupportRequestsRepository {
   findForAdmin(id: string) {
     return this.requests
       .findOne({ _id: id, deletedAt: { $exists: false } })
+      .select(ATTACHMENT_STORAGE_SELECTION)
       .lean()
       .exec();
   }
@@ -106,9 +111,7 @@ export class SupportRequestsRepository {
           },
         },
       })
-      .select(
-        '+attachments.storageKey +attachments.storageAssetId +attachments.storageResourceType +attachments.storageDeliveryType +attachments.storageFormat',
-      )
+      .select(ATTACHMENT_STORAGE_SELECTION)
       .lean()
       .exec();
   }
@@ -125,9 +128,7 @@ export class SupportRequestsRepository {
           },
         },
       })
-      .select(
-        '+attachments.storageKey +attachments.storageAssetId +attachments.storageResourceType +attachments.storageDeliveryType +attachments.storageFormat',
-      )
+      .select(ATTACHMENT_STORAGE_SELECTION)
       .lean()
       .exec();
   }
