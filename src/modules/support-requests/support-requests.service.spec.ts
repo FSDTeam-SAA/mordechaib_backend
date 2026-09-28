@@ -132,7 +132,7 @@ describe('SupportRequestsService', () => {
           status: SupportAttachmentStatus.ACTIVE,
           storageKey: 'private/key',
           storageResourceType: 'image',
-          storageDeliveryType: 'authenticated',
+          storageDeliveryType: 'upload',
           storageFormat: 'png',
         },
       ],
@@ -157,6 +157,40 @@ describe('SupportRequestsService', () => {
       attachmentId,
     );
     expect(result.downloadUrl).toBe('https://files.example/signed');
+  });
+
+  it('returns the permanent Cloudinary URL for one support request', async () => {
+    repository.findForUser.mockResolvedValue({
+      ...baseRequest,
+      attachmentCount: 1,
+      attachments: [
+        {
+          _id: attachmentId,
+          originalName: 'error.png',
+          mimeType: 'image/png',
+          sizeBytes: 1024,
+          status: SupportAttachmentStatus.ACTIVE,
+          storageKey: 'private/key',
+          storageResourceType: 'image',
+          storageDeliveryType: 'authenticated',
+          storageFormat: 'png',
+          url: 'https://res.cloudinary.com/demo/image/upload/error.png',
+        },
+      ],
+    });
+
+    const result = await service.getForUser('org-1', 'user-1', requestId);
+
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        id: attachmentId,
+        url: 'https://res.cloudinary.com/demo/image/upload/error.png',
+      }),
+    ]);
+    expect(storage.getDownload).not.toHaveBeenCalled();
+    expect(result.attachments[0]).not.toHaveProperty('storageKey');
+    expect(result.attachments[0]).not.toHaveProperty('downloadUrl');
+    expect(result.attachments[0]).not.toHaveProperty('expiresAt');
   });
 
   it('soft-deletes first and records a failed attachment cleanup', async () => {
