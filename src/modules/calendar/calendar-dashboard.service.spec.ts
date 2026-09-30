@@ -4,16 +4,22 @@ import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
+import { encryptText } from '../../common/helpers/crypto.helper';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
 import { CalendarDashboardService } from './calendar-dashboard.service';
 
 describe('CalendarDashboardService', () => {
+  const encryptionKey = 'calendar-dashboard-test-key-32chars';
   const repository = {
     meetings: jest.fn(),
     operationalMetrics: jest.fn(),
   };
+  const config = {
+    getOrThrow: jest.fn(() => encryptionKey),
+  };
   const service = new CalendarDashboardService(
     repository as unknown as CalendarDashboardRepository,
+    config as unknown as ConfigService,
   );
 
   beforeEach(() => {
@@ -44,6 +50,10 @@ describe('CalendarDashboardService', () => {
           calendarProvider: CalendarProviderType.GOOGLE_CALENDAR,
           calendarEventId: 'google-event-1',
           meetingBotId: 'bot-1',
+          joinUrlEncrypted: encryptText(
+            'https://meet.google.com/abc-defg-hij',
+            encryptionKey,
+          ),
         },
       ],
       truncated: false,
@@ -79,6 +89,9 @@ describe('CalendarDashboardService', () => {
     );
 
     expect(result.items).toHaveLength(1);
+    expect(result.items[0].joinUrl).toBe(
+      'https://meet.google.com/abc-defg-hij',
+    );
     expect(result.summary).toEqual(
       expect.objectContaining({ total: 1, completed: 1, scheduled: 0 }),
     );
@@ -87,3 +100,4 @@ describe('CalendarDashboardService', () => {
     );
   });
 });
+import { ConfigService } from '@nestjs/config';

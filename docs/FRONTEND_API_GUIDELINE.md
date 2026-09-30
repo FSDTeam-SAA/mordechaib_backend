@@ -2226,7 +2226,8 @@ Condensed response shape:
       "participantEmails": ["client@example.com"],
       "status": "SCHEDULED",
       "provider": "GOOGLE_MEET",
-      "eventUrl": "https://calendar.google.com/..."
+      "eventUrl": "https://calendar.google.com/...",
+      "joinUrl": "https://meet.google.com/abc-defg-hij"
     }
   ],
   "upcoming": [],
@@ -2314,6 +2315,11 @@ Response usage:
 - `upcoming` is already sorted and limited.
 - `sourceType` determines details/actions: `PLATFORM_MEETING` uses
   `/meetings/:id`; `CALENDAR_EVENT` uses `/calendar/events/:id`.
+- `joinUrl` is returned for platform meetings when the provider supplied a
+  join link. Use it for the Join/Start Meeting action. The host-only provider
+  `startUrl` is never exposed by the dashboard. A synchronized standalone
+  calendar event can omit `joinUrl` when no authoritative meeting link was
+  captured; `eventUrl` remains its calendar event page.
 - Edit with the matching `PATCH` route and cancel with the matching `DELETE`
   route. There is no separate frontend “mark complete” call; bot lifecycle is
   authoritative for platform meetings.

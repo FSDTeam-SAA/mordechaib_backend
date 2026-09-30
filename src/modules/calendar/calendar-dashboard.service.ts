@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
+import { decryptText } from '../../common/helpers/crypto.helper';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
@@ -20,6 +26,7 @@ type DashboardMeeting = {
   status: DashboardStatus;
   provider: string;
   eventUrl?: string;
+  joinUrl?: string;
   meetingType?: string;
   urgency?: MeetingUrgency;
   importedFromProvider?: boolean;
@@ -27,7 +34,10 @@ type DashboardMeeting = {
 
 @Injectable()
 export class CalendarDashboardService {
-  constructor(private readonly repository: CalendarDashboardRepository) {}
+  constructor(
+    private readonly repository: CalendarDashboardRepository,
+    private readonly config: ConfigService,
+  ) {}
 
   async get(
     organizationId: string,
@@ -182,6 +192,9 @@ export class CalendarDashboardService {
         status,
         provider: String(meeting.platform),
         eventUrl: meeting.calendarEventUrl,
+        joinUrl: meeting.joinUrlEncrypted
+          ? decryptText(meeting.joinUrlEncrypted, this.encryptionKey)
+          : undefined,
       });
     }
     for (const event of records.calendar) {
@@ -322,5 +335,15 @@ export class CalendarDashboardService {
     } catch {
       throw new BadRequestException('timezone must be a valid IANA timezone');
     }
+  }
+
+  private get encryptionKey() {
+    const key = this.config.getOrThrow<string>('integrations.encryptionKey');
+    if (key.length < 32) {
+      throw new ServiceUnavailableException(
+        'INTEGRATION_ENCRYPTION_KEY must contain at least 32 characters',
+      );
+    }
+    return key;
   }
 }
