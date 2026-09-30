@@ -54,7 +54,7 @@ export class CalendarDashboardRepository {
           endsAt: { $gt: from },
         })
         .select(
-          '_id title agenda startsAt endsAt durationMinutes timezone invitees status platform calendarProvider calendarEventId calendarEventUrl meetingBotId botRequested',
+          '_id title agenda startsAt endsAt durationMinutes timezone invitees status platform calendarProvider calendarEventId calendarEventUrl meetingBotId botRequested +joinUrlEncrypted',
         )
         .sort({ startsAt: 1, _id: 1 })
         .limit(5001)
