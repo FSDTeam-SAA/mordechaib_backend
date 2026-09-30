@@ -2054,6 +2054,21 @@ This is the read model for completed Twilio calls and meeting-bot sources. It is
 | `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`                                        | binary attachment download, not JSON envelope                                         |
 | `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | streamed audio response, not JSON envelope                                            |
 
+Every list item returned by `GET /call-intelligence` includes a flat
+`sourceId` alongside the existing `source` object. For meeting items,
+`sourceId` is the meeting bot ID; for call items, it is the call recording
+source ID. Pass it directly to the details/report route together with
+`source.type`:
+
+```json
+{
+  "sourceId": "MEETING_BOT_ID",
+  "source": { "type": "GOOGLE_MEET", "id": "MEETING_BOT_ID" },
+  "kind": "MEETING",
+  "detailsPath": "/api/v1/call-intelligence/MEETING_BOT_ID/details?sourceType=GOOGLE_MEET"
+}
+```
+
 Details response shape:
 
 ```json
