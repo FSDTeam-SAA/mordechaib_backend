@@ -26,10 +26,14 @@ export class GetCallIntelligenceQueryDto {
   @IsIn(CALL_INTELLIGENCE_SOURCE_TYPES)
   sourceType!: AiProposalSourceType;
 
-  @ApiPropertyOptional({ enum: AiActionProposalStatus, default: 'PENDING' })
+  @ApiPropertyOptional({
+    enum: AiActionProposalStatus,
+    description:
+      'Omit to return actions across every status in one response. Provide a value only for server-side filtering.',
+  })
   @IsOptional()
   @IsEnum(AiActionProposalStatus)
-  status: AiActionProposalStatus = AiActionProposalStatus.PENDING;
+  status?: AiActionProposalStatus;
 
   @ApiPropertyOptional({ type: Number, minimum: 1, maximum: 20, default: 4 })
   @Type(() => Number)
@@ -53,6 +57,14 @@ export class GetCallIntelligenceQueryDto {
 }
 
 export class DownloadCallIntelligenceReportQueryDto extends GetCallIntelligenceQueryDto {
+  @ApiPropertyOptional({
+    enum: AiActionProposalStatus,
+    default: AiActionProposalStatus.PENDING,
+  })
+  @IsOptional()
+  @IsEnum(AiActionProposalStatus)
+  override status?: AiActionProposalStatus = AiActionProposalStatus.PENDING;
+
   @ApiPropertyOptional({ enum: ['html', 'json'], default: 'html' })
   @IsOptional()
   @IsIn(['html', 'json'])
@@ -66,9 +78,6 @@ export class DownloadCallAudioQueryDto {
       AiProposalSourceType.CALL_TRANSCRIPT,
     ],
   })
-  @IsIn([
-    AiProposalSourceType.CALL_AUDIO,
-    AiProposalSourceType.CALL_TRANSCRIPT,
-  ])
+  @IsIn([AiProposalSourceType.CALL_AUDIO, AiProposalSourceType.CALL_TRANSCRIPT])
   sourceType!: AiProposalSourceType;
 }
