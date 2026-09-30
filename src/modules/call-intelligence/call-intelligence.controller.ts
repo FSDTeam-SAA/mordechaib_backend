@@ -45,7 +45,7 @@ export class CallIntelligenceController {
   @ApiOperation({
     summary: 'List all call and meeting intelligence sources',
     description:
-      'Returns one organization-scoped, newest-first list of Twilio call recordings, Google Meet sessions, and Zoom sessions. Each item contains the source type and id required by the details endpoint.',
+      'Returns one organization-scoped, newest-first list of Twilio call recordings, Google Meet sessions, and Zoom sessions. Each item contains sourceId and source.type required by the details endpoint; for meetings, sourceId is the meeting bot id.',
   })
   list(
     @CurrentOrg() organization: RequestOrganization,
