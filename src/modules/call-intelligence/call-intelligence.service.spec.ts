@@ -109,6 +109,7 @@ describe('CallIntelligenceService', () => {
     expect(result.items).toEqual([
       expect.objectContaining({
         kind: CallIntelligenceItemKind.CALL,
+        sourceId: callRecording._id,
         source: {
           type: AiProposalSourceType.CALL_TRANSCRIPT,
           id: callRecording._id,
@@ -119,6 +120,7 @@ describe('CallIntelligenceService', () => {
       }),
       expect.objectContaining({
         kind: CallIntelligenceItemKind.MEETING,
+        sourceId: meeting._id,
         title: 'Project review',
         source: {
           type: AiProposalSourceType.GOOGLE_MEET,
