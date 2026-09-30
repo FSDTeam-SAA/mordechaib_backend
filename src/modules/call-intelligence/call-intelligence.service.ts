@@ -30,6 +30,7 @@ type LeanRecord = Record<string, unknown> & { _id: unknown };
 
 type CallIntelligenceListItem = {
   source: AiProposalSource;
+  sourceId: string;
   kind: CallIntelligenceItemKind;
   title: string;
   platform?: string;
@@ -373,6 +374,7 @@ export class CallIntelligenceService {
     const toNumber = call?.toNumber;
     return {
       source,
+      sourceId: source.id,
       kind: CallIntelligenceItemKind.CALL,
       title:
         typeof fromNumber === 'string' && typeof toNumber === 'string'
@@ -407,6 +409,7 @@ export class CallIntelligenceService {
     };
     return {
       source,
+      sourceId: source.id,
       kind: CallIntelligenceItemKind.MEETING,
       title:
         (typeof connectedMeeting?.title === 'string' &&
