@@ -47,7 +47,7 @@ export class GetActionCenterQueryDto {
     default: AiActionProposalStatus.PENDING,
   })
   @IsEnum(AiActionProposalStatus)
-  status: AiActionProposalStatus = AiActionProposalStatus.PENDING;
+  status?: AiActionProposalStatus = AiActionProposalStatus.PENDING;
 
   @ApiPropertyOptional({ enum: AiProposalSourceType })
   @IsOptional()
