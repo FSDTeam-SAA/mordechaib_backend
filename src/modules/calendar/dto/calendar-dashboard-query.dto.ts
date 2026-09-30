@@ -11,21 +11,30 @@ import {
 } from 'class-validator';
 
 export class CalendarDashboardQueryDto {
-  @ApiProperty({ example: '2026-09-01T00:00:00.000Z' })
+  @ApiProperty({ type: String, example: '2026-09-01T00:00:00.000Z' })
   @IsISO8601({ strict: true })
   from!: string;
 
-  @ApiProperty({ example: '2026-10-01T00:00:00.000Z' })
+  @ApiProperty({ type: String, example: '2026-10-01T00:00:00.000Z' })
   @IsISO8601({ strict: true })
   to!: string;
 
-  @ApiPropertyOptional({ default: 'UTC', example: 'Asia/Dhaka' })
+  @ApiPropertyOptional({
+    type: String,
+    default: 'UTC',
+    example: 'Asia/Dhaka',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   timezone = 'UTC';
 
-  @ApiPropertyOptional({ default: 15, minimum: 0, maximum: 240 })
+  @ApiPropertyOptional({
+    type: Number,
+    default: 15,
+    minimum: 0,
+    maximum: 240,
+  })
   @Type(() => Number)
   @IsOptional()
   @IsInt()
@@ -33,7 +42,12 @@ export class CalendarDashboardQueryDto {
   @Max(240)
   bufferMinutes = 15;
 
-  @ApiPropertyOptional({ default: 8, minimum: 1, maximum: 50 })
+  @ApiPropertyOptional({
+    type: Number,
+    default: 8,
+    minimum: 1,
+    maximum: 50,
+  })
   @Type(() => Number)
   @IsOptional()
   @IsInt()
@@ -41,7 +55,12 @@ export class CalendarDashboardQueryDto {
   @Max(50)
   upcomingLimit = 8;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    type: Number,
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+  })
   @Type(() => Number)
   @IsOptional()
   @IsInt()
