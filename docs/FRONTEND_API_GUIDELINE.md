@@ -2054,6 +2054,12 @@ This is the read model for completed Twilio calls and meeting-bot sources. It is
 | `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`                                        | binary attachment download, not JSON envelope                                         |
 | `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | streamed audio response, not JSON envelope                                            |
 
+For the details route, omit `status` to receive proposals across all statuses
+in one response (`actions.status` is then `ALL`). Every returned task or meeting
+proposal retains its own status, so the frontend can locally filter values such
+as `PENDING`, `APPROVED`, and `NEEDS_CLARIFICATION`. Passing `status` remains
+available when an explicit server-side filter is needed.
+
 Every list item returned by `GET /call-intelligence` includes a flat
 `sourceId` alongside the existing `source` object. For meeting items,
 `sourceId` is the meeting bot ID; for call items, it is the call recording

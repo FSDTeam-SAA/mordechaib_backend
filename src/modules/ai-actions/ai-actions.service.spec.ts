@@ -168,6 +168,31 @@ describe('AiActionsService analysis ingestion', () => {
     );
   });
 
+  it('returns actions across all statuses when the status filter is omitted', async () => {
+    repository.getActionCenter.mockResolvedValue({
+      priorityTasks: [],
+      meetingSchedules: [],
+      totals: { priorityTasks: 0, meetingSchedules: 0 },
+    });
+
+    const result = await service.getActionCenter(organizationId, source.id, {
+      taskLimit: 4,
+      meetingLimit: 4,
+      sourceType: source.type,
+    });
+
+    expect(repository.getActionCenter).toHaveBeenCalledWith(
+      organizationId,
+      source.id,
+      {
+        taskLimit: 4,
+        meetingLimit: 4,
+        sourceType: source.type,
+      },
+    );
+    expect(result.status).toBe('ALL');
+  });
+
   it('stores a complete task as a pending CEO approval', async () => {
     const [proposal] = await service.ingestAnalysis(organizationId, source, {
       requestId: 'meeting-001',

@@ -58,7 +58,7 @@ export class CallIntelligenceController {
   @ApiOperation({
     summary: 'Get an aggregated call or meeting intelligence view',
     description:
-      'Transcript content is omitted by default for a fast first paint. Set includeTranscript=true to include it.',
+      'Transcript content is omitted by default for a fast first paint. Set includeTranscript=true to include it. Action proposals across every status are returned when status is omitted, allowing the frontend to filter one response.',
   })
   getDetails(
     @CurrentOrg() organization: RequestOrganization,
