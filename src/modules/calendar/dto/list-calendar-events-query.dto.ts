@@ -13,40 +13,51 @@ import { CalendarProviderType } from '../../../common/enums/calendar-provider.en
 import { MeetingType } from '../../../common/enums/meeting-type.enum';
 
 export class ListCalendarEventsQueryDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page: number = 1;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    type: Number,
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
   limit: number = 20;
 
-  @ApiPropertyOptional({ enum: CalendarProviderType })
+  @ApiPropertyOptional({ type: String, enum: CalendarProviderType })
   @IsOptional()
   @IsEnum(CalendarProviderType)
   provider?: CalendarProviderType;
 
-  @ApiPropertyOptional({ enum: MeetingType })
+  @ApiPropertyOptional({ type: String, enum: MeetingType })
   @IsOptional()
   @IsEnum(MeetingType)
   meetingType?: MeetingType;
 
-  @ApiPropertyOptional({ enum: CalendarEventStatus })
+  @ApiPropertyOptional({ type: String, enum: CalendarEventStatus })
   @IsOptional()
   @IsEnum(CalendarEventStatus)
   status?: CalendarEventStatus;
 
-  @ApiPropertyOptional({ example: '2026-09-01T00:00:00.000Z' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-09-01T00:00:00.000Z',
+  })
   @IsOptional()
   @IsISO8601({ strict: true })
   from?: string;
 
-  @ApiPropertyOptional({ example: '2026-09-30T23:59:59.999Z' })
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-09-30T23:59:59.999Z',
+  })
   @IsOptional()
   @IsISO8601({ strict: true })
   to?: string;
