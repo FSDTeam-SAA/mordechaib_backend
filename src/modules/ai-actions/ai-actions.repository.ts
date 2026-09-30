@@ -20,7 +20,7 @@ export type AiActionProposalListFilters = {
 };
 
 export type AiActionCenterFilters = {
-  status: AiActionProposalStatus;
+  status?: AiActionProposalStatus;
   sourceType?: AiProposalSourceType;
   taskLimit: number;
   meetingLimit: number;
@@ -104,7 +104,7 @@ export class AiActionsRepository {
     const baseQuery: FilterQuery<AiActionProposal> = {
       organizationId,
       'source.id': sourceId,
-      status: filters.status,
+      ...(filters.status ? { status: filters.status } : {}),
       ...(filters.sourceType ? { 'source.type': filters.sourceType } : {}),
     };
     const taskQuery = {
