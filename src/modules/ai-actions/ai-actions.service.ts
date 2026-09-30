@@ -213,7 +213,7 @@ export class AiActionsService {
     return {
       sourceId,
       sourceType: query.sourceType,
-      status: query.status,
+      status: query.status ?? 'ALL',
       limits: {
         priorityTasks: query.taskLimit,
         meetingSchedules: query.meetingLimit,
