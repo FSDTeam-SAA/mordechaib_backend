@@ -1,7 +1,4 @@
-import {
-  AiActionProposalStatus,
-  AiProposalSourceType,
-} from '../../database/schemas/ai-action-proposal.schema';
+import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { CallIntelligenceService } from './call-intelligence.service';
@@ -179,7 +176,6 @@ describe('CallIntelligenceService', () => {
       '66cc9bdfa847ea856c7b41d2',
       {
         sourceType: AiProposalSourceType.CALL_TRANSCRIPT,
-        status: AiActionProposalStatus.PENDING,
         taskLimit: 4,
         meetingLimit: 4,
         includeTranscript: false,
@@ -202,6 +198,7 @@ describe('CallIntelligenceService', () => {
       '66cc9bdfa847ea856c7b41d2',
       expect.objectContaining({
         sourceType: AiProposalSourceType.CALL_TRANSCRIPT,
+        status: undefined,
       }),
     );
   });
