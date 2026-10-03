@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -20,6 +21,7 @@ import {
 } from '../../common/types/request-context.type';
 import { AnswerAiClarificationDto } from '../ai-actions/dto/answer-ai-clarification.dto';
 import { ListAiActionProposalsQueryDto } from '../ai-actions/dto/list-ai-action-proposals-query.dto';
+import { UpdateAiActionProposalDto } from '../ai-actions/dto/update-ai-action-proposal.dto';
 import { CallIntelligenceProposalsFacade } from './call-intelligence-proposals.facade';
 import { ExecuteCallIntelligenceProposalDto } from './dto/execute-call-intelligence-proposal.dto';
 
@@ -47,6 +49,21 @@ export class CallIntelligenceProposalsController {
     @Param('id') id: string,
   ) {
     return this.proposals.get(organization.id, id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Edit a pending AI action proposal before approval',
+    description:
+      'Merges the supplied payload fields into the stored proposal. The action type, source, agent, and workflow status cannot be changed. expectedRevision prevents a stale client from overwriting a newer edit.',
+  })
+  update(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() input: UpdateAiActionProposalDto,
+  ) {
+    return this.proposals.update(organization.id, user, id, input);
   }
 
   @Post(':id/clarifications')
