@@ -10,7 +10,7 @@ import {
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -36,6 +36,24 @@ export class CrmConnectionsController {
     private readonly sync: CrmSyncService,
     private readonly providers: CrmProviderRegistry,
   ) {}
+
+  @Get(':provider')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get an organization CRM connection status',
+    description:
+      'Returns the stored HubSpot or Salesforce connection, account identity, default selection, token expiry, and synchronization health without exposing OAuth tokens.',
+  })
+  connection(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('provider') provider: string,
+  ) {
+    return this.connections.connection(
+      organization.id,
+      this.crmProvider(provider),
+    );
+  }
 
   @Get(':provider/connect')
   @UseGuards(OrganizationGuard, RolesGuard)

@@ -238,6 +238,15 @@ export class AiActionProposal {
   @Prop({ required: true, default: 1, min: 1 })
   revision!: number;
 
+  @Prop()
+  lastEditedByUserId?: string;
+
+  @Prop({ trim: true, maxlength: 200 })
+  lastEditedByUserName?: string;
+
+  @Prop()
+  lastEditedAt?: Date;
+
   @Prop({
     required: true,
     enum: Object.values(AiActionProposalStatus),

@@ -30,6 +30,7 @@ import {
 } from './dto/create-ai-action-proposal.dto';
 import { ListAiActionProposalsQueryDto } from './dto/list-ai-action-proposals-query.dto';
 import { GetActionCenterQueryDto } from './dto/get-action-center-query.dto';
+import { UpdateAiActionProposalDto } from './dto/update-ai-action-proposal.dto';
 import {
   AiAnalysisAction,
   AiClarificationQuestionInput,
@@ -231,6 +232,94 @@ export class AiActionsService {
   async get(organizationId: string, id: string) {
     const proposal = await this.getStored(organizationId, id);
     return this.toResponse(proposal);
+  }
+
+  async updatePending(
+    organizationId: string,
+    actor: RequestUser,
+    id: string,
+    input: UpdateAiActionProposalDto,
+  ) {
+    const proposal = await this.getStored(organizationId, id);
+    if (proposal.status !== AiActionProposalStatus.PENDING) {
+      throw new ConflictException(
+        `Only a PENDING proposal can be edited; current status is ${proposal.status}`,
+      );
+    }
+
+    const expectedRevision = input.expectedRevision;
+    if (
+      typeof expectedRevision !== 'number' ||
+      !Number.isFinite(expectedRevision)
+    ) {
+      throw new BadRequestException('expectedRevision must be a finite number');
+    }
+
+    if (proposal.revision !== expectedRevision) {
+      throw new ConflictException(
+        `Proposal revision conflict; current revision is ${proposal.revision}`,
+      );
+    }
+    if (!Object.keys(input.payload).length) {
+      throw new BadRequestException('No proposal changes were provided');
+    }
+
+    const mergedPayload = { ...proposal.payload, ...input.payload };
+    const organization = await this.organizations.findCurrent(organizationId);
+    const validated = await this.validatePayload(
+      proposal.actionType,
+      mergedPayload,
+      organization.timezone,
+    );
+    if (proposal.actionType === AiActionType.CREATE_TASK) {
+      await this.assertValidAssignee(
+        organizationId,
+        (validated as AiTaskActionPayloadDto).assignedToUserId,
+      );
+    }
+    const payload = { ...validated } as Record<string, unknown>;
+    if (
+      this.stableStringify(payload) === this.stableStringify(proposal.payload)
+    ) {
+      throw new BadRequestException('No proposal changes were provided');
+    }
+
+    const updated = await this.repository.updatePendingPayload(
+      organizationId,
+      id,
+      expectedRevision,
+      payload,
+      this.reviewer(actor),
+    );
+    if (!updated) {
+      const current = await this.getStored(organizationId, id);
+      if (current.status !== AiActionProposalStatus.PENDING) {
+        throw new ConflictException(
+          `Only a PENDING proposal can be edited; current status is ${current.status}`,
+        );
+      }
+      throw new ConflictException(
+        `Proposal revision conflict; current revision is ${current.revision}`,
+      );
+    }
+
+    await this.auditLogs
+      .create({
+        organizationId,
+        userId: actor.id,
+        action: 'AI_ACTION_PROPOSAL_EDITED',
+        resourceType: 'AiActionProposal',
+        resourceId: id,
+        metadata: {
+          actionType: proposal.actionType,
+          previousRevision: proposal.revision,
+          revision: expectedRevision + 1,
+          changedFields: Object.keys(input.payload).sort(),
+        },
+      })
+      .catch(() => undefined);
+
+    return this.toResponse(updated as StoredProposal);
   }
 
   async approve(organizationId: string, actor: RequestUser, id: string) {
