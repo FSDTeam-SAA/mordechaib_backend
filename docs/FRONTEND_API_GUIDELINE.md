@@ -1285,7 +1285,7 @@ Notes affect subsequently generated briefings; an already READY briefing is a sn
 GET /integrations
 ```
 
-Use the returned `items[].connected`, `status`, `connectPath`, `account`, and `expiresAt` to render integration cards. Open the returned/canonical `connectPath` through Main Backend; do not construct provider OAuth URLs in frontend.
+Use the returned `items[].connected`, `status`, `connectPath`, `account`, and `expiresAt` to render integration cards, including the `ZOOM` card. Open the returned/canonical `connectPath` through Main Backend; do not construct provider OAuth URLs in frontend.
 
 Representative response:
 

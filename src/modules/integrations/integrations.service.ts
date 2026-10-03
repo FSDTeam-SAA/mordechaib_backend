@@ -31,6 +31,12 @@ const INTEGRATION_CARDS = [
     connectPath: '/google-meetings/oauth/connect',
   },
   {
+    provider: IntegrationProvider.ZOOM,
+    label: 'Zoom',
+    lookup: [IntegrationProvider.ZOOM],
+    connectPath: '/zoom-meetings/oauth/connect',
+  },
+  {
     provider: IntegrationProvider.TWILIO,
     label: 'Twilio',
     lookup: [IntegrationProvider.TWILIO],
