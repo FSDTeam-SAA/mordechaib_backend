@@ -7,6 +7,7 @@ import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-statu
 import { encryptText } from '../../common/helpers/crypto.helper';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
 import { CalendarDashboardService } from './calendar-dashboard.service';
+import { CalendarService } from './calendar.service';
 
 describe('CalendarDashboardService', () => {
   const encryptionKey = 'calendar-dashboard-test-key-32chars';
@@ -17,13 +18,20 @@ describe('CalendarDashboardService', () => {
   const config = {
     getOrThrow: jest.fn(() => encryptionKey),
   };
+  const calendars = {
+    getDefaultProvider: jest.fn(),
+  };
   const service = new CalendarDashboardService(
     repository as unknown as CalendarDashboardRepository,
     config as unknown as ConfigService,
+    calendars as unknown as CalendarService,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
+    calendars.getDefaultProvider.mockResolvedValue(
+      CalendarProviderType.GOOGLE_CALENDAR,
+    );
     repository.operationalMetrics.mockResolvedValue({
       tasksFromCalls: 2,
       upcomingDeadlines: 3,
@@ -89,6 +97,21 @@ describe('CalendarDashboardService', () => {
     );
 
     expect(result.items).toHaveLength(1);
+    expect(repository.meetings).toHaveBeenCalledWith(
+      'org-1',
+      CalendarProviderType.GOOGLE_CALENDAR,
+      new Date('2026-09-01T00:00:00.000Z'),
+      new Date('2026-10-01T00:00:00.000Z'),
+    );
+    expect(result.calendarProvider).toBe(CalendarProviderType.GOOGLE_CALENDAR);
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        provider: CalendarProviderType.GOOGLE_CALENDAR,
+        calendarProvider: CalendarProviderType.GOOGLE_CALENDAR,
+        calendarEventId: 'google-event-1',
+        meetingPlatform: MeetingPlatform.GOOGLE_MEET,
+      }),
+    );
     expect(result.items[0].joinUrl).toBe(
       'https://meet.google.com/abc-defg-hij',
     );

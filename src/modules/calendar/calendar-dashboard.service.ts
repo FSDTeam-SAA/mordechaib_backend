@@ -5,10 +5,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { decryptText } from '../../common/helpers/crypto.helper';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
+import { CalendarService } from './calendar.service';
 import { CalendarDashboardQueryDto } from './dto/calendar-dashboard-query.dto';
 
 type DashboardStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
@@ -24,7 +26,11 @@ type DashboardMeeting = {
   timezone: string;
   participantEmails: string[];
   status: DashboardStatus;
-  provider: string;
+  /** Backward-compatible alias of calendarProvider. */
+  provider: CalendarProviderType;
+  calendarProvider: CalendarProviderType;
+  calendarEventId?: string;
+  meetingPlatform?: string;
   eventUrl?: string;
   joinUrl?: string;
   meetingType?: string;
@@ -37,6 +43,7 @@ export class CalendarDashboardService {
   constructor(
     private readonly repository: CalendarDashboardRepository,
     private readonly config: ConfigService,
+    private readonly calendars: CalendarService,
   ) {}
 
   async get(
@@ -54,8 +61,10 @@ export class CalendarDashboardService {
     }
     this.assertTimezone(query.timezone);
 
+    const calendarProvider =
+      await this.calendars.getDefaultProvider(organizationId);
     const [records, operations] = await Promise.all([
-      this.repository.meetings(organizationId, from, to),
+      this.repository.meetings(organizationId, calendarProvider, from, to),
       this.repository.operationalMetrics(organizationId, from, to, now),
     ]);
     const items = this.mergeMeetings(records);
@@ -70,6 +79,7 @@ export class CalendarDashboardService {
     return {
       asOf: now.toISOString(),
       timezone: query.timezone,
+      calendarProvider,
       range: { from: from.toISOString(), to: to.toISOString() },
       dataAvailability: records.truncated
         ? {
@@ -190,7 +200,10 @@ export class CalendarDashboardService {
         timezone: meeting.timezone,
         participantEmails: meeting.invitees || [],
         status,
-        provider: String(meeting.platform),
+        provider: meeting.calendarProvider as CalendarProviderType,
+        calendarProvider: meeting.calendarProvider as CalendarProviderType,
+        calendarEventId: meeting.calendarEventId,
+        meetingPlatform: String(meeting.platform),
         eventUrl: meeting.calendarEventUrl,
         joinUrl: meeting.joinUrlEncrypted
           ? decryptText(meeting.joinUrlEncrypted, this.encryptionKey)
@@ -218,7 +231,9 @@ export class CalendarDashboardService {
         timezone: event.timezone,
         participantEmails: event.attendees || [],
         status: this.calendarStatus(String(event.status)),
-        provider: String(event.provider),
+        provider: event.provider as CalendarProviderType,
+        calendarProvider: event.provider as CalendarProviderType,
+        calendarEventId: event.providerEventId,
         eventUrl: event.providerEventUrl,
         meetingType: String(event.meetingType),
         urgency: event.urgency,
