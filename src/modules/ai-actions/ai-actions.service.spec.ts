@@ -4,6 +4,7 @@ import {
   AiProposalSourceType,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { AgentType } from '../../common/enums/agent-type.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PlatformMeetingsService } from '../meeting-bots/platform-meetings.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -21,6 +22,16 @@ describe('AiActionsService analysis ingestion', () => {
     type: AiProposalSourceType.GOOGLE_MEET,
     id: '66cc9bdfa847ea856c7b41d4',
   };
+  const owner = {
+    id: '66cc9bdfa847ea856c7b41f1',
+    email: 'owner@example.com',
+    firstName: 'Test',
+    lastName: 'Owner',
+    organizationId,
+    role: UserRole.OWNER,
+    sessionId: 'session-1',
+    isPlatformAdmin: false,
+  };
   const repository = {
     findByProposalIdWithHash: jest.fn(),
     findActiveAgent: jest.fn(),
@@ -28,9 +39,11 @@ describe('AiActionsService analysis ingestion', () => {
     findById: jest.fn(),
     list: jest.fn(),
     getActionCenter: jest.fn(),
+    updatePendingPayload: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
+  const auditLogs = { create: jest.fn() };
   const analysis = {
     sentimentAnalysis: {
       score: { positive: 60, neutral: 30, negative: 10 },
@@ -66,13 +79,14 @@ describe('AiActionsService analysis ingestion', () => {
       _id: '66cc9bdfa847ea856c7b41d5',
       ...input,
     }));
+    auditLogs.create.mockResolvedValue(undefined);
     service = new AiActionsService(
       repository as unknown as AiActionsRepository,
       {} as TasksService,
       {} as PlatformMeetingsService,
       {} as UsersService,
       organizations as unknown as OrganizationsService,
-      {} as AuditLogsService,
+      auditLogs as unknown as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
     );
   });
@@ -191,6 +205,116 @@ describe('AiActionsService analysis ingestion', () => {
       },
     );
     expect(result.status).toBe('ALL');
+  });
+
+  it('validates and atomically updates a pending proposal payload', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.SCHEDULE_MEETING,
+      status: AiActionProposalStatus.PENDING,
+      revision: 3,
+      payload: {
+        platform: 'GOOGLE_MEET',
+        title: 'Project review',
+        startsAt: '2026-10-05T09:00:00.000Z',
+        durationMinutes: 30,
+        timezone: 'Asia/Dhaka',
+        invitees: ['old@example.com'],
+      },
+    });
+    repository.updatePendingPayload.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.SCHEDULE_MEETING,
+      status: AiActionProposalStatus.PENDING,
+      revision: 4,
+      payload: {
+        platform: 'GOOGLE_MEET',
+        title: 'Updated project review',
+        startsAt: '2026-10-05T09:00:00.000Z',
+        durationMinutes: 45,
+        timezone: 'Asia/Dhaka',
+        invitees: ['client@example.com'],
+      },
+    });
+
+    const result = await service.updatePending(
+      organizationId,
+      owner,
+      '66cc9bdfa847ea856c7b41d5',
+      {
+        expectedRevision: 3,
+        payload: {
+          title: 'Updated project review',
+          durationMinutes: 45,
+          invitees: ['CLIENT@example.com'],
+        },
+      },
+    );
+
+    expect(repository.updatePendingPayload).toHaveBeenCalledWith(
+      organizationId,
+      '66cc9bdfa847ea856c7b41d5',
+      3,
+      expect.objectContaining({
+        title: 'Updated project review',
+        durationMinutes: 45,
+        invitees: ['client@example.com'],
+      }),
+      { id: owner.id, name: 'Test Owner' },
+    );
+    expect(auditLogs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AI_ACTION_PROPOSAL_EDITED',
+        metadata: expect.objectContaining({
+          previousRevision: 3,
+          revision: 4,
+          changedFields: ['durationMinutes', 'invitees', 'title'],
+        }),
+      }),
+    );
+    expect(result).toEqual(expect.objectContaining({ revision: 4 }));
+  });
+
+  it('rejects a stale proposal edit without writing', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.PENDING,
+      revision: 2,
+      payload: { title: 'Review notes' },
+    });
+
+    await expect(
+      service.updatePending(organizationId, owner, '66cc9bdfa847ea856c7b41d5', {
+        expectedRevision: 1,
+        payload: { title: 'Updated notes' },
+      }),
+    ).rejects.toThrow('Proposal revision conflict; current revision is 2');
+    expect(repository.updatePendingPayload).not.toHaveBeenCalled();
+  });
+
+  it('does not allow a proposal to be edited after approval', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.APPROVED,
+      revision: 1,
+      payload: { title: 'Review notes' },
+    });
+
+    await expect(
+      service.updatePending(organizationId, owner, '66cc9bdfa847ea856c7b41d5', {
+        expectedRevision: 1,
+        payload: { title: 'Updated notes' },
+      }),
+    ).rejects.toThrow(
+      'Only a PENDING proposal can be edited; current status is APPROVED',
+    );
+    expect(repository.updatePendingPayload).not.toHaveBeenCalled();
   });
 
   it('stores a complete task as a pending CEO approval', async () => {

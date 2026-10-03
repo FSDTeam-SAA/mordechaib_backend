@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
+import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import {
   AiActionProposal,
@@ -45,11 +46,17 @@ export class CalendarDashboardRepository {
     private readonly analyses: Model<AiSourceAnalysis>,
   ) {}
 
-  async meetings(organizationId: string, from: Date, to: Date) {
+  async meetings(
+    organizationId: string,
+    provider: CalendarProviderType,
+    from: Date,
+    to: Date,
+  ) {
     const [platformRows, calendarRows] = await Promise.all([
       this.platformMeetings
         .find({
           organizationId,
+          calendarProvider: provider,
           startsAt: { $lt: to },
           endsAt: { $gt: from },
         })
@@ -63,6 +70,7 @@ export class CalendarDashboardRepository {
       this.calendarEvents
         .find({
           organizationId,
+          provider,
           startsAt: { $lt: to },
           endsAt: { $gt: from },
         })

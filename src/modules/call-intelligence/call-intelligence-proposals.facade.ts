@@ -3,6 +3,7 @@ import { RequestUser } from '../../common/types/request-context.type';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { AnswerAiClarificationDto } from '../ai-actions/dto/answer-ai-clarification.dto';
 import { ListAiActionProposalsQueryDto } from '../ai-actions/dto/list-ai-action-proposals-query.dto';
+import { UpdateAiActionProposalDto } from '../ai-actions/dto/update-ai-action-proposal.dto';
 import { AiActionClarificationWorkflowService } from '../ai-integration/ai-action-clarification-workflow.service';
 import {
   CallIntelligenceProposalCommand,
@@ -22,6 +23,15 @@ export class CallIntelligenceProposalsFacade {
 
   get(organizationId: string, proposalId: string) {
     return this.actions.get(organizationId, proposalId);
+  }
+
+  update(
+    organizationId: string,
+    actor: RequestUser,
+    proposalId: string,
+    input: UpdateAiActionProposalDto,
+  ) {
+    return this.actions.updatePending(organizationId, actor, proposalId, input);
   }
 
   answerClarification(
