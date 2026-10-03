@@ -135,6 +135,7 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 | Delete own message           | `DELETE /messages/:messageId`                                         |
 | List proposals               | `GET /call-intelligence/proposals`                                    |
 | Get one proposal             | `GET /call-intelligence/proposals/:id`                                |
+| Edit pending proposal        | `PATCH /call-intelligence/proposals/:id`                              |
 | Answer clarification         | `POST /call-intelligence/proposals/:id/clarifications`                |
 | Approve/reject/retry         | `POST /call-intelligence/proposals/:id/action`                        |
 | List meetings                | `GET /meetings`                                                       |
@@ -483,6 +484,7 @@ ANALYZING
   -> PENDING (ready for review)
 
 PENDING
+  -> EDIT -> PENDING (revision increments)
   -> APPROVE -> EXECUTING -> EXECUTED
                          -> FAILED -> RETRY -> EXECUTING
   -> REJECT  -> REJECTED
@@ -526,6 +528,29 @@ Poll every 2 seconds until `NEEDS_CLARIFICATION`, `PENDING`, or a terminal failu
 ### 6.4 Review and approve/reject
 
 Show review controls only for `PENDING`.
+
+To edit the proposal before approval, send only the payload fields that changed and the current `revision` returned by the latest proposal response:
+
+```http
+PATCH /call-intelligence/proposals/:id
+Content-Type: application/json
+```
+
+```json
+{
+  "expectedRevision": 1,
+  "payload": {
+    "title": "Updated client review meeting",
+    "startsAt": "2026-10-05T09:00:00.000Z",
+    "durationMinutes": 45,
+    "invitees": ["client@example.com"]
+  }
+}
+```
+
+The backend merges these fields with the stored payload and validates the complete result against `CREATE_TASK` or `SCHEDULE_MEETING`. A successful response remains `PENDING`, increments `revision`, and includes `lastEditedByUserId`, `lastEditedByUserName`, and `lastEditedAt`. Replace the local proposal with this response before approving it.
+
+If the response is `409 Proposal revision conflict`, another request has already changed the proposal. Re-fetch `GET /call-intelligence/proposals/:id`, show the latest values, and require the organizer to review again. Proposals outside `PENDING` cannot be edited. `actionType`, source, agent, status, confidence, evidence, and analysis are never editable through this endpoint.
 
 Approve:
 
@@ -1627,9 +1652,10 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
    GET  /call-intelligence/proposals/:id                (poll refinement)
    repeat step 5 as required
 6. When PENDING, render complete proposal preview
-7. POST /call-intelligence/proposals/:id/action          ({"action":"APPROVE"})
-8. Read target.id from EXECUTED response
-9. GET  /meetings/:targetId                              (verify/render meeting)
+7. PATCH /call-intelligence/proposals/:id                (optional manual edit)
+8. POST /call-intelligence/proposals/:id/action          ({"action":"APPROVE"})
+9. Read target.id from EXECUTED response
+10. GET /meetings/:targetId                              (verify/render meeting)
 ```
 
 ### 15.2 Chat to AI email draft and owner Send
@@ -1996,6 +2022,7 @@ CRM connections belong to the organization, not an individual user. The first co
 | `GET /integrations`                        | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
 | `GET /crm/connections/HUBSPOT/connect`     | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
 | `GET /crm/connections/SALESFORCE/connect`  | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/:provider`           | none                                                                     | connection status, provider account identity, default selection, expiry, and sync health                |
 | `GET /crm/connections/:provider/callback`  | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
 | `DELETE /crm/connections/:provider`        | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
 | `PATCH /crm/connections/:provider/default` | none                                                                     | selected default CRM connection                                                                         |
@@ -2105,9 +2132,11 @@ For meeting-source audio, use `GET /meeting-bots/:meetingBotId/audio`, not the c
 `meeting_bots`, `tasks`, `ai_action_proposals`, and `ai_source_analyses`.
 
 For the Calendar screen, use `GET /calendar/dashboard` as the canonical read
-model. It merges and deduplicates platform meetings and synchronized calendar
+model. It returns only the organization default calendar provider, then merges
+and deduplicates that provider's platform meetings and synchronized calendar
 events. Do not build this screen by merging `/meetings` and `/calendar/events`
-in the browser.
+in the browser. Changing the default calendar connection changes this dashboard
+scope; the frontend does not pass a provider query parameter.
 
 | Endpoint                      | Access                 | Request body / query                                                        | Response data                            |
 | ----------------------------- | ---------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |
@@ -2213,6 +2242,7 @@ Condensed response shape:
 {
   "asOf": "2026-09-25T08:00:00.000Z",
   "timezone": "Asia/Dhaka",
+  "calendarProvider": "GOOGLE_CALENDAR",
   "range": {
     "from": "2026-09-01T00:00:00.000Z",
     "to": "2026-10-01T00:00:00.000Z"
@@ -2246,7 +2276,10 @@ Condensed response shape:
       "timezone": "Asia/Dhaka",
       "participantEmails": ["client@example.com"],
       "status": "SCHEDULED",
-      "provider": "GOOGLE_MEET",
+      "provider": "GOOGLE_CALENDAR",
+      "calendarProvider": "GOOGLE_CALENDAR",
+      "calendarEventId": "google-event-1",
+      "meetingPlatform": "GOOGLE_MEET",
       "eventUrl": "https://calendar.google.com/...",
       "joinUrl": "https://meet.google.com/abc-defg-hij"
     }
@@ -2333,6 +2366,12 @@ Response usage:
 - `summary.total` includes scheduled, completed, and cancelled records;
   `failed` is reported separately and is not included in `total`.
 - `items` powers the calendar grid, selected-day agenda, and status table.
+- `calendarProvider` is the active default calendar (`GOOGLE_CALENDAR` or
+  `OUTLOOK_CALENDAR`). Every meeting in `items` belongs to that provider.
+- `items[].provider` is retained as a backward-compatible alias of
+  `items[].calendarProvider`; it no longer represents the meeting platform.
+  Use `meetingPlatform` for `GOOGLE_MEET`, `ZOOM`, or another conferencing
+  platform, and `calendarEventId` for the provider event identity.
 - `upcoming` is already sorted and limited.
 - `sourceType` determines details/actions: `PLATFORM_MEETING` uses
   `/meetings/:id`; `CALENDAR_EVENT` uses `/calendar/events/:id`.
