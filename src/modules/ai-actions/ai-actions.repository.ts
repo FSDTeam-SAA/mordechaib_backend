@@ -61,6 +61,36 @@ export class AiActionsRepository {
     return this.model.findOne({ _id: id, organizationId }).lean().exec();
   }
 
+  updatePendingPayload(
+    organizationId: string,
+    id: string,
+    expectedRevision: number,
+    payload: Record<string, unknown>,
+    editor: { id: string; name: string },
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          status: AiActionProposalStatus.PENDING,
+          revision: expectedRevision,
+        },
+        {
+          $set: {
+            payload,
+            lastEditedByUserId: editor.id,
+            lastEditedByUserName: editor.name,
+            lastEditedAt: new Date(),
+          },
+          $inc: { revision: 1 },
+        },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
   async list(
     organizationId: string,
     page: number,

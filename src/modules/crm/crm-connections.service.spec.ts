@@ -73,6 +73,64 @@ describe('CrmConnectionsService', () => {
     });
   });
 
+  it('returns a safe connected status without exposing OAuth tokens', async () => {
+    repository.find.mockResolvedValue({
+      ...defaultConnection,
+      isDefaultCrm: true,
+      expiresAt: new Date('2026-10-03T12:00:00.000Z'),
+      metadata: {
+        connectedByUserId: 'user-1',
+        providerAccountId: 'hub-1',
+        providerEmail: 'owner@example.com',
+        providerName: 'Example Company',
+        lastSyncedAt: '2026-10-03T10:00:00.000Z',
+        syncStatus: 'IDLE',
+        reconnectRequired: false,
+      },
+    });
+
+    const result = await service.connection(
+      'org-1',
+      IntegrationProvider.HUBSPOT,
+    );
+
+    expect(repository.find).toHaveBeenCalledWith(
+      'org-1',
+      IntegrationProvider.HUBSPOT,
+    );
+    expect(result).toEqual({
+      provider: IntegrationProvider.HUBSPOT,
+      connected: true,
+      status: 'CONNECTED',
+      isDefault: true,
+      account: {
+        id: 'hub-1',
+        email: 'owner@example.com',
+        name: 'Example Company',
+      },
+      connectedByUserId: 'user-1',
+      expiresAt: new Date('2026-10-03T12:00:00.000Z'),
+      lastSyncedAt: '2026-10-03T10:00:00.000Z',
+      syncStatus: 'IDLE',
+      lastSyncError: undefined,
+      reconnectRequired: false,
+    });
+    expect(result).not.toHaveProperty('accessToken');
+    expect(result).not.toHaveProperty('refreshToken');
+  });
+
+  it('returns NOT_CONFIGURED when the requested CRM has no connection', async () => {
+    repository.find.mockResolvedValue(null);
+
+    await expect(
+      service.connection('org-1', IntegrationProvider.SALESFORCE),
+    ).resolves.toEqual({
+      provider: IntegrationProvider.SALESFORCE,
+      connected: false,
+      status: 'NOT_CONFIGURED',
+    });
+  });
+
   it('refreshes once and retries a provider request after a 401', async () => {
     provider.refreshAccessToken.mockResolvedValue({
       accessToken: 'refreshed-token',

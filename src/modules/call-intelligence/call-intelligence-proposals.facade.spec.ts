@@ -29,6 +29,7 @@ describe('CallIntelligenceProposalsFacade', () => {
     retry: jest.fn(),
     list: jest.fn(),
     get: jest.fn(),
+    updatePending: jest.fn(),
   };
   const clarifications = { submitAnswer: jest.fn() };
   let facade: CallIntelligenceProposalsFacade;
@@ -86,6 +87,23 @@ describe('CallIntelligenceProposalsFacade', () => {
       questionId: 'invitee-email',
       answer: 'hassan@example.com',
     });
+  });
+
+  it('delegates a manual proposal edit to the canonical proposal service', async () => {
+    actions.updatePending.mockResolvedValue({ revision: 2 });
+    const input = {
+      expectedRevision: 1,
+      payload: { title: 'Updated proposal' },
+    };
+
+    await facade.update(organizationId, actor, proposalId, input);
+
+    expect(actions.updatePending).toHaveBeenCalledWith(
+      organizationId,
+      actor,
+      proposalId,
+      input,
+    );
   });
 
   it('requires a rejection reason and rejects clarification as an action command', async () => {
