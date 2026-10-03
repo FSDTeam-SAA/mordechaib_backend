@@ -246,7 +246,16 @@ export class AiActionsService {
         `Only a PENDING proposal can be edited; current status is ${proposal.status}`,
       );
     }
-    if (proposal.revision !== input.expectedRevision) {
+
+    const expectedRevision = input.expectedRevision;
+    if (
+      typeof expectedRevision !== 'number' ||
+      !Number.isFinite(expectedRevision)
+    ) {
+      throw new BadRequestException('expectedRevision must be a finite number');
+    }
+
+    if (proposal.revision !== expectedRevision) {
       throw new ConflictException(
         `Proposal revision conflict; current revision is ${proposal.revision}`,
       );
@@ -278,7 +287,7 @@ export class AiActionsService {
     const updated = await this.repository.updatePendingPayload(
       organizationId,
       id,
-      input.expectedRevision,
+      expectedRevision,
       payload,
       this.reviewer(actor),
     );
@@ -304,7 +313,7 @@ export class AiActionsService {
         metadata: {
           actionType: proposal.actionType,
           previousRevision: proposal.revision,
-          revision: input.expectedRevision + 1,
+          revision: expectedRevision + 1,
           changedFields: Object.keys(input.payload).sort(),
         },
       })
