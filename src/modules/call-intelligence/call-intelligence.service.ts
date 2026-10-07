@@ -19,6 +19,7 @@ import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema'
 import { ZoomMeeting } from '../../database/schemas/zoom-meeting.schema';
 import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-transcript.schema';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
+import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { GetCallIntelligenceQueryDto } from './dto/get-call-intelligence-query.dto';
 import {
@@ -48,6 +49,10 @@ type CallIntelligenceListItem = {
   detailsPath: string;
 };
 
+export type CallAudioResult =
+  | { filePath: string; size: number; filename: string; contentType: string }
+  | { downloadUrl: string; filename: string; contentType: string };
+
 @Injectable()
 export class CallIntelligenceService {
   constructor(
@@ -67,6 +72,7 @@ export class CallIntelligenceService {
     private readonly platformMeetings: Model<PlatformMeeting>,
     private readonly sourceAnalyses: SourceAnalysesRepository,
     private readonly aiActions: AiActionsService,
+    private readonly cloudinaryStorage: CloudinaryMessageAttachmentStorage,
   ) {}
 
   async list(organizationId: string, query: ListCallIntelligenceQueryDto) {
@@ -230,7 +236,7 @@ export class CallIntelligenceService {
     organizationId: string,
     sourceId: string,
     sourceType: AiProposalSourceType,
-  ) {
+  ): Promise<CallAudioResult> {
     if (
       ![
         AiProposalSourceType.CALL_AUDIO,
@@ -247,25 +253,51 @@ export class CallIntelligenceService {
       .select('+localFilePath')
       .lean()
       .exec();
-    if (!recording?.localFilePath) {
+    if (!recording) {
       throw new NotFoundException('Call audio is not available');
     }
-    const filePath = path.resolve(recording.localFilePath);
-    let fileStat;
-    try {
-      fileStat = await stat(filePath);
-    } catch {
-      throw new NotFoundException('Call audio file is not available');
+    if (recording.localFilePath) {
+      const filePath = path.resolve(recording.localFilePath);
+      try {
+        const fileStat = await stat(filePath);
+        if (fileStat.isFile()) {
+          return {
+            filePath,
+            size: fileStat.size,
+            filename: `${recording.recordingSid}${path.extname(filePath) || '.wav'}`,
+            contentType: this.audioContentType(filePath),
+          };
+        }
+      } catch {
+        // A worker or API instance may not share the webhook's local disk.
+      }
     }
-    if (!fileStat.isFile()) {
-      throw new NotFoundException('Call audio file is not available');
+    if (
+      recording.storageProvider === 'CLOUDINARY' &&
+      recording.storageKey &&
+      recording.storageResourceType &&
+      recording.storageDeliveryType &&
+      recording.storageFormat
+    ) {
+      const signed = await this.cloudinaryStorage.getDownload(
+        {
+          storageKey: recording.storageKey,
+          storageAssetId: recording.storageAssetId,
+          storageResourceType: recording.storageResourceType,
+          storageDeliveryType: recording.storageDeliveryType,
+          storageFormat: recording.storageFormat,
+        },
+        'inline',
+      );
+      return {
+        downloadUrl: signed.downloadUrl,
+        filename: `${recording.recordingSid}.${recording.storageFormat}`,
+        contentType: this.audioContentType(
+          `${recording.recordingSid}.${recording.storageFormat}`,
+        ),
+      };
     }
-    return {
-      filePath,
-      size: fileStat.size,
-      filename: `${recording.recordingSid}${path.extname(filePath) || '.wav'}`,
-      contentType: this.audioContentType(filePath),
-    };
+    throw new NotFoundException('Call audio file is not available');
   }
 
   createReport(
@@ -388,7 +420,7 @@ export class CallIntelligenceService {
       occurredAt: call?.startedAt ?? recording.createdAt,
       durationSeconds: call?.durationSeconds ?? recording.recordingDuration,
       transcriptAvailable: recording.aiStatus === 'COMPLETED',
-      audioAvailable: Boolean(recording.localFilePath),
+      audioAvailable: Boolean(recording.localFilePath || recording.storageKey),
       createdAt: recording.createdAt,
       detailsPath: this.detailsPath(source),
     };
@@ -478,7 +510,7 @@ export class CallIntelligenceService {
         aiStatus: recording.aiStatus,
       },
       audio: {
-        available: Boolean(recording.localFilePath),
+        available: Boolean(recording.localFilePath || recording.storageKey),
         downloadPath: `/api/v1/call-intelligence/${source.id}/audio?sourceType=${source.type}`,
       },
       transcript: {
