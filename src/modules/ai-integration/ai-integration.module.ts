@@ -76,6 +76,11 @@ function redisConnection(urlValue: string) {
     AiAnalysisResponseValidator,
     AiChatReplyService,
   ],
-  exports: [AiServiceClient, AiJobsQueue, AiActionClarificationWorkflowService],
+  exports: [
+    AiServiceClient,
+    AiJobsQueue,
+    AiActionClarificationWorkflowService,
+    AiSourceContextModule,
+  ],
 })
 export class AiIntegrationModule {}

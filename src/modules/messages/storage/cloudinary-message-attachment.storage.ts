@@ -63,7 +63,7 @@ export class CloudinaryMessageAttachmentStorage implements MessageAttachmentStor
         resourceType === 'raw' && extension
           ? `${input.uploadId}.${extension}`
           : input.uploadId,
-      overwrite: false,
+      overwrite: input.overwrite ?? false,
       use_filename: false,
       tags: input.storageTags || ['noltra-message-attachment'],
       filename_override: input.originalName,
