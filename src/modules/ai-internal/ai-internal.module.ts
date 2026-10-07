@@ -83,6 +83,6 @@ import {
     ]),
   ],
   providers: [AiSourceContextService, CloudinaryMessageAttachmentStorage],
-  exports: [AiSourceContextService],
+  exports: [AiSourceContextService, CloudinaryMessageAttachmentStorage],
 })
 export class AiSourceContextModule {}
