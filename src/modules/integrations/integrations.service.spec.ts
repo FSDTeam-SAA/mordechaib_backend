@@ -8,6 +8,7 @@ describe('IntegrationsService', () => {
     findByOrganization: jest.fn(),
     findTwilioAccount: jest.fn(),
     findTwilioSetting: jest.fn(),
+    findActiveTwilioPhoneNumber: jest.fn(),
   };
   const emailConnections = { list: jest.fn() };
   const service = new IntegrationsService(
@@ -19,6 +20,7 @@ describe('IntegrationsService', () => {
     jest.clearAllMocks();
     repository.findTwilioAccount.mockResolvedValue(null);
     repository.findTwilioSetting.mockResolvedValue(null);
+    repository.findActiveTwilioPhoneNumber.mockResolvedValue(null);
     emailConnections.list.mockResolvedValue([]);
   });
 
@@ -51,6 +53,57 @@ describe('IntegrationsService', () => {
           name: 'Owner',
         },
         connectedByUserId: 'user-1',
+      }),
+    );
+  });
+
+  it('returns Twilio numbers, capabilities, and enabled platform features', async () => {
+    repository.findByOrganization.mockResolvedValue([]);
+    repository.findTwilioAccount.mockResolvedValue({
+      subaccountSid: 'AC123',
+      friendlyName: 'Noltra - org-1',
+      provisioningStatus: 'ACTIVE',
+      selectedCountry: 'US',
+      selectedPhoneNumber: '+14155550123',
+      forwardingNumber: '+8801712345678',
+    });
+    repository.findTwilioSetting.mockResolvedValue({
+      twilioNumber: '+14155550123',
+      forwardingNumber: '+8801712345678',
+      isRecordingEnabled: true,
+      status: 'ACTIVE',
+    });
+    repository.findActiveTwilioPhoneNumber.mockResolvedValue({
+      phoneNumber: '+14155550123',
+      country: 'US',
+      numberType: 'LOCAL',
+      capabilities: { voice: true, sms: true, mms: true },
+    });
+
+    const result = await service.findAll('org-1', 'user-1');
+
+    expect(result.items).toContainEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.TWILIO,
+        connected: true,
+        account: {
+          id: 'AC123',
+          name: 'Noltra - org-1',
+          phoneNumber: '+14155550123',
+        },
+        configuration: {
+          twilioNumber: '+14155550123',
+          forwardingNumber: '+8801712345678',
+          country: 'US',
+          numberType: 'LOCAL',
+          numberCapabilities: { voice: true, sms: true, mms: true },
+          enabledFeatures: {
+            voice: true,
+            sms: false,
+            mms: false,
+            callRecording: true,
+          },
+        },
       }),
     );
   });
