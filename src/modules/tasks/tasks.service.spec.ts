@@ -7,11 +7,13 @@ import { AgentType } from '../../common/enums/agent-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TaskStatusGroup } from '../../common/enums/task-status-group.enum';
 import { TaskDepartment } from '../../common/enums/task-department.enum';
+import { ContactsService } from '../contacts/contacts.service';
 
 describe('TasksService', () => {
   let repository: Record<string, jest.Mock>;
   let service: TasksService;
   let notifications: Record<string, jest.Mock>;
+  let contacts: Record<string, jest.Mock>;
 
   beforeEach(() => {
     repository = {
@@ -23,9 +25,11 @@ describe('TasksService', () => {
       deleteById: jest.fn(),
     };
     notifications = { notifyAgentTaskCompleted: jest.fn() };
+    contacts = { assertActiveIds: jest.fn() };
     service = new TasksService(
       repository as unknown as TasksRepository,
       notifications as unknown as NotificationsService,
+      contacts as unknown as ContactsService,
     );
   });
 
@@ -69,6 +73,27 @@ describe('TasksService', () => {
           type: AgentType.SALES,
         },
       }),
+    );
+  });
+
+  it('validates and stores customer contacts on a task', async () => {
+    const contactId = '66cc9bdfa847ea856c7b41d3';
+    repository.create.mockImplementation(async (input) => ({
+      _id: '66cc9bdfa847ea856c7b41d2',
+      ...input,
+    }));
+
+    const result = await service.create('org-1', 'owner-1', {
+      title: 'Follow up with customer',
+      contactIds: [contactId],
+    });
+
+    expect(contacts.assertActiveIds).toHaveBeenCalledWith('org-1', [contactId]);
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ contactIds: [contactId] }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({ contactIds: [contactId] }),
     );
   });
 

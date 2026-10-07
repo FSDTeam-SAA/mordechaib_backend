@@ -28,6 +28,7 @@ const ORGANIZATION_COLLECTIONS = [
   'integrations',
   'integration_oauth_states',
   'crm_deals',
+  'customer_contacts',
   'call_logs',
   'approvals',
   'tasks',

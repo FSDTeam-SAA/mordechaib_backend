@@ -9,6 +9,7 @@ import {
   IsEnum,
   IsISO8601,
   IsInt,
+  IsMongoId,
   IsObject,
   IsOptional,
   IsString,
@@ -83,6 +84,18 @@ export class CreateConnectedMeetingDto {
   @ArrayUnique()
   @IsEmail({}, { each: true })
   invitees?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Customer contacts whose emails should be invited',
+    maxItems: 100,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsMongoId({ each: true })
+  contactIds?: string[];
 
   @ApiPropertyOptional({ default: 15, minimum: 0, maximum: 40320 })
   @Type(() => Number)
