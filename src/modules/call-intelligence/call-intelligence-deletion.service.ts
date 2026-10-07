@@ -120,6 +120,22 @@ export class CallIntelligenceDeletionService {
     if (recording.localFilePath) {
       await this.recordingStorage.deleteRecording(recording.localFilePath);
     }
+    if (
+      recording.storageProvider === 'CLOUDINARY' &&
+      recording.storageKey &&
+      recording.storageResourceType &&
+      recording.storageDeliveryType &&
+      recording.storageFormat
+    ) {
+      await this.recordingStorage.deletePersistentRecording({
+        storageProvider: recording.storageProvider,
+        storageKey: recording.storageKey,
+        storageAssetId: recording.storageAssetId,
+        storageResourceType: recording.storageResourceType,
+        storageDeliveryType: recording.storageDeliveryType,
+        storageFormat: recording.storageFormat,
+      });
+    }
 
     const related = await this.deleteIntelligenceArtifacts(
       organizationId,
