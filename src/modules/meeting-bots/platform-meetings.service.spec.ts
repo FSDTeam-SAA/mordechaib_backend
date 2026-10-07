@@ -11,6 +11,7 @@ import { GoogleMeetProvider } from './providers/google-meet.provider';
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { ContactsService } from '../contacts/contacts.service';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 
 describe('PlatformMeetingsService', () => {
@@ -21,6 +22,7 @@ describe('PlatformMeetingsService', () => {
   let googleAuth: Record<string, jest.Mock>;
   let googleProvider: Record<string, jest.Mock>;
   let calendar: Record<string, jest.Mock>;
+  let contacts: Record<string, jest.Mock>;
   let service: PlatformMeetingsService;
 
   beforeEach(() => {
@@ -85,6 +87,7 @@ describe('PlatformMeetingsService', () => {
       updateMeetingEvent: jest.fn(),
       cancelMeetingEvent: jest.fn(),
     };
+    contacts = { resolveEmails: jest.fn().mockResolvedValue([]) };
     const config = {
       get: jest.fn((key: string, fallback?: unknown) => {
         const values: Record<string, unknown> = {
@@ -104,6 +107,32 @@ describe('PlatformMeetingsService', () => {
       googleProvider as unknown as GoogleMeetProvider,
       calendar as unknown as CalendarService,
       config as unknown as ConfigService,
+      contacts as unknown as ContactsService,
+    );
+  });
+
+  it('resolves selected contacts into meeting invitees', async () => {
+    const contactId = '66cc9bdfa847ea856c7b41d3';
+    contacts.resolveEmails.mockResolvedValue(['customer@example.com']);
+
+    await service.create('org-1', 'user-1', {
+      platform: MeetingPlatform.GOOGLE_MEET,
+      title: 'Customer review',
+      startsAt: '2099-09-01T10:00:00.000Z',
+      contactIds: [contactId],
+      idempotencyKey: 'contact-meeting-1',
+    });
+
+    expect(contacts.resolveEmails).toHaveBeenCalledWith('org-1', [contactId]);
+    expect(repository.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactIds: [contactId],
+        invitees: ['customer@example.com'],
+      }),
+    );
+    expect(googleProvider.createMeeting).toHaveBeenCalledWith(
+      'google-token',
+      expect.objectContaining({ invitees: ['customer@example.com'] }),
     );
   });
 

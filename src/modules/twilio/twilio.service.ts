@@ -106,6 +106,7 @@ export class TwilioService {
     organizationId: string;
     clientPhone: string;
     agentPhone?: string;
+    contactId?: string;
   }) {
     const setting = await this.settingsService.findActiveByOrganization(
       input.organizationId,
@@ -155,6 +156,7 @@ export class TwilioService {
       toNumber: input.clientPhone,
       twilioNumber: fromNumber,
       accountSid: accountContext?.accountSid,
+      contactId: input.contactId,
       status: CallStatus.INITIATED,
     });
 

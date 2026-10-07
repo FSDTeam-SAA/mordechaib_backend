@@ -143,6 +143,9 @@ export class TaskItem {
   @Prop({ type: [String], default: [] })
   stakeholderIds!: string[];
 
+  @Prop({ type: [String], default: [] })
+  contactIds!: string[];
+
   @Prop({ type: [TaskDependencySchema], default: [] })
   dependencies!: TaskDependency[];
 
@@ -177,6 +180,7 @@ export class TaskItem {
 export const TaskItemSchema = SchemaFactory.createForClass(TaskItem);
 TaskItemSchema.index({ organizationId: 1, status: 1, dueDate: 1 });
 TaskItemSchema.index({ organizationId: 1, assignedToUserId: 1, createdAt: -1 });
+TaskItemSchema.index({ organizationId: 1, contactIds: 1, createdAt: -1 });
 TaskItemSchema.index(
   { organizationId: 1, aiActionProposalId: 1 },
   {

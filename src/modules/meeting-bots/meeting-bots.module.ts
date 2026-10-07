@@ -30,6 +30,7 @@ import { CalendarModule } from '../calendar/calendar.module';
 import { OutlookCalendarController } from './outlook-calendar.controller';
 import { OutlookCalendarAuthService } from './outlook-calendar-auth.service';
 import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
+import { ContactsModule } from '../contacts/contacts.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -49,6 +50,7 @@ function redisConnection(urlValue: string) {
   imports: [
     ConfigModule,
     CalendarModule,
+    ContactsModule,
     forwardRef(() => AiIntegrationModule),
     BullModule.forRootAsync({
       imports: [ConfigModule],
