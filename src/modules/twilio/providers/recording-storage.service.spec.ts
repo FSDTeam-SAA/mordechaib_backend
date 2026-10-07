@@ -12,6 +12,7 @@ describe('RecordingStorageService deletion', () => {
     const service = new RecordingStorageService(
       config as unknown as ConfigService,
       {} as TwilioProvider,
+      {} as never,
     );
 
     await expect(

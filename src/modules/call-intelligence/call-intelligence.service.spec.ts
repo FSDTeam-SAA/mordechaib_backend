@@ -93,6 +93,7 @@ describe('CallIntelligenceService', () => {
       platformMeetings as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     const result = await service.list('66cc9bdfa847ea856c7b4199', {
@@ -164,11 +165,13 @@ describe('CallIntelligenceService', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       { findOne: jest.fn().mockReturnValue(recordingQuery) } as never,
       { findOne: jest.fn().mockReturnValue(callQuery) } as never,
       {} as never,
       sourceAnalyses as unknown as SourceAnalysesRepository,
       actions as unknown as AiActionsService,
+      {} as never,
     );
 
     const result = await service.getDetails(
@@ -205,6 +208,7 @@ describe('CallIntelligenceService', () => {
 
   it('escapes AI text in the downloadable HTML report', () => {
     const service = new CallIntelligenceService(
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

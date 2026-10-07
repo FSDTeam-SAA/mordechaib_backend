@@ -56,6 +56,12 @@ type UpsertRecordingInput = {
   recordingDuration?: number;
   recordingChannels?: number;
   localFilePath?: string;
+  storageProvider?: string;
+  storageKey?: string;
+  storageAssetId?: string;
+  storageResourceType?: string;
+  storageDeliveryType?: string;
+  storageFormat?: string;
 };
 
 @Injectable()
@@ -191,6 +197,16 @@ export class CallsRepository {
             recordingChannels: input.recordingChannels,
             ...(input.localFilePath
               ? { localFilePath: input.localFilePath }
+              : {}),
+            ...(input.storageProvider
+              ? {
+                  storageProvider: input.storageProvider,
+                  storageKey: input.storageKey,
+                  storageAssetId: input.storageAssetId,
+                  storageResourceType: input.storageResourceType,
+                  storageDeliveryType: input.storageDeliveryType,
+                  storageFormat: input.storageFormat,
+                }
               : {}),
           },
         },
