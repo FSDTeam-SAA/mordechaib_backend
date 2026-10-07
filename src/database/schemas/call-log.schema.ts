@@ -32,6 +32,9 @@ export class CallLog {
   @Prop()
   forwardingNumber?: string;
 
+  @Prop({ index: true })
+  contactId?: string;
+
   @Prop({ required: true, enum: ['INBOUND', 'OUTBOUND'] })
   direction!: string;
 

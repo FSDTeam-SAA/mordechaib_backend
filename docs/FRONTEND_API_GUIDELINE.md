@@ -694,6 +694,7 @@ Content-Type: application/json
   "startsAt": "2026-09-24T15:00:00+06:00",
   "durationMinutes": 30,
   "timezone": "Asia/Dhaka",
+  "contactIds": ["CUSTOMER_CONTACT_ID"],
   "invitees": ["tahid@example.com"],
   "reminderMinutesBeforeStart": 15,
   "sendBot": true,
@@ -702,6 +703,11 @@ Content-Type: application/json
 ```
 
 Omit `startsAt` only for an intentional instant meeting.
+
+`contactIds` references active records from `customer_contacts`. Their email
+addresses are merged with `invitees` and duplicates are removed. Every selected
+contact must have an email address. Use `GET /meetings?contactId=...` to list
+meetings linked to one contact.
 
 Manage an existing scheduled meeting:
 
@@ -1937,17 +1943,73 @@ Do not send unknown settings fields: global validation rejects non-whitelisted b
 
 ## 19. Operations: Tasks, Approvals, Calls, CRM Foundation, and Calendar
 
-### 19.1 `tasks` — task management
+### 19.1 `customer_contacts` — customers/contacts without platform login
+
+This collection stores organization-owned external people. A contact is not a
+platform user and cannot sign in. `OWNER` and `ADMIN` can manage contacts and
+then reference the same `contactId` from calls, meetings, and tasks.
+
+| Endpoint               | Request body / query                    | Response data                       |
+| ---------------------- | --------------------------------------- | ----------------------------------- |
+| `POST /contacts`       | contact body below                      | created contact                     |
+| `GET /contacts`        | `page`, `limit`, `search`, `status`     | paginated organization contacts     |
+| `GET /contacts/:id`    | none                                    | one contact                         |
+| `PATCH /contacts/:id`  | any non-empty subset of the create body | updated contact                     |
+| `DELETE /contacts/:id` | none                                    | `{ "id": "...", "archived": true }` |
+
+Create example:
+
+```json
+{
+  "name": "Tahid Rahman",
+  "email": "tahid@example.com",
+  "phone": "+8801812345678",
+  "company": "Acme Ltd.",
+  "jobTitle": "Operations Director",
+  "notes": "Primary customer contact",
+  "tags": ["priority", "customer"]
+}
+```
+
+At least one of `email` or `phone` is required. Phone numbers must use E.164.
+The backend rejects an active duplicate email or phone within the organization.
+Delete performs a soft archive; use `status=ARCHIVED` to list archived records.
+
+Example list response data:
+
+```json
+{
+  "items": [
+    {
+      "id": "CONTACT_ID",
+      "createdByUserId": "USER_ID",
+      "name": "Tahid Rahman",
+      "email": "tahid@example.com",
+      "phone": "+8801812345678",
+      "company": "Acme Ltd.",
+      "jobTitle": "Operations Director",
+      "notes": "Primary customer contact",
+      "tags": ["priority", "customer"],
+      "status": "ACTIVE",
+      "createdAt": "2026-10-07T08:00:00.000Z",
+      "updatedAt": "2026-10-07T08:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "pages": 1 }
+}
+```
+
+### 19.2 `tasks` — task management
 
 `tasks` is the authoritative operational task collection. All task routes are organization-scoped; create/update/delete allow `OWNER`, `ADMIN`, and `MEMBER`.
 
-| Endpoint            | Request body / query                                                                                                   | Response data         |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `POST /tasks`       | task body below                                                                                                        | created task          |
-| `GET /tasks`        | `page`, `limit`, `search`, `status` or `statusGroup`, `priority`, `department`, `assignedToUserId`, `dueFrom`, `dueTo` | paginated tasks       |
-| `GET /tasks/:id`    | none                                                                                                                   | one task              |
-| `PATCH /tasks/:id`  | any subset of create body                                                                                              | updated task          |
-| `DELETE /tasks/:id` | none                                                                                                                   | deletion confirmation |
+| Endpoint            | Request body / query                                                                                                                | Response data         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `POST /tasks`       | task body below                                                                                                                     | created task          |
+| `GET /tasks`        | `page`, `limit`, `search`, `status` or `statusGroup`, `priority`, `department`, `assignedToUserId`, `contactId`, `dueFrom`, `dueTo` | paginated tasks       |
+| `GET /tasks/:id`    | none                                                                                                                                | one task              |
+| `PATCH /tasks/:id`  | any subset of create body                                                                                                           | updated task          |
+| `DELETE /tasks/:id` | none                                                                                                                                | deletion confirmation |
 
 Create example:
 
@@ -1961,6 +2023,7 @@ Create example:
   "status": "TODO",
   "dueDate": "2026-10-01T00:00:00.000Z",
   "estimatedDurationMinutes": 60,
+  "contactIds": ["CUSTOMER_CONTACT_ID"],
   "stakeholderIds": ["USER_ID"],
   "dependencies": [{ "title": "Finance figures ready", "isComplete": false }],
   "attachments": [
@@ -1980,6 +2043,10 @@ Create example:
 
 Task status values are `DRAFT`, `TODO`, `IN_PROGRESS`, `WAITING`, `BLOCKED`, and `COMPLETED`. Department values are `SALES`, `FINANCE`, `OPERATIONS`, `STRATEGY`, `SUPPORT`, `DESIGN`, `MARKETING`, and `OTHER`.
 
+`contactIds` links external contacts without granting them platform access.
+Every ID must reference an active contact in the same organization. Filter a
+contact's tasks with `GET /tasks?contactId=...`.
+
 For the dashboard tabs, use one `statusGroup` value instead of combining multiple status requests:
 
 - `PENDING`: non-overdue `DRAFT`, `TODO`, `WAITING`, and `BLOCKED` tasks.
@@ -1993,7 +2060,7 @@ When a task first becomes `COMPLETED`, the backend sets `completedAt`. Reopening
 
 For an AI-created task whose payload omits `department`, Main Backend derives the department when `proposedByAgent.type` exactly matches a task department (including `STRATEGY`). An explicit AI payload department is preserved. The current AI Backend contract does not yet list `STRATEGY` as an explicit task-department value, so it should omit that field for a Strategy Agent task until its own whitelist is updated.
 
-### 19.2 `approvals` — generic approval queue
+### 19.3 `approvals` — generic approval queue
 
 | Endpoint                       | Request body                                                 | Response data                 |
 | ------------------------------ | ------------------------------------------------------------ | ----------------------------- |
@@ -2004,16 +2071,19 @@ For an AI-created task whose payload omits `department`, Main Backend derives th
 
 `payload` is an object whose shape is defined by `actionType`. This generic queue is separate from AI proposal approval in section 6; do not mix their IDs or routes.
 
-### 19.3 `call_logs` and `call_recordings` — outbound calls
+### 19.4 `call_logs` and `call_recordings` — outbound calls
 
-| Endpoint               | Request body / query                                                          | Response data                                |
-| ---------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
-| `POST /calls/outbound` | `{ "clientPhone": "+880...", "agentPhone"?: "+880...", "contactId"?: "..." }` | created outbound-call record/provider result |
-| `GET /calls`           | none                                                                          | organization call log list                   |
+| Endpoint               | Request body / query                                                         | Response data                                |
+| ---------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
+| `POST /calls/outbound` | `{ "contactId": "...", "agentPhone"?: "+880..." }` or a manual `clientPhone` | created outbound-call record/provider result |
+| `GET /calls`           | none                                                                         | organization call log list                   |
 
-Phone numbers must be E.164. `agentPhone` defaults to the organization forwarding number when omitted. This endpoint does not fabricate CRM contacts; `contactId` is optional.
+For a saved contact, send only `contactId`; the backend resolves its active
+organization-scoped E.164 phone number. A manual `clientPhone` remains supported.
+If both are supplied, they must match. `agentPhone` defaults to the organization
+forwarding number when omitted. Only `OWNER` and `ADMIN` can start outbound calls.
 
-### 19.4 `integrations` and `crm_deals` — HubSpot/Salesforce CRM
+### 19.5 `integrations` and `crm_deals` — HubSpot/Salesforce CRM
 
 CRM connections belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; deal routes always state their provider explicitly.
 
@@ -2069,7 +2139,7 @@ Revenue response shape:
 
 CRM data is eventually consistent: `lastSyncedAt`, `syncStatus`, and `reconnectRequired` must be shown in the UI. `crm_deals` is the local analysis cache; provider confirmation completes before a platform deal write updates that cache.
 
-### 19.5 `call_recordings`, `meeting_bots`, `meeting_transcripts`, and `ai_source_analyses` — call intelligence
+### 19.6 `call_recordings`, `meeting_bots`, `meeting_transcripts`, and `ai_source_analyses` — call intelligence
 
 This is the read model for completed Twilio calls and meeting-bot sources. It is separate from chat proposals but uses the same proposal collection for recommended follow-up tasks and meetings. All routes require org `OWNER` or `ADMIN`.
 
@@ -2126,7 +2196,7 @@ Details response shape:
 
 For meeting-source audio, use `GET /meeting-bots/:meetingBotId/audio`, not the call audio endpoint. Request `includeTranscript=true` only when the user opens the transcript panel.
 
-### 19.6 Calendar dashboard, synchronization, and event CRUD
+### 19.7 Calendar dashboard, synchronization, and event CRUD
 
 **Collections/resources:** `managed_calendar_events`, `platform_meetings`,
 `meeting_bots`, `tasks`, `ai_action_proposals`, and `ai_source_analyses`.

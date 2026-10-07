@@ -14,6 +14,7 @@ import { TasksRepository } from './tasks.repository';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ContactsService } from '../contacts/contacts.service';
 
 @Injectable()
 export class TasksService {
@@ -22,9 +23,13 @@ export class TasksService {
   constructor(
     private readonly repository: TasksRepository,
     private readonly notifications: NotificationsService,
+    private readonly contacts: ContactsService,
   ) {}
 
   async create(organizationId: string, userId: string, dto: CreateTaskDto) {
+    if (dto.contactIds?.length) {
+      await this.contacts.assertActiveIds(organizationId, dto.contactIds);
+    }
     const persistence = this.toPersistence(dto);
     if (dto.status === TaskStatus.COMPLETED) {
       persistence.completedAt = new Date();
@@ -47,6 +52,9 @@ export class TasksService {
       proposedByAgent: AiProposalAgent;
     },
   ) {
+    if (dto.contactIds?.length) {
+      await this.contacts.assertActiveIds(organizationId, dto.contactIds);
+    }
     const existing = await this.repository.findByAiActionProposalId(
       organizationId,
       trace.aiActionProposalId,
@@ -105,6 +113,7 @@ export class TasksService {
         priority: query.priority,
         department: query.department,
         assignedToUserId: query.assignedToUserId,
+        contactId: query.contactId,
         dueFrom,
         dueTo,
       },
@@ -127,6 +136,9 @@ export class TasksService {
     this.assertObjectId(id);
     if (Object.values(dto).every((value) => value === undefined)) {
       throw new BadRequestException('No task changes were provided');
+    }
+    if (dto.contactIds?.length) {
+      await this.contacts.assertActiveIds(organizationId, dto.contactIds);
     }
 
     const previous =
@@ -216,6 +228,7 @@ export class TasksService {
     if (dto.stakeholderIds) {
       input.stakeholderIds = [...new Set(dto.stakeholderIds)];
     }
+    if (dto.contactIds) input.contactIds = [...new Set(dto.contactIds)];
 
     return input;
   }
