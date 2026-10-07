@@ -124,6 +124,10 @@ export class CallIntelligenceController {
       sourceId,
       query.sourceType,
     );
+    if ('downloadUrl' in audio) {
+      response.redirect(302, audio.downloadUrl);
+      return;
+    }
     response.setHeader('Content-Type', audio.contentType);
     response.setHeader('Content-Length', audio.size.toString());
     response.setHeader(
