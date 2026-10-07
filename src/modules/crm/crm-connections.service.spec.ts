@@ -56,6 +56,59 @@ describe('CrmConnectionsService', () => {
     repository.update.mockResolvedValue(defaultConnection);
   });
 
+  it('enables PKCE when building a Salesforce connection URL', async () => {
+    oauthStates.create.mockResolvedValue({
+      state: 'oauth-state',
+      codeChallenge: 'pkce-challenge',
+    });
+    provider.authorizationUrl.mockReturnValue('https://salesforce.example');
+
+    await expect(
+      service.connectUrl('org-1', 'user-1', IntegrationProvider.SALESFORCE),
+    ).resolves.toEqual({ authorizationUrl: 'https://salesforce.example' });
+
+    expect(oauthStates.create).toHaveBeenCalledWith({
+      provider: IntegrationProvider.SALESFORCE,
+      organizationId: 'org-1',
+      userId: 'user-1',
+      usePkce: true,
+    });
+    expect(provider.authorizationUrl).toHaveBeenCalledWith('oauth-state', {
+      codeChallenge: 'pkce-challenge',
+    });
+  });
+
+  it('uses the consumed PKCE verifier for Salesforce code exchange', async () => {
+    oauthStates.consume.mockResolvedValue({
+      organizationId: 'org-1',
+      userId: 'user-1',
+      codeVerifier: 'stored-verifier',
+    });
+    repository.find.mockResolvedValue(null);
+    provider.exchangeCode.mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      instanceUrl: 'https://example.my.salesforce.com',
+      identityUrl: 'https://login.salesforce.com/id/org/user',
+    });
+    provider.getProfile.mockResolvedValue({ id: 'salesforce-user' });
+
+    await expect(
+      service.complete(
+        IntegrationProvider.SALESFORCE,
+        'authorization-code',
+        'oauth-state',
+      ),
+    ).resolves.toEqual({
+      connected: true,
+      provider: IntegrationProvider.SALESFORCE,
+    });
+
+    expect(provider.exchangeCode).toHaveBeenCalledWith('authorization-code', {
+      codeVerifier: 'stored-verifier',
+    });
+  });
+
   it('uses the organization default when no provider is requested', async () => {
     const operation = jest.fn().mockResolvedValue({ ok: true });
 
