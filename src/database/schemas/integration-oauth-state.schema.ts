@@ -18,6 +18,9 @@ export class IntegrationOAuthState {
   @Prop({ required: true, index: true })
   userId!: string;
 
+  @Prop({ select: false })
+  codeVerifierEncrypted?: string;
+
   @Prop({ required: true })
   expiresAt!: Date;
 
