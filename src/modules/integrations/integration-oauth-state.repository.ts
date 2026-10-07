@@ -15,6 +15,7 @@ export class IntegrationOAuthStateRepository {
     provider: string;
     organizationId: string;
     userId: string;
+    codeVerifierEncrypted?: string;
     expiresAt: Date;
   }) {
     return this.states.create(input);
@@ -32,6 +33,7 @@ export class IntegrationOAuthStateRepository {
         { $set: { consumedAt: now } },
         { new: true },
       )
+      .select('+codeVerifierEncrypted')
       .lean()
       .exec();
   }

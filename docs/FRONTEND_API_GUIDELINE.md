@@ -2104,6 +2104,17 @@ CRM connections belong to the organization, not an individual user. The first co
 
 `:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connect, disconnect, set-default, manual-sync, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
 
+Salesforce uses server-side OAuth PKCE. The frontend must open the returned
+`authorizationUrl` unchanged; it must not generate, store, or append a
+`code_verifier`. The backend binds the encrypted verifier to the one-time OAuth
+state and supplies it during the callback token exchange.
+
+Salesforce deal synchronization is schema-aware. The backend describes the
+Opportunity object before querying it, requests only accessible fields, and
+uses Salesforce's organization/user currency metadata when the org does not
+expose per-record `CurrencyIsoCode`. The frontend must use each returned deal's
+normalized `currency` and must not assume USD.
+
 Deal create body:
 
 ```json

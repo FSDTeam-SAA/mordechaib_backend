@@ -11,7 +11,10 @@ import {
   CrmProviderType,
 } from '../../common/types/crm-provider.interface';
 import { decryptText, encryptText } from '../../common/helpers/crypto.helper';
-import { Integration } from '../../database/schemas/integration.schema';
+import {
+  Integration,
+  IntegrationProvider,
+} from '../../database/schemas/integration.schema';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { IntegrationOAuthStateService } from '../integrations/integration-oauth-state.service';
 import { CrmProviderRegistry } from './crm-provider.registry';
@@ -34,13 +37,16 @@ export class CrmConnectionsService {
     userId: string,
     provider: CrmProviderType,
   ) {
-    const state = await this.oauthStates.create({
+    const oauth = await this.oauthStates.create({
       provider,
       organizationId,
       userId,
+      usePkce: provider === IntegrationProvider.SALESFORCE,
     });
     return {
-      authorizationUrl: this.providers.get(provider).authorizationUrl(state),
+      authorizationUrl: this.providers
+        .get(provider)
+        .authorizationUrl(oauth.state, { codeChallenge: oauth.codeChallenge }),
     };
   }
 
@@ -51,7 +57,9 @@ export class CrmConnectionsService {
       context.organizationId,
       provider,
     )) as StoredConnection | null;
-    const tokens = await client.exchangeCode(code);
+    const tokens = await client.exchangeCode(code, {
+      codeVerifier: context.codeVerifier,
+    });
     const refreshToken =
       tokens.refreshToken ||
       (existing?.refreshToken
