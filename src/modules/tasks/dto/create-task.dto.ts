@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsInt,
   IsISO8601,
+  IsMongoId,
   IsOptional,
   IsString,
   Max,
@@ -87,6 +88,17 @@ export class CreateTaskDto {
   @ArrayUnique()
   @IsString({ each: true })
   stakeholderIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Customer contacts related to this task',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsMongoId({ each: true })
+  contactIds?: string[];
 
   @ApiPropertyOptional({ type: () => [TaskDependencyDto] })
   @IsOptional()

@@ -8,10 +8,12 @@ import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
 import { TasksRepository } from './tasks.repository';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ContactsModule } from '../contacts/contacts.module';
 
 @Module({
   imports: [
     NotificationsModule,
+    ContactsModule,
     MongooseModule.forFeature([
       { name: TaskItem.name, schema: TaskItemSchema },
     ]),

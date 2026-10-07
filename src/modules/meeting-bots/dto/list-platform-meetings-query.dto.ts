@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsMongoId,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 import { MeetingPlatform } from '../../../common/enums/meeting-platform.enum';
 import { PlatformMeetingStatus } from '../../../common/enums/platform-meeting-status.enum';
 
@@ -29,4 +36,9 @@ export class ListPlatformMeetingsQueryDto {
   @IsOptional()
   @IsEnum(PlatformMeetingStatus)
   status?: PlatformMeetingStatus;
+
+  @ApiPropertyOptional({ description: 'Filter meetings by customer contact' })
+  @IsOptional()
+  @IsMongoId()
+  contactId?: string;
 }
