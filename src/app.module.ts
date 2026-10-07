@@ -39,6 +39,7 @@ import { OrganizerDashboardModule } from './modules/organizer-dashboard/organize
 import { EmailModule } from './modules/email/email.module';
 import { SupportRequestsModule } from './modules/support-requests/support-requests.module';
 import { OrganizationsAdminModule } from './modules/organizations-admin/organizations-admin.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { OrganizationsAdminModule } from './modules/organizations-admin/organiza
     EmailModule,
     SupportRequestsModule,
     OrganizationsAdminModule,
+    ContactsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

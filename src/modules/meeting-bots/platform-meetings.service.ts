@@ -30,6 +30,7 @@ import {
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomAuthService } from './zoom-auth.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { ContactsService } from '../contacts/contacts.service';
 import { AiProposalAgent } from '../../database/schemas/ai-action-proposal.schema';
 
 type StoredPlatformMeeting = PlatformMeeting & {
@@ -54,6 +55,7 @@ export class PlatformMeetingsService {
     private readonly googleProvider: GoogleMeetProvider,
     private readonly calendar: CalendarService,
     private readonly config: ConfigService,
+    private readonly contacts: ContactsService,
   ) {}
 
   async create(
@@ -62,6 +64,13 @@ export class PlatformMeetingsService {
     input: CreateConnectedMeetingDto,
     trace?: AiProposalTrace,
   ) {
+    const contactIds = [...new Set(input.contactIds || [])];
+    const contactEmails = contactIds.length
+      ? await this.contacts.resolveEmails(organizationId, contactIds)
+      : [];
+    const invitees = [
+      ...new Set([...(input.invitees || []), ...contactEmails]),
+    ];
     const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
     const immediate = !input.startsAt;
     if (!immediate && startsAt.getTime() <= Date.now()) {
@@ -72,10 +81,11 @@ export class PlatformMeetingsService {
     const durationMinutes =
       input.durationMinutes || this.defaultDurationMinutes;
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
-    const reminderMinutesBeforeStart = await this.calendar.resolveReminderMinutes(
-      userId,
-      input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
-    );
+    const reminderMinutesBeforeStart =
+      await this.calendar.resolveReminderMinutes(
+        userId,
+        input.reminderMinutesBeforeStart ?? this.defaultReminderMinutes,
+      );
     const calendarProvider = immediate
       ? undefined
       : await this.calendar.getDefaultProvider(organizationId);
@@ -93,7 +103,8 @@ export class PlatformMeetingsService {
       endsAt,
       durationMinutes,
       timezone,
-      invitees: input.invitees || [],
+      invitees,
+      contactIds,
       botRequested: input.sendBot !== false,
       reminderMinutesBeforeStart,
       calendarProvider,
@@ -135,7 +146,7 @@ export class PlatformMeetingsService {
       startsAt,
       durationMinutes,
       timezone,
-      invitees: input.invitees || [],
+      invitees,
       immediate,
       reminderMinutesBeforeStart,
     };
@@ -321,6 +332,7 @@ export class PlatformMeetingsService {
       query.limit,
       query.platform,
       query.status,
+      query.contactId,
     );
     return {
       ...result,

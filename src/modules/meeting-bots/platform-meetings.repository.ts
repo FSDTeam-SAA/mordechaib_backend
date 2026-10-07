@@ -19,6 +19,7 @@ export type ReservePlatformMeeting = {
   durationMinutes: number;
   timezone: string;
   invitees: string[];
+  contactIds: string[];
   botRequested: boolean;
   reminderMinutesBeforeStart: number;
   calendarProvider?: CalendarProviderType;
@@ -154,11 +155,13 @@ export class PlatformMeetingsRepository {
     limit: number,
     platform?: MeetingPlatform,
     status?: PlatformMeetingStatus,
+    contactId?: string,
   ) {
     const filter: FilterQuery<PlatformMeeting> = {
       organizationId,
       ...(platform ? { platform } : {}),
       ...(status ? { status } : {}),
+      ...(contactId ? { contactIds: contactId } : {}),
     };
     const [items, total] = await Promise.all([
       this.model

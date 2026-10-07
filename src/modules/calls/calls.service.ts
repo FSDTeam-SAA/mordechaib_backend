@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { normalizePhoneNumber } from '../../common/helpers/phone.helper';
+import { ContactsService } from '../contacts/contacts.service';
 import { TwilioService } from '../twilio/twilio.service';
-import { CreateOutboundCallDto } from './dto/create-outbound-call.dto';
 import { CallsRepository } from './calls.repository';
+import { CreateOutboundCallDto } from './dto/create-outbound-call.dto';
 
 @Injectable()
 export class CallsService {
@@ -10,30 +12,39 @@ export class CallsService {
   constructor(
     private readonly callsRepository: CallsRepository,
     private readonly twilioService: TwilioService,
+    private readonly contacts: ContactsService,
   ) {}
 
-  /**
-   * Initiates a click-to-call outbound call for an organization.
-   *
-   * The TwilioService handles the full flow:
-   *   1. Looks up the organization's active Twilio setting (twilio number +
-   *      forwarding/agent number).
-   *   2. Places the first leg to the agent's phone.
-   *   3. On answer, Twilio fetches outbound-connect TwiML which dials the
-   *      client and bridges both legs.
-   *   4. Records the call in MongoDB (works in mock mode too).
-   */
   async createOutboundCall(organizationId: string, dto: CreateOutboundCallDto) {
-    this.logger.log(
-      `Initiating outbound call for org ${organizationId} → ${dto.clientPhone}`,
-    );
+    const contact = dto.contactId
+      ? await this.contacts.resolvePhone(organizationId, dto.contactId)
+      : undefined;
+    if (!contact && !dto.clientPhone) {
+      throw new BadRequestException(
+        'Either contactId or clientPhone is required',
+      );
+    }
+    if (
+      contact?.phone &&
+      dto.clientPhone &&
+      normalizePhoneNumber(contact.phone) !==
+        normalizePhoneNumber(dto.clientPhone)
+    ) {
+      throw new BadRequestException(
+        'clientPhone does not match the selected contact',
+      );
+    }
 
+    const clientPhone = contact?.phone || dto.clientPhone!;
+    this.logger.log(
+      `Initiating outbound call for org ${organizationId} to ${clientPhone}`,
+    );
     const result = await this.twilioService.initiateOutboundCall({
       organizationId,
-      clientPhone: dto.clientPhone,
+      clientPhone,
       agentPhone: dto.agentPhone,
+      contactId: dto.contactId,
     });
-
     const callRecord = await this.callsRepository.findByCallSid(result.callSid);
 
     return {
@@ -42,6 +53,9 @@ export class CallsService {
       from: result.from,
       to: result.to,
       agentPhone: result.agentPhone,
+      contact: contact
+        ? { id: String(contact._id), name: contact.name }
+        : undefined,
       record: callRecord,
     };
   }

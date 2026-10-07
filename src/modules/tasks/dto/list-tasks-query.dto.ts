@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsISO8601,
+  IsMongoId,
   IsOptional,
   IsString,
   MaxLength,
@@ -68,6 +69,11 @@ export class ListTasksQueryDto {
   @IsOptional()
   @IsString()
   assignedToUserId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter tasks related to a contact' })
+  @IsOptional()
+  @IsMongoId()
+  contactId?: string;
 
   @ApiPropertyOptional({ example: '2026-09-01T00:00:00.000Z' })
   @IsOptional()
