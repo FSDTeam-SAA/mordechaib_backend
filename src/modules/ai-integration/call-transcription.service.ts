@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { isValidObjectId, Model } from 'mongoose';
 import path from 'path';
 import { CallRecording } from '../../database/schemas/call-recording.schema';
+import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 
 @Injectable()
 export class CallTranscriptionService {
@@ -17,6 +18,7 @@ export class CallTranscriptionService {
     @InjectModel(CallRecording.name)
     private readonly recordings: Model<CallRecording>,
     private readonly config: ConfigService,
+    private readonly cloudinaryStorage: CloudinaryMessageAttachmentStorage,
   ) {}
 
   get enabled() {
@@ -35,7 +37,7 @@ export class CallTranscriptionService {
     if (recording.aiStatus === 'COMPLETED' && recording.transcriptText) {
       return { organizationId: recording.organizationId, duplicate: true };
     }
-    if (!recording.localFilePath) {
+    if (!recording.localFilePath && !recording.storageKey) {
       await this.markFailed(
         recordingId,
         'Local recording audio is unavailable',
@@ -58,8 +60,10 @@ export class CallTranscriptionService {
     }
 
     try {
+      const audio = await this.loadAudio(claimed);
       const transcriptText = await this.requestTranscript(
-        claimed.localFilePath as string,
+        audio.buffer,
+        audio.filename,
       );
       if (!transcriptText) {
         throw new BadRequestException(
@@ -86,14 +90,88 @@ export class CallTranscriptionService {
     }
   }
 
-  private async requestTranscript(filePath: string) {
+  private async loadAudio(recording: CallRecording) {
+    if (recording.localFilePath) {
+      try {
+        const buffer = await readFile(recording.localFilePath);
+        if (buffer.length) {
+          return {
+            buffer,
+            filename: path.basename(recording.localFilePath),
+          };
+        }
+      } catch {
+        // Fall through to the durable storage copy when the worker has no
+        // access to the webhook process's local filesystem.
+      }
+    }
+
+    if (
+      recording.storageProvider === 'CLOUDINARY' &&
+      recording.storageKey &&
+      recording.storageResourceType &&
+      recording.storageDeliveryType &&
+      recording.storageFormat
+    ) {
+      const { downloadUrl } = await this.cloudinaryStorage.getDownload(
+        {
+          storageKey: recording.storageKey,
+          storageAssetId: recording.storageAssetId,
+          storageResourceType: recording.storageResourceType,
+          storageDeliveryType: recording.storageDeliveryType,
+          storageFormat: recording.storageFormat,
+        },
+        'inline',
+      );
+      const response = await fetch(downloadUrl, {
+        signal: AbortSignal.timeout(
+          this.config.get<number>('aiService.timeoutMs', 30_000),
+        ),
+      });
+      if (!response.ok) {
+        throw new ServiceUnavailableException(
+          `Persistent recording download failed with ${response.status}`,
+        );
+      }
+      const maxBytes = this.config.get<number>(
+        'aiService.callTranscription.maxBytes',
+        25 * 1024 * 1024,
+      );
+      const contentLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        throw new BadRequestException(
+          `Recording exceeds the ${maxBytes}-byte transcription limit`,
+        );
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!buffer.length) {
+        throw new ServiceUnavailableException(
+          'Persistent recording download returned no audio',
+        );
+      }
+      if (buffer.byteLength > maxBytes) {
+        throw new BadRequestException(
+          `Recording exceeds the ${maxBytes}-byte transcription limit`,
+        );
+      }
+      return {
+        buffer,
+        filename: `${recording.recordingSid}.${recording.storageFormat}`,
+      };
+    }
+
+    throw new ServiceUnavailableException(
+      'Call recording audio is unavailable',
+    );
+  }
+
+  private async requestTranscript(audio: Buffer, filename: string) {
     const apiKey = this.config.get<string>('openai.apiKey');
     if (!apiKey) {
       throw new ServiceUnavailableException(
         'OpenAI transcription is not configured',
       );
     }
-    const audio = await readFile(filePath);
     const maxBytes = this.config.get<number>(
       'aiService.callTranscription.maxBytes',
       25 * 1024 * 1024,
@@ -107,8 +185,8 @@ export class CallTranscriptionService {
     const form = new FormData();
     form.append(
       'file',
-      new Blob([audio], { type: this.mimeType(filePath) }),
-      path.basename(filePath),
+      new Blob([Uint8Array.from(audio)], { type: this.mimeType(filename) }),
+      filename,
     );
     form.append(
       'model',
@@ -154,8 +232,8 @@ export class CallTranscriptionService {
     );
   }
 
-  private mimeType(filePath: string) {
-    switch (path.extname(filePath).toLowerCase()) {
+  private mimeType(filename: string) {
+    switch (path.extname(filename).toLowerCase()) {
       case '.mp3':
         return 'audio/mpeg';
       case '.m4a':
