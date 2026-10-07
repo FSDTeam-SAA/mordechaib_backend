@@ -82,19 +82,30 @@ export class IntegrationsService {
   ) {}
 
   async findAll(organizationId: string, userId: string) {
-    const [integrations, twilioAccount, twilioSetting, emailConnections] =
-      await Promise.all([
-        this.repository.findByOrganization(organizationId),
-        this.repository.findTwilioAccount(organizationId),
-        this.repository.findTwilioSetting(organizationId),
-        this.emailConnections.list(organizationId, userId),
-      ]);
+    const [
+      integrations,
+      twilioAccount,
+      twilioSetting,
+      twilioPhoneNumber,
+      emailConnections,
+    ] = await Promise.all([
+      this.repository.findByOrganization(organizationId),
+      this.repository.findTwilioAccount(organizationId),
+      this.repository.findTwilioSetting(organizationId),
+      this.repository.findActiveTwilioPhoneNumber(organizationId),
+      this.emailConnections.list(organizationId, userId),
+    ]);
 
     return {
       organizationId,
       items: INTEGRATION_CARDS.map((card) => {
         if (card.provider === IntegrationProvider.TWILIO) {
-          return this.twilioCard(card, twilioAccount, twilioSetting);
+          return this.twilioCard(
+            card,
+            twilioAccount,
+            twilioSetting,
+            twilioPhoneNumber,
+          );
         }
 
         if (
@@ -158,6 +169,9 @@ export class IntegrationsService {
     card: (typeof INTEGRATION_CARDS)[number],
     account: Awaited<ReturnType<IntegrationsRepository['findTwilioAccount']>>,
     setting: Awaited<ReturnType<IntegrationsRepository['findTwilioSetting']>>,
+    phoneNumber: Awaited<
+      ReturnType<IntegrationsRepository['findActiveTwilioPhoneNumber']>
+    >,
   ) {
     const status = account
       ? this.twilioStatus(account.provisioningStatus)
@@ -175,9 +189,38 @@ export class IntegrationsService {
       isDefault: false,
       connectPath: card.connectPath,
       account: account
-        ? { id: account.subaccountSid, name: account.friendlyName }
+        ? {
+            id: account.subaccountSid,
+            name: account.friendlyName,
+            phoneNumber:
+              phoneNumber?.phoneNumber ?? account.selectedPhoneNumber,
+          }
         : setting
-          ? { id: setting.twilioNumber }
+          ? { id: setting.twilioNumber, phoneNumber: setting.twilioNumber }
+          : undefined,
+      configuration:
+        account || setting || phoneNumber
+          ? {
+              twilioNumber:
+                phoneNumber?.phoneNumber ??
+                setting?.twilioNumber ??
+                account?.selectedPhoneNumber,
+              forwardingNumber:
+                setting?.forwardingNumber ?? account?.forwardingNumber,
+              country: phoneNumber?.country ?? account?.selectedCountry,
+              numberType: phoneNumber?.numberType,
+              numberCapabilities: phoneNumber?.capabilities,
+              enabledFeatures: {
+                voice:
+                  status === 'CONNECTED' &&
+                  (phoneNumber?.capabilities?.voice ?? true),
+                sms: false,
+                mms: false,
+                callRecording:
+                  status === 'CONNECTED' &&
+                  setting?.isRecordingEnabled === true,
+              },
+            }
           : undefined,
       connectedByUserId: undefined,
       expiresAt: undefined,
