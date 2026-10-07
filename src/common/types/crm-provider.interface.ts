@@ -91,8 +91,11 @@ export class CrmProviderHttpError extends Error {
 
 export interface CrmProvider {
   readonly provider: CrmProviderType;
-  authorizationUrl(state: string): string;
-  exchangeCode(code: string): Promise<CrmOauthTokens>;
+  authorizationUrl(state: string, context?: { codeChallenge?: string }): string;
+  exchangeCode(
+    code: string,
+    context?: { codeVerifier?: string },
+  ): Promise<CrmOauthTokens>;
   refreshAccessToken(refreshToken: string): Promise<CrmOauthTokens>;
   getProfile(
     accessToken: string,

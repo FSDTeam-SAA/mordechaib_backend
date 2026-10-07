@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   BadGatewayException,
   Injectable,
   ServiceUnavailableException,
@@ -47,14 +48,49 @@ type SalesforceQueryResponse = {
   nextRecordsUrl?: string;
 };
 
+type SalesforceDescribeResponse = {
+  fields?: Array<{ name?: string }>;
+};
+
+type SalesforceOpportunityCapabilities = {
+  fields: Set<string>;
+  defaultCurrency: string;
+  expiresAt: number;
+};
+
+const SALESFORCE_API_VERSION = 'v60.0';
+const CAPABILITY_CACHE_TTL_MS = 15 * 60_000;
+const OPPORTUNITY_SYNC_FIELDS = [
+  'Id',
+  'Name',
+  'Amount',
+  'CurrencyIsoCode',
+  'StageName',
+  'CloseDate',
+  'OwnerId',
+  'LastModifiedDate',
+  'IsClosed',
+  'IsWon',
+  'IsDeleted',
+];
+
 @Injectable()
 export class SalesforceProvider implements CrmProvider {
   readonly provider = IntegrationProvider.SALESFORCE;
+  private readonly opportunityCapabilityCache = new Map<
+    string,
+    SalesforceOpportunityCapabilities
+  >();
 
   constructor(private readonly config: ConfigService) {}
 
-  authorizationUrl(state: string) {
+  authorizationUrl(state: string, context: { codeChallenge?: string } = {}) {
     this.assertConfigured();
+    if (!context.codeChallenge) {
+      throw new ServiceUnavailableException(
+        'Salesforce PKCE code challenge is unavailable',
+      );
+    }
     const url = new URL(`${this.loginUrl}/services/oauth2/authorize`);
     url.search = new URLSearchParams({
       response_type: 'code',
@@ -62,11 +98,21 @@ export class SalesforceProvider implements CrmProvider {
       redirect_uri: this.redirectUri,
       state,
       scope: this.scopes.join(' '),
+      code_challenge: context.codeChallenge,
+      code_challenge_method: 'S256',
     }).toString();
     return url.toString();
   }
 
-  async exchangeCode(code: string): Promise<CrmOauthTokens> {
+  async exchangeCode(
+    code: string,
+    context: { codeVerifier?: string } = {},
+  ): Promise<CrmOauthTokens> {
+    if (!context.codeVerifier) {
+      throw new ServiceUnavailableException(
+        'Salesforce PKCE code verifier is unavailable; restart the connection',
+      );
+    }
     return this.tokens(
       await this.tokenRequest({
         grant_type: 'authorization_code',
@@ -74,6 +120,7 @@ export class SalesforceProvider implements CrmProvider {
         client_secret: this.clientSecret,
         redirect_uri: this.redirectUri,
         code,
+        code_verifier: context.codeVerifier,
       }),
     );
   }
@@ -123,15 +170,21 @@ export class SalesforceProvider implements CrmProvider {
     input: { cursor?: string; modifiedSince?: Date; instanceUrl?: string },
   ): Promise<CrmDealPage> {
     const instanceUrl = this.instanceUrl(input.instanceUrl);
+    const capabilities = await this.opportunityCapabilities(
+      accessToken,
+      instanceUrl,
+    );
     const url = input.cursor
       ? `${instanceUrl}${input.cursor}`
-      : `${instanceUrl}/services/data/v60.0/query?${new URLSearchParams({
-          q: this.query(input.modifiedSince),
-        }).toString()}`;
+      : `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/query?${new URLSearchParams(
+          {
+            q: this.query(input.modifiedSince, capabilities.fields),
+          },
+        ).toString()}`;
     const page = await this.request<SalesforceQueryResponse>(url, accessToken);
     return {
       items: (page.records || [])
-        .map((deal) => this.normalizeDeal(deal))
+        .map((deal) => this.normalizeDeal(deal, capabilities.defaultCurrency))
         .filter((deal): deal is NormalizedCrmDeal => Boolean(deal)),
       cursor: page.nextRecordsUrl,
       done: page.done !== false,
@@ -143,15 +196,22 @@ export class SalesforceProvider implements CrmProvider {
     input: CreateCrmDealInput & { instanceUrl?: string },
   ): Promise<NormalizedCrmDeal> {
     const instanceUrl = this.instanceUrl(input.instanceUrl);
-    const created = await this.request<{ id?: string; success?: boolean }>(
-      `${instanceUrl}/services/data/v60.0/sobjects/Opportunity`,
+    const capabilities = await this.opportunityCapabilities(
       accessToken,
-      { method: 'POST', body: JSON.stringify(this.dealBody(input, true)) },
+      instanceUrl,
+    );
+    const created = await this.request<{ id?: string; success?: boolean }>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify(this.dealBody(input, true, capabilities)),
+      },
     );
     if (!created.id || created.success !== true) {
       throw new BadGatewayException('Salesforce did not confirm deal creation');
     }
-    return this.fetchDeal(accessToken, instanceUrl, created.id);
+    return this.fetchDeal(accessToken, instanceUrl, created.id, capabilities);
   }
 
   async updateDeal(
@@ -160,13 +220,20 @@ export class SalesforceProvider implements CrmProvider {
     input: UpdateCrmDealInput & { instanceUrl?: string },
   ): Promise<NormalizedCrmDeal> {
     const instanceUrl = this.instanceUrl(input.instanceUrl);
-    await this.request<void>(
-      `${instanceUrl}/services/data/v60.0/sobjects/Opportunity/${encodeURIComponent(externalId)}`,
+    const capabilities = await this.opportunityCapabilities(
       accessToken,
-      { method: 'PATCH', body: JSON.stringify(this.dealBody(input, false)) },
+      instanceUrl,
+    );
+    await this.request<void>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity/${encodeURIComponent(externalId)}`,
+      accessToken,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(this.dealBody(input, false, capabilities)),
+      },
       [204],
     );
-    return this.fetchDeal(accessToken, instanceUrl, externalId);
+    return this.fetchDeal(accessToken, instanceUrl, externalId, capabilities);
   }
 
   createContact(
@@ -175,7 +242,7 @@ export class SalesforceProvider implements CrmProvider {
   ) {
     const [firstName, ...rest] = input.name.trim().split(/\s+/);
     return this.request(
-      `${this.instanceUrl(input.instanceUrl)}/services/data/v60.0/sobjects/Contact`,
+      `${this.instanceUrl(input.instanceUrl)}/services/data/${SALESFORCE_API_VERSION}/sobjects/Contact`,
       accessToken,
       {
         method: 'POST',
@@ -193,28 +260,35 @@ export class SalesforceProvider implements CrmProvider {
     accessToken: string,
     instanceUrl: string,
     externalId: string,
+    capabilities: SalesforceOpportunityCapabilities,
   ) {
-    const fields =
-      'Id,Name,Amount,CurrencyIsoCode,StageName,CloseDate,OwnerId,LastModifiedDate,IsClosed,IsWon,IsDeleted';
+    const fields = this.queryFields(capabilities.fields).join(',');
     const deal = await this.request<SalesforceOpportunity>(
-      `${instanceUrl}/services/data/v60.0/sobjects/Opportunity/${encodeURIComponent(externalId)}?fields=${encodeURIComponent(fields)}`,
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity/${encodeURIComponent(externalId)}?fields=${encodeURIComponent(fields)}`,
       accessToken,
     );
-    const normalized = this.normalizeDeal(deal);
+    const normalized = this.normalizeDeal(deal, capabilities.defaultCurrency);
     if (!normalized)
       throw new BadGatewayException('Salesforce returned an invalid deal');
     return normalized;
   }
 
-  private query(modifiedSince?: Date) {
-    const where = modifiedSince
-      ? ` WHERE LastModifiedDate >= ${modifiedSince.toISOString()}`
+  private query(modifiedSince: Date | undefined, availableFields: Set<string>) {
+    const fields = this.queryFields(availableFields);
+    const canFilterByModifiedDate = availableFields.has('LastModifiedDate');
+    const where =
+      modifiedSince && canFilterByModifiedDate
+        ? ` WHERE LastModifiedDate >= ${modifiedSince.toISOString()}`
+        : '';
+    const orderBy = canFilterByModifiedDate
+      ? ' ORDER BY LastModifiedDate ASC'
       : '';
-    return `SELECT Id,Name,Amount,CurrencyIsoCode,StageName,CloseDate,OwnerId,LastModifiedDate,IsClosed,IsWon,IsDeleted FROM Opportunity${where} ORDER BY LastModifiedDate ASC LIMIT 200`;
+    return `SELECT ${fields.join(',')} FROM Opportunity${where}${orderBy} LIMIT 200`;
   }
 
   private normalizeDeal(
     value: SalesforceOpportunity,
+    defaultCurrency: string,
   ): NormalizedCrmDeal | undefined {
     if (!value.Id) return undefined;
     const stage = value.StageName?.trim() || 'Unknown';
@@ -222,7 +296,7 @@ export class SalesforceProvider implements CrmProvider {
       externalId: value.Id,
       name: value.Name?.trim() || '(Untitled opportunity)',
       amount: this.number(value.Amount),
-      currency: (value.CurrencyIsoCode || 'USD').toUpperCase(),
+      currency: (value.CurrencyIsoCode || defaultCurrency).toUpperCase(),
       providerStage: stage,
       stageCategory:
         value.IsWon === true
@@ -241,12 +315,23 @@ export class SalesforceProvider implements CrmProvider {
   private dealBody(
     input: CreateCrmDealInput | UpdateCrmDealInput,
     creating: boolean,
+    capabilities: SalesforceOpportunityCapabilities,
   ) {
+    const currency = input.currency?.toUpperCase();
+    if (
+      currency &&
+      !capabilities.fields.has('CurrencyIsoCode') &&
+      currency !== capabilities.defaultCurrency
+    ) {
+      throw new BadRequestException(
+        `This Salesforce organization uses ${capabilities.defaultCurrency} as its single currency`,
+      );
+    }
     return {
       ...(input.name !== undefined ? { Name: input.name } : {}),
       ...(input.amount !== undefined ? { Amount: input.amount } : {}),
-      ...(input.currency !== undefined
-        ? { CurrencyIsoCode: input.currency.toUpperCase() }
+      ...(currency && capabilities.fields.has('CurrencyIsoCode')
+        ? { CurrencyIsoCode: currency }
         : {}),
       ...(input.providerStage !== undefined
         ? { StageName: input.providerStage }
@@ -260,6 +345,117 @@ export class SalesforceProvider implements CrmProvider {
           : {}),
       ...(input.ownerId !== undefined ? { OwnerId: input.ownerId } : {}),
     };
+  }
+
+  private queryFields(availableFields: Set<string>) {
+    const fields = OPPORTUNITY_SYNC_FIELDS.filter((field) =>
+      availableFields.has(field),
+    );
+    if (!fields.includes('Id')) {
+      throw new BadGatewayException(
+        'Salesforce Opportunity Id field is not accessible',
+      );
+    }
+    return fields;
+  }
+
+  private async opportunityCapabilities(
+    accessToken: string,
+    instanceUrl: string,
+  ) {
+    const cached = this.opportunityCapabilityCache.get(instanceUrl);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+
+    const describe = await this.request<SalesforceDescribeResponse>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity/describe`,
+      accessToken,
+    );
+    const fields = new Set(
+      (describe.fields || [])
+        .map((field) => field.name)
+        .filter((name): name is string => Boolean(name)),
+    );
+    this.queryFields(fields);
+    const defaultCurrency = await this.defaultCurrency(
+      accessToken,
+      instanceUrl,
+    );
+    const capabilities: SalesforceOpportunityCapabilities = {
+      fields,
+      defaultCurrency,
+      expiresAt: Date.now() + CAPABILITY_CACHE_TTL_MS,
+    };
+    this.opportunityCapabilityCache.set(instanceUrl, capabilities);
+    return capabilities;
+  }
+
+  private async defaultCurrency(accessToken: string, instanceUrl: string) {
+    const envelope = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:partner.soap.sforce.com">
+  <soapenv:Header><urn:SessionHeader><urn:sessionId>${this.escapeXml(accessToken)}</urn:sessionId></urn:SessionHeader></soapenv:Header>
+  <soapenv:Body><urn:getUserInfo/></soapenv:Body>
+</soapenv:Envelope>`;
+    let response: Response;
+    try {
+      response = await fetch(
+        `${instanceUrl}/services/Soap/u/${SALESFORCE_API_VERSION.slice(1)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml; charset=UTF-8',
+            SOAPAction: '""',
+          },
+          body: envelope,
+          signal: AbortSignal.timeout(this.timeoutMs),
+        },
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        'Salesforce organization currency lookup is unavailable',
+      );
+    }
+    const body = await response.text();
+    if (!response.ok) {
+      throw new CrmProviderHttpError(
+        response.status,
+        this.xmlValue(body, 'faultstring') ||
+          'Salesforce organization currency lookup failed',
+      );
+    }
+    const multiCurrency =
+      this.xmlValue(body, 'organizationMultiCurrency') === 'true';
+    const currency = multiCurrency
+      ? this.xmlValue(body, 'userDefaultCurrencyIsoCode')
+      : this.xmlValue(body, 'orgDefaultCurrencyIsoCode');
+    const fallback =
+      currency ||
+      this.xmlValue(body, 'orgDefaultCurrencyIsoCode') ||
+      this.xmlValue(body, 'userDefaultCurrencyIsoCode');
+    if (!fallback || !/^[A-Za-z]{3}$/.test(fallback)) {
+      throw new BadGatewayException(
+        'Salesforce did not return an organization currency',
+      );
+    }
+    return fallback.toUpperCase();
+  }
+
+  private xmlValue(xml: string, element: string) {
+    const match = xml.match(
+      new RegExp(
+        `<(?:[A-Za-z0-9_-]+:)?${element}>([^<]*)<\\/(?:[A-Za-z0-9_-]+:)?${element}>`,
+        'i',
+      ),
+    );
+    return match?.[1]?.trim();
+  }
+
+  private escapeXml(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 
   private async tokenRequest(parameters: Record<string, string>) {
