@@ -15,6 +15,7 @@ export type TaskListFilters = {
   priority?: TaskPriority;
   department?: TaskDepartment;
   assignedToUserId?: string;
+  contactId?: string;
   dueFrom?: Date;
   dueTo?: Date;
 };
@@ -96,6 +97,7 @@ export class TasksRepository {
     if (filters.assignedToUserId) {
       filter.assignedToUserId = filters.assignedToUserId;
     }
+    if (filters.contactId) filter.contactIds = filters.contactId;
     if (filters.dueFrom || filters.dueTo) {
       const existingDueDate =
         filter.dueDate && typeof filter.dueDate === 'object'

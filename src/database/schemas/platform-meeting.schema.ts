@@ -61,6 +61,9 @@ export class PlatformMeeting {
   @Prop({ type: [String], default: [] })
   invitees!: string[];
 
+  @Prop({ type: [String], default: [] })
+  contactIds!: string[];
+
   @Prop({ select: false })
   joinUrlEncrypted?: string;
 
@@ -101,6 +104,7 @@ export const PlatformMeetingSchema =
   SchemaFactory.createForClass(PlatformMeeting);
 PlatformMeetingSchema.index({ organizationId: 1, startsAt: -1 });
 PlatformMeetingSchema.index({ organizationId: 1, platform: 1, startsAt: -1 });
+PlatformMeetingSchema.index({ organizationId: 1, contactIds: 1, startsAt: -1 });
 PlatformMeetingSchema.index(
   { organizationId: 1, aiActionProposalId: 1 },
   {

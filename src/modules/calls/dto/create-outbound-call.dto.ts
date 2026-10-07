@@ -1,10 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsMongoId, IsOptional, IsString, Matches } from 'class-validator';
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 function normalizePhone({ value }: { value: unknown }): unknown {
-  return typeof value === 'string' ? value.replace(/[\s()-]/g, '').trim() : value;
+  return typeof value === 'string'
+    ? value.replace(/[\s()-]/g, '').trim()
+    : value;
 }
 
 export class CreateOutboundCallDto {
@@ -12,10 +14,11 @@ export class CreateOutboundCallDto {
    * The client / customer number the agent will be bridged to.
    */
   @Transform(normalizePhone)
+  @IsOptional()
   @Matches(E164_PATTERN, {
     message: 'clientPhone must be a valid E.164 phone number',
   })
-  clientPhone!: string;
+  clientPhone?: string;
 
   /**
    * The agent's phone number that rings first (click-to-call first leg).
@@ -30,5 +33,6 @@ export class CreateOutboundCallDto {
 
   @IsString()
   @IsOptional()
+  @IsMongoId()
   contactId?: string;
 }
