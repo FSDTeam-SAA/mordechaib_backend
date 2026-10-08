@@ -41,6 +41,24 @@ export class CallRecording {
   localFilePath?: string;
 
   @Prop()
+  storageProvider?: string;
+
+  @Prop()
+  storageKey?: string;
+
+  @Prop()
+  storageAssetId?: string;
+
+  @Prop()
+  storageResourceType?: string;
+
+  @Prop()
+  storageDeliveryType?: string;
+
+  @Prop()
+  storageFormat?: string;
+
+  @Prop()
   transcriptText?: string;
 
   @Prop()

@@ -19,7 +19,7 @@ type StoredAttachment = {
   storageDeliveryType?: string;
 };
 
-type LocalRecording = { localFilePath?: string };
+type StoredRecording = StoredAttachment & { localFilePath?: string };
 
 // These are organization-owned records. Global product catalogs, platform
 // staff, agent definitions and aggregate revenue snapshots are intentionally
@@ -109,8 +109,14 @@ export class AccountDeletionService {
         db
           .collection('call_recordings')
           .find({ organizationId: input.organizationId })
-          .project({ localFilePath: 1 })
-          .toArray() as Promise<LocalRecording[]>,
+          .project({
+            localFilePath: 1,
+            storageProvider: 1,
+            storageKey: 1,
+            storageResourceType: 1,
+            storageDeliveryType: 1,
+          })
+          .toArray() as Promise<StoredRecording[]>,
       ]);
 
     // Stop future billing before local data is removed. A failed cancellation
@@ -184,7 +190,7 @@ export class AccountDeletionService {
       this.removeCloudinaryAssets({
         organizationId: input.organizationId,
         userIds,
-        attachments,
+        attachments: [...attachments, ...recordings],
         hasOrganizationLogo: Boolean(organization?.logoUrl),
         hasOrganizationFavicon: Boolean(organization?.faviconUrl),
       }),
@@ -268,7 +274,7 @@ export class AccountDeletionService {
     }
   }
 
-  private async removeLocalRecordingFiles(recordings: LocalRecording[]) {
+  private async removeLocalRecordingFiles(recordings: StoredRecording[]) {
     const storageRoot = path.resolve(
       this.config.get<string>(
         'RECORDING_STORAGE_DIR',

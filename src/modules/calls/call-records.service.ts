@@ -79,14 +79,17 @@ export class CallRecordsService {
     recordingDuration?: number;
     recordingChannels?: number;
     localFilePath?: string;
+    storageProvider?: string;
+    storageKey?: string;
+    storageAssetId?: string;
+    storageResourceType?: string;
+    storageDeliveryType?: string;
+    storageFormat?: string;
   }) {
-    const candidateCallSids = [
+    const call = await this.findCallForRecording(
       input.primaryCallSid,
       input.providerCallSid,
-    ].filter((value): value is string => Boolean(value));
-
-    const call = await this.callsRepository.findByAnyCallSid(candidateCallSids);
-    if (!call) throw new NotFoundException('Call log not found');
+    );
 
     return this.callsRepository.upsertRecording({
       organizationId: call.organizationId,
@@ -98,6 +101,35 @@ export class CallRecordsService {
       recordingDuration: input.recordingDuration,
       recordingChannels: input.recordingChannels,
       localFilePath: input.localFilePath,
+      storageProvider: input.storageProvider,
+      storageKey: input.storageKey,
+      storageAssetId: input.storageAssetId,
+      storageResourceType: input.storageResourceType,
+      storageDeliveryType: input.storageDeliveryType,
+      storageFormat: input.storageFormat,
     });
+  }
+
+  async getOrganizationIdForRecording(
+    primaryCallSid: string | undefined,
+    providerCallSid: string,
+  ) {
+    const call = await this.findCallForRecording(
+      primaryCallSid,
+      providerCallSid,
+    );
+    return call.organizationId;
+  }
+
+  private async findCallForRecording(
+    primaryCallSid: string | undefined,
+    providerCallSid: string,
+  ) {
+    const candidateCallSids = [primaryCallSid, providerCallSid].filter(
+      (value): value is string => Boolean(value),
+    );
+    const call = await this.callsRepository.findByAnyCallSid(candidateCallSids);
+    if (!call) throw new NotFoundException('Call log not found');
+    return call;
   }
 }

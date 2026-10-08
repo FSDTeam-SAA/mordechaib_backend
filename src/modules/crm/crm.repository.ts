@@ -1,6 +1,10 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type {
+  CrmObjectSyncConfiguration,
+  CrmObjectSyncState,
+} from '../../common/types/crm-object-sync.interface';
 import { CrmProviderType } from '../../common/types/crm-provider.interface';
 import {
   Integration,
@@ -92,6 +96,48 @@ export class CrmRepository {
       .exec();
   }
 
+  updateObjectSync(
+    organizationId: string,
+    provider: CrmProviderType,
+    configuration: CrmObjectSyncConfiguration,
+    objects: CrmObjectSyncState[],
+  ) {
+    return this.integrationModel
+      .findOneAndUpdate(
+        { organizationId, provider, status: 'CONNECTED' },
+        {
+          $set: {
+            'metadata.objectSync.configuration': configuration,
+            'metadata.objectSync.objects': objects,
+          },
+        },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  updateObjectSyncStates(
+    organizationId: string,
+    provider: CrmProviderType,
+    configurationUpdatedAt: string,
+    objects: CrmObjectSyncState[],
+  ) {
+    return this.integrationModel
+      .findOneAndUpdate(
+        {
+          organizationId,
+          provider,
+          status: 'CONNECTED',
+          'metadata.objectSync.configuration.updatedAt': configurationUpdatedAt,
+        },
+        { $set: { 'metadata.objectSync.objects': objects } },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
   claimSync(
     organizationId: string,
     provider: CrmProviderType,
@@ -109,10 +155,55 @@ export class CrmRepository {
             { 'metadata.syncStartedAt': { $lt: staleBefore.toISOString() } },
           ],
         },
-        { $set: { metadata } },
+        {
+          $set: {
+            'metadata.syncStatus': metadata.syncStatus,
+            'metadata.syncStartedAt': metadata.syncStartedAt,
+          },
+          $unset: { 'metadata.lastSyncError': 1 },
+        },
         { new: true, runValidators: true },
       )
       .select('+accessToken +refreshToken')
+      .lean()
+      .exec();
+  }
+
+  updateSyncState(
+    organizationId: string,
+    provider: CrmProviderType,
+    input: {
+      status: 'IDLE' | 'FAILED';
+      lastSyncedAt?: string;
+      cursor?: string;
+      syncSince?: string;
+      lastSyncError?: string;
+      reconnectRequired?: boolean;
+    },
+  ) {
+    const set: Record<string, unknown> = {
+      'metadata.syncStatus': input.status,
+    };
+    const unset: Record<string, 1> = {
+      'metadata.syncStartedAt': 1,
+    };
+    for (const [field, value] of [
+      ['lastSyncedAt', input.lastSyncedAt],
+      ['syncCursor', input.cursor],
+      ['syncSince', input.syncSince],
+      ['lastSyncError', input.lastSyncError],
+      ['reconnectRequired', input.reconnectRequired],
+    ] as const) {
+      const path = `metadata.${field}`;
+      if (value === undefined) unset[path] = 1;
+      else set[path] = value;
+    }
+    return this.integrationModel
+      .findOneAndUpdate(
+        { organizationId, provider, status: 'CONNECTED' },
+        { $set: set, $unset: unset },
+        { new: true, runValidators: true },
+      )
       .lean()
       .exec();
   }

@@ -1,4 +1,11 @@
 import { IntegrationProvider } from '../../database/schemas/integration.schema';
+import type {
+  CrmMultiObjectSyncMetadata,
+  CrmObjectDescriptor,
+  CrmObjectSchema,
+  CrmRecordPage,
+  ListCrmRecordsInput,
+} from './crm-object-sync.interface';
 
 export type CrmProviderType =
   IntegrationProvider.HUBSPOT | IntegrationProvider.SALESFORCE;
@@ -77,6 +84,7 @@ export type CrmConnectionMetadata = {
   syncStatus?: 'IDLE' | 'SYNCING' | 'FAILED';
   lastSyncError?: string;
   reconnectRequired?: boolean;
+  objectSync?: CrmMultiObjectSyncMetadata;
   [key: string]: unknown;
 };
 
@@ -105,6 +113,19 @@ export interface CrmProvider {
       providerAccountId?: string;
     },
   ): Promise<CrmAccountProfile>;
+  listObjects(
+    accessToken: string,
+    context?: { instanceUrl?: string; scopes?: string[] },
+  ): Promise<CrmObjectDescriptor[]>;
+  describeObject(
+    accessToken: string,
+    objectType: string,
+    context?: { instanceUrl?: string; scopes?: string[] },
+  ): Promise<CrmObjectSchema>;
+  listRecords(
+    accessToken: string,
+    input: ListCrmRecordsInput,
+  ): Promise<CrmRecordPage>;
   listDeals(
     accessToken: string,
     input: { cursor?: string; modifiedSince?: Date; instanceUrl?: string },
