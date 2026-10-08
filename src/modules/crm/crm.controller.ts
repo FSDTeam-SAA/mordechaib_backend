@@ -16,7 +16,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { CrmProviderType } from '../../common/types/crm-provider.interface';
 import { RequestUser } from '../../common/types/request-context.type';
 import { CrmAnalyticsService } from './crm-analytics.service';
 import { CreateCrmContactDto } from './dto/create-crm-contact.dto';
@@ -44,7 +43,9 @@ export class CrmController {
   ) {
     return this.analytics.revenue({
       organizationId: org.id,
-      provider: query.provider ? this.crmProvider(query.provider) : undefined,
+      provider: query.provider
+        ? this.providers.parse(query.provider)
+        : undefined,
       groupBy: query.groupBy,
       from: query.from,
       to: query.to,
@@ -73,7 +74,7 @@ export class CrmController {
     return this.crmService.createDeal(
       org.id,
       user.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
       {
         ...dto,
         currency: dto.currency?.toUpperCase(),
@@ -98,7 +99,7 @@ export class CrmController {
     return this.crmService.updateDeal(
       org.id,
       user.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
       externalId,
       {
         ...dto,
@@ -106,12 +107,5 @@ export class CrmController {
         closeDate: dto.closeDate ? new Date(dto.closeDate) : undefined,
       },
     );
-  }
-
-  private crmProvider(provider: string): CrmProviderType {
-    if (!this.providers.isCrmProvider(provider)) {
-      throw new BadRequestException('provider must be HUBSPOT or SALESFORCE');
-    }
-    return provider;
   }
 }

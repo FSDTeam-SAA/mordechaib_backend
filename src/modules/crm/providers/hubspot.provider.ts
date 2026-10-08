@@ -15,11 +15,21 @@ import {
   NormalizedCrmDeal,
   UpdateCrmDealInput,
 } from '../../../common/types/crm-provider.interface';
+import type {
+  CrmFieldDataType,
+  CrmObjectDescriptor,
+  CrmObjectField,
+  CrmObjectSchema,
+  CrmRecordPage,
+  ListCrmRecordsInput,
+  NormalizedCrmRecord,
+} from '../../../common/types/crm-object-sync.interface';
 import { IntegrationProvider } from '../../../database/schemas/integration.schema';
 
 type HubSpotObject = {
   id?: string;
   archived?: boolean;
+  createdAt?: string;
   updatedAt?: string;
   properties?: Record<string, unknown>;
 };
@@ -38,6 +48,54 @@ type HubSpotTokenResponse = {
   hub_id?: string | number;
   error?: string;
   error_description?: string;
+};
+
+type HubSpotSchemaDefinition = {
+  id?: string;
+  objectTypeId?: string;
+  name?: string;
+  fullyQualifiedName?: string;
+  archived?: boolean;
+  labels?: { singular?: string; plural?: string };
+};
+
+type HubSpotSchemasResponse = {
+  results?: HubSpotSchemaDefinition[];
+};
+
+type HubSpotProperty = {
+  name?: string;
+  label?: string;
+  type?: string;
+  fieldType?: string;
+  hidden?: boolean;
+  archived?: boolean;
+  calculated?: boolean;
+  hasUniqueValue?: boolean;
+  options?: Array<{ label?: string; value?: string; hidden?: boolean }>;
+  modificationMetadata?: {
+    readOnlyDefinition?: boolean;
+    readOnlyValue?: boolean;
+  };
+};
+
+type HubSpotPropertiesResponse = {
+  results?: HubSpotProperty[];
+};
+
+const HUBSPOT_STANDARD_LABELS: Record<
+  string,
+  { singular: string; plural: string }
+> = {
+  contacts: { singular: 'Contact', plural: 'Contacts' },
+  companies: { singular: 'Company', plural: 'Companies' },
+  deals: { singular: 'Deal', plural: 'Deals' },
+  tickets: { singular: 'Ticket', plural: 'Tickets' },
+  leads: { singular: 'Lead', plural: 'Leads' },
+  products: { singular: 'Product', plural: 'Products' },
+  line_items: { singular: 'Line item', plural: 'Line items' },
+  quotes: { singular: 'Quote', plural: 'Quotes' },
+  calls: { singular: 'Call', plural: 'Calls' },
 };
 
 @Injectable()
@@ -95,6 +153,103 @@ export class HubSpotProvider implements CrmProvider {
     };
   }
 
+  async listObjects(
+    accessToken: string,
+    context: { scopes?: string[] } = {},
+  ): Promise<CrmObjectDescriptor[]> {
+    const scopes = this.effectiveScopes(context.scopes);
+    const objects = new Map<string, CrmObjectDescriptor>();
+
+    for (const scope of scopes) {
+      const match = scope.match(/^crm\.objects\.([a-z0-9_]+)\.read$/i);
+      const objectType = match?.[1]?.toLowerCase();
+      if (!objectType || objectType === 'custom') continue;
+      const labels = this.standardLabels(objectType);
+      const writeScope = `crm.objects.${objectType}.write`;
+      objects.set(objectType, {
+        objectType,
+        label: labels.singular,
+        pluralLabel: labels.plural,
+        custom: false,
+        readable: true,
+        createable: scopes.has(writeScope),
+        updateable: scopes.has(writeScope),
+        deletable: scopes.has(writeScope),
+      });
+    }
+
+    if (scopes.has('crm.schemas.custom.read')) {
+      const response = await this.request<HubSpotSchemasResponse>(
+        'https://api.hubapi.com/crm/v3/schemas',
+        accessToken,
+      );
+      const readable = scopes.has('crm.objects.custom.read');
+      const writable = scopes.has('crm.objects.custom.write');
+      for (const schema of response.results || []) {
+        if (schema.archived) continue;
+        const objectType = this.customObjectType(schema);
+        if (!objectType) continue;
+        objects.set(objectType, {
+          objectType,
+          label: schema.labels?.singular || schema.name || objectType,
+          pluralLabel:
+            schema.labels?.plural || schema.labels?.singular || objectType,
+          custom: true,
+          readable,
+          createable: writable,
+          updateable: writable,
+          deletable: writable,
+        });
+      }
+    }
+
+    return [...objects.values()].sort((left, right) =>
+      left.label.localeCompare(right.label),
+    );
+  }
+
+  async describeObject(
+    accessToken: string,
+    objectType: string,
+    context: { scopes?: string[] } = {},
+  ): Promise<CrmObjectSchema> {
+    const scopes = this.effectiveScopes(context.scopes);
+    const custom = this.isCustomObjectType(objectType);
+    const properties = await this.request<HubSpotPropertiesResponse>(
+      `https://api.hubapi.com/crm/v3/properties/${encodeURIComponent(objectType)}?archived=false`,
+      accessToken,
+    );
+    const customSchema = custom
+      ? await this.customSchema(accessToken, objectType, scopes)
+      : undefined;
+    const defaultLabels = this.standardLabels(objectType);
+    const label =
+      customSchema?.labels?.singular?.trim() || defaultLabels.singular;
+    const pluralLabel =
+      customSchema?.labels?.plural?.trim() || defaultLabels.plural;
+    const readableScope = custom
+      ? 'crm.objects.custom.read'
+      : `crm.objects.${objectType}.read`;
+    const writeScope = custom
+      ? 'crm.objects.custom.write'
+      : `crm.objects.${objectType}.write`;
+
+    return {
+      objectType,
+      label,
+      pluralLabel,
+      custom,
+      readable: scopes.has(readableScope),
+      createable: scopes.has(writeScope),
+      updateable: scopes.has(writeScope),
+      deletable: scopes.has(writeScope),
+      fields: (properties.results || [])
+        .filter((property) => !property.archived && Boolean(property.name))
+        .map((property) => this.objectField(property))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    };
+  }
+
   async listDeals(
     accessToken: string,
     input: { cursor?: string; modifiedSince?: Date },
@@ -138,6 +293,45 @@ export class HubSpotProvider implements CrmProvider {
       items: (page.results || [])
         .map((deal) => this.normalizeDeal(deal))
         .filter((deal): deal is NormalizedCrmDeal => Boolean(deal)),
+      cursor: page.paging?.next?.after,
+      done: !page.paging?.next?.after,
+    };
+  }
+
+  async listRecords(
+    accessToken: string,
+    input: ListCrmRecordsInput,
+  ): Promise<CrmRecordPage> {
+    const body: Record<string, unknown> = {
+      limit: 100,
+      properties: input.fields,
+      sorts: ['hs_lastmodifieddate'],
+      ...(input.cursor ? { after: input.cursor } : {}),
+    };
+    if (input.modifiedSince) {
+      body.filterGroups = [
+        {
+          filters: [
+            {
+              propertyName: 'hs_lastmodifieddate',
+              operator: 'GTE',
+              value: String(input.modifiedSince.getTime()),
+            },
+          ],
+        },
+      ];
+    }
+    const page = await this.request<HubSpotPage>(
+      `https://api.hubapi.com/crm/v3/objects/${encodeURIComponent(input.objectType)}/search`,
+      accessToken,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+    return {
+      provider: this.provider,
+      objectType: input.objectType,
+      items: (page.results || [])
+        .map((record) => this.normalizeRecord(input, record))
+        .filter((record): record is NormalizedCrmRecord => Boolean(record)),
       cursor: page.paging?.next?.after,
       done: !page.paging?.next?.after,
     };
@@ -241,6 +435,127 @@ export class HubSpotProvider implements CrmProvider {
       ),
       rawPayload: value as Record<string, unknown>,
     };
+  }
+
+  private normalizeRecord(
+    input: ListCrmRecordsInput,
+    value: HubSpotObject,
+  ): NormalizedCrmRecord | undefined {
+    if (!value.id) return undefined;
+    const source = value.properties || {};
+    const properties = Object.fromEntries(
+      input.fields.map((field) => [field, source[field] ?? null]),
+    );
+    return {
+      objectType: input.objectType,
+      externalId: value.id,
+      properties,
+      providerCreatedAt: this.date(value.createdAt),
+      providerUpdatedAt: this.date(
+        value.updatedAt || source.hs_lastmodifieddate,
+      ),
+      archived: value.archived === true,
+      rawPayload: value as Record<string, unknown>,
+    };
+  }
+
+  private objectField(property: HubSpotProperty): CrmObjectField {
+    const providerType = property.type || property.fieldType || 'unknown';
+    const readOnly = property.modificationMetadata?.readOnlyValue === true;
+    const calculated = property.calculated === true;
+    return {
+      name: property.name!,
+      label: property.label?.trim() || property.name!,
+      dataType: this.fieldDataType(providerType),
+      providerType,
+      custom: property.modificationMetadata?.readOnlyDefinition === false,
+      required: false,
+      readable: property.hidden !== true,
+      createable: !readOnly && !calculated,
+      updateable: !readOnly && !calculated,
+      filterable: property.hidden !== true,
+      sortable: property.hidden !== true,
+      unique: property.hasUniqueValue === true,
+      calculated,
+      referenceTo: [],
+      options: (property.options || [])
+        .filter((option) => option.value !== undefined)
+        .map((option) => ({
+          label: option.label || option.value!,
+          value: option.value!,
+          active: option.hidden !== true,
+        })),
+    };
+  }
+
+  private fieldDataType(providerType: string): CrmFieldDataType {
+    switch (providerType.toLowerCase()) {
+      case 'number':
+        return 'NUMBER';
+      case 'bool':
+      case 'boolean':
+        return 'BOOLEAN';
+      case 'date':
+        return 'DATE';
+      case 'datetime':
+        return 'DATETIME';
+      case 'enumeration':
+        return 'ENUMERATION';
+      case 'string':
+      case 'phone_number':
+        return 'STRING';
+      default:
+        return 'OTHER';
+    }
+  }
+
+  private effectiveScopes(scopes?: string[]) {
+    return new Set(scopes?.length ? scopes : this.scopes);
+  }
+
+  private standardLabels(objectType: string) {
+    return (
+      HUBSPOT_STANDARD_LABELS[objectType] || {
+        singular: this.humanize(objectType),
+        plural: this.humanize(objectType),
+      }
+    );
+  }
+
+  private humanize(value: string) {
+    const label = value.replace(/_/g, ' ').trim();
+    return label ? `${label[0].toUpperCase()}${label.slice(1)}` : value;
+  }
+
+  private customObjectType(schema: HubSpotSchemaDefinition) {
+    return (
+      this.string(schema.objectTypeId) ||
+      this.string(schema.fullyQualifiedName) ||
+      this.string(schema.id)
+    );
+  }
+
+  private isCustomObjectType(objectType: string) {
+    return /^(?:2-\d+|p(?:\d+)?_[a-z0-9_]+)$/i.test(objectType);
+  }
+
+  private async customSchema(
+    accessToken: string,
+    objectType: string,
+    scopes: Set<string>,
+  ) {
+    if (!scopes.has('crm.schemas.custom.read')) return undefined;
+    try {
+      return await this.request<HubSpotSchemaDefinition>(
+        `https://api.hubapi.com/crm/v3/schemas/${encodeURIComponent(objectType)}`,
+        accessToken,
+      );
+    } catch (error) {
+      if (error instanceof CrmProviderHttpError && error.statusCode === 404) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   private dealProperties(input: CreateCrmDealInput | UpdateCrmDealInput) {
