@@ -265,12 +265,17 @@ export class TwilioService {
     const accountContext = body.AccountSid
       ? await this.accountsService.contextForSubaccount(body.AccountSid)
       : undefined;
+    const organizationId =
+      await this.callRecordsService.getOrganizationIdForRecording(
+        primaryCallSid,
+        providerCallSid,
+      );
 
-    // Download the audio from Twilio and store it locally so the recording
-    // is persisted on our backend, not only referenced by a Twilio URL.
+    // Store local and private durable copies so separate worker processes can read the recording.
     // Failure to store is non-fatal — we still save the metadata and return
     // 200 so Twilio will not retry.
-    const localFilePath = await this.recordingStorage.storeRecording({
+    const storedRecording = await this.recordingStorage.storeRecording({
+      organizationId,
       callSid: primaryCallSid || providerCallSid,
       recordingSid,
       recordingUrl,
@@ -291,9 +296,10 @@ export class TwilioService {
         body.RecordingChannels,
         'RecordingChannels',
       ),
-      localFilePath: localFilePath || undefined,
+      localFilePath: storedRecording?.localFilePath,
+      ...storedRecording?.persistentStorage,
     });
-    if (localFilePath) {
+    if (storedRecording?.localFilePath || storedRecording?.persistentStorage) {
       await this.aiJobs.enqueueCallTranscription({
         organizationId: recording.organizationId,
         recordingId: String(recording._id),

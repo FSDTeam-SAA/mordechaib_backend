@@ -22,6 +22,7 @@ describe('CallTranscriptionService', () => {
           return fallback;
         }),
       } as unknown as ConfigService,
+      {} as never,
     );
   });
 

@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   CrmProvider,
   CrmProviderType,
@@ -25,5 +29,12 @@ export class CrmProviderRegistry {
       provider === IntegrationProvider.HUBSPOT ||
       provider === IntegrationProvider.SALESFORCE
     );
+  }
+
+  parse(provider: string): CrmProviderType {
+    if (!this.isCrmProvider(provider)) {
+      throw new BadRequestException('provider must be HUBSPOT or SALESFORCE');
+    }
+    return provider;
   }
 }

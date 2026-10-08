@@ -164,7 +164,12 @@ export class CrmConnectionsService {
     )) as StoredConnection | null;
     return saved
       ? this.connectionResponse(saved)
-      : { provider, connected: false, status: 'NOT_CONFIGURED' };
+      : {
+          provider,
+          connected: false,
+          status: 'NOT_CONFIGURED',
+          objectSync: this.objectSyncResponse(),
+        };
   }
 
   async resolve(organizationId: string, requested?: CrmProviderType) {
@@ -362,6 +367,17 @@ export class CrmConnectionsService {
       syncStatus: metadata.syncStatus || 'IDLE',
       lastSyncError: metadata.lastSyncError,
       reconnectRequired: metadata.reconnectRequired === true,
+      objectSync: this.objectSyncResponse(metadata),
+    };
+  }
+
+  private objectSyncResponse(metadata: CrmConnectionMetadata = {}) {
+    return {
+      configuration: metadata.objectSync?.configuration || {
+        schemaVersion: '1.0' as const,
+        objects: [],
+      },
+      objects: metadata.objectSync?.objects || [],
     };
   }
 

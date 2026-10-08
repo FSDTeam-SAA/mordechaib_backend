@@ -16,6 +16,8 @@ export type StoreMessageAttachmentInput = {
   /** Optional storage scope. Defaults to conversationId for messages. */
   storageScopeId?: string;
   storageTags?: string[];
+  /** Allows deterministic provider asset IDs to be safely retried. */
+  overwrite?: boolean;
   /** Defaults to PRIVATE. PUBLIC assets return a permanent provider URL. */
   visibility?: 'PRIVATE' | 'PUBLIC';
 };

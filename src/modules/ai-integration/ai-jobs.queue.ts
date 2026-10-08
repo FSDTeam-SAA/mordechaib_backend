@@ -111,6 +111,9 @@ export class AiJobsQueue {
 
   async enqueueCallTranscription(input: TranscribeCallJob) {
     if (!this.aiService.enabled || !this.transcription.enabled) {
+      this.logger.warn(
+        `Call transcription was not queued: automationEnabled=${this.aiService.enabled}, transcriptionEnabled=${this.transcription.enabled}, recordingId=${input.recordingId}`,
+      );
       return { queued: false };
     }
     return this.enqueue(

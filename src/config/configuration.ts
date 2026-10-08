@@ -158,10 +158,11 @@ export default () => {
     2_000,
     'AI_BRIEFING_POLL_AFTER_MS',
   );
-  const aiCallTranscriptionEnabled = booleanValue(
-    process.env.AI_CALL_TRANSCRIPTION_ENABLED,
-    false,
-  );
+  const aiCallTranscriptionSetting =
+    process.env.AI_CALL_TRANSCRIPTION_ENABLED?.trim();
+  const aiCallTranscriptionEnabled = aiCallTranscriptionSetting
+    ? booleanValue(aiCallTranscriptionSetting, false)
+    : aiAutomationEnabled && Boolean(process.env.OPENAI_API_KEY?.trim());
   const aiCallTranscriptionModel = (
     process.env.AI_CALL_TRANSCRIPTION_MODEL || 'whisper-1'
   ).trim();
