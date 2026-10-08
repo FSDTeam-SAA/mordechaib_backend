@@ -1,7 +1,7 @@
 # Frontend API Guideline
 
-Version: 2.1
-Last reviewed against Main Backend: 2026-09-25
+Version: 2.2
+Last reviewed against Main Backend: 2026-10-08
 
 ## 1. Purpose and scope
 
@@ -21,6 +21,7 @@ This is the canonical frontend implementation contract for every completed produ
 - CEO strategic notes;
 - notification bell and integration cards;
 - support request submission, recent-request list, details, private attachments, and deletion.
+- HubSpot/Salesforce object discovery, sync configuration, multi-object synchronization, and local CRM record reads;
 - authentication, profile, organization, team, settings, task, approval, call, calendar, billing, onboarding, integration, and platform-admin flows.
 
 Only the canonical routes in this document should be used. The frontend must not call AI Backend directly and must not use old `/ai-actions/...` compatibility routes.
@@ -99,6 +100,7 @@ Frontend handling:
 | Email connect/draft/send                   | `OWNER` only               |
 | Submit/read/delete own support requests    | `OWNER`, `ADMIN`, `MEMBER` |
 | Manage support request lifecycle           | platform admin only        |
+| Configure/sync/read connected CRM data     | `OWNER`, `ADMIN`           |
 | Read agents/integrations/own notifications | authenticated user         |
 
 Hide or disable controls the current role cannot use; still treat backend authorization as authoritative.
@@ -167,6 +169,12 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 | Support request details      | `GET /support/requests/:requestId`                                    |
 | Support attachment           | `GET /support/requests/:requestId/attachments/:attachmentId/download` |
 | Delete support request       | `DELETE /support/requests/:requestId`                                 |
+| Discover CRM objects         | `GET /crm/:provider/objects`                                          |
+| Read CRM object schema       | `GET /crm/:provider/objects/:objectType/schema`                       |
+| Configure CRM synchronization | `PUT /crm/connections/:provider/sync-config`                         |
+| Synchronize configured CRM data | `POST /crm/connections/:provider/sync`                            |
+| List synchronized CRM records | `GET /crm/records`                                                    |
+| Read synchronized CRM record | `GET /crm/records/:id`                                                 |
 
 ## 4. Authentication bootstrap
 
@@ -1725,6 +1733,12 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 - [ ] Private attachment URLs are requested on demand and never persisted.
 - [ ] Delete is called only after explicit confirmation.
 - [ ] User support UI never calls `/support/admin/...` routes.
+- [ ] CRM OAuth `authorizationUrl` is opened unchanged; provider tokens never enter frontend storage.
+- [ ] CRM object and field selectors use returned identifiers, not display labels.
+- [ ] Sync configuration is sent as a complete replacement and no request body is sent to `/sync`.
+- [ ] CRM records are rendered from `/crm/records`, not fetched directly from provider APIs.
+- [ ] Record details use local `id`; provider `externalId` is used only as a list filter or provider reference.
+- [ ] `PARTIAL`, `IN_PROGRESS`, `FAILED`, and `reconnectRequired` states are represented without fabricated completion.
 
 ## 17. Complete Backend Collection and Resource Index
 
@@ -1740,7 +1754,7 @@ This index is the resource-first map for the completed backend. A **collection**
 | `tasks`                                                          | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                        |
 | `approvals`                                                      | Generic organization approval queue                              | `/approvals`                                                                    |
 | `call_logs`, `call_recordings`                                   | Outbound call records and recording references                   | `/calls`                                                                        |
-| `integrations`, `integration_oauth_states`, `crm_deals`          | CRM connections, one-time OAuth state, and normalized deal cache | `/integrations`, `/crm/connections/*`, `/crm/analytics/revenue`, `/crm/*/deals` |
+| `integrations`, `integration_oauth_states`, `crm_deals`, `crm_records` | CRM connections, OAuth state, deal analytics cache, and configured multi-object CRM records | `/integrations`, `/crm/connections/*`, `/crm/:provider/objects/*`, `/crm/records`, `/crm/analytics/revenue`, `/crm/*/deals` |
 | `managed_calendar_events`                                        | Platform-managed calendar events                                 | `/calendar/events`                                                              |
 | `platform_meetings`                                              | Provider-created Google Meet/Zoom meetings                       | `/meetings`                                                                     |
 | `meeting_bots`, `meeting_transcripts`                            | Recall bot jobs, transcript and temporary audio access           | `/meeting-bots`                                                                 |
@@ -2083,9 +2097,9 @@ organization-scoped E.164 phone number. A manual `clientPhone` remains supported
 If both are supplied, they must match. `agentPhone` defaults to the organization
 forwarding number when omitted. Only `OWNER` and `ADMIN` can start outbound calls.
 
-### 19.5 `integrations` and `crm_deals` — HubSpot/Salesforce CRM
+### 19.5 `integrations`, `crm_deals`, and `crm_records` — HubSpot/Salesforce CRM
 
-CRM connections belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; deal routes always state their provider explicitly.
+CRM connections and multi-object sync configuration belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; discovery, configuration, sync, record reads, and deal routes state or filter the provider explicitly.
 
 | Endpoint                                   | Request body / query                                                     | Response data                                                                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
@@ -2096,13 +2110,367 @@ CRM connections belong to the organization, not an individual user. The first co
 | `GET /crm/connections/:provider/callback`  | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
 | `DELETE /crm/connections/:provider`        | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
 | `PATCH /crm/connections/:provider/default` | none                                                                     | selected default CRM connection                                                                         |
+| `GET /crm/:provider/objects`               | none                                                                     | provider-normalized readable standard and custom objects                                                 |
+| `GET /crm/:provider/objects/:objectType/schema` | none                                                                | normalized field schema, capabilities, references, and enum options                                      |
+| `PUT /crm/connections/:provider/sync-config` | selected objects and fields                                            | validated saved configuration and object sync states                                                     |
 | `POST /crm/connections/:provider/sync`     | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
+| `GET /crm/records`                         | filters and pagination described below                                  | locally synchronized normalized CRM records                                                              |
+| `GET /crm/records/:id`                     | local Mongo record ID                                                    | one organization-scoped normalized CRM record                                                            |
 | `GET /crm/analytics/revenue`               | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
 | `POST /crm/:provider/deals`                | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
 | `PATCH /crm/:provider/deals/:externalId`   | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
 | `POST /crm/contacts`                       | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
 
-`:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connect, disconnect, set-default, manual-sync, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
+`:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connection management, schema discovery, sync configuration, manual sync, local CRM record reads, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
+
+#### 19.5.1 Frontend multi-object synchronization sequence
+
+CRM sync configuration is organization-scoped and stored with the existing
+connection. Do not create a second connection model in the frontend. Use this
+order independently for HubSpot and Salesforce:
+
+1. Read `GET /crm/connections/:provider`.
+2. If disconnected, call `GET /crm/connections/:provider/connect` and open the
+   returned `authorizationUrl` unchanged.
+3. After the provider redirects back to the integrations screen, re-fetch the
+   connection status.
+4. Call `GET /crm/:provider/objects` to populate the object selector.
+5. Call `GET /crm/:provider/objects/:objectType/schema` when an object is
+   selected, then populate its field selector.
+6. Save the complete selection using
+   `PUT /crm/connections/:provider/sync-config`.
+7. Trigger `POST /crm/connections/:provider/sync` with no request body.
+8. Render provider data from `GET /crm/records`; never call HubSpot or
+   Salesforce directly from the browser.
+
+Provider access and refresh tokens remain encrypted in Main Backend. They are
+never frontend configuration values.
+
+#### 19.5.2 Connection status and saved configuration
+
+`GET /crm/connections/:provider` always returns `objectSync`, including when a
+provider is not configured:
+
+```json
+{
+  "provider": "SALESFORCE",
+  "connected": true,
+  "status": "CONNECTED",
+  "isDefault": true,
+  "account": {
+    "id": "provider-account-id",
+    "email": "owner@example.com",
+    "name": "Owner"
+  },
+  "lastSyncedAt": "2026-10-08T08:30:00.000Z",
+  "syncStatus": "IDLE",
+  "reconnectRequired": false,
+  "objectSync": {
+    "configuration": {
+      "schemaVersion": "1.0",
+      "objects": [
+        {
+          "objectType": "Account",
+          "fields": ["Name", "Industry", "Phone"]
+        }
+      ],
+      "updatedAt": "2026-10-08T08:00:00.000Z",
+      "updatedByUserId": "USER_ID"
+    },
+    "objects": [
+      {
+        "objectType": "Account",
+        "status": "SYNCHRONIZED",
+        "lastSyncedAt": "2026-10-08T08:30:00.000Z",
+        "synchronized": 250,
+        "hasMore": false
+      }
+    ]
+  }
+}
+```
+
+When `connected` is false, both object arrays are empty. Treat this response as
+the source of truth instead of inferring connection state from cached UI data.
+
+#### 19.5.3 Discover objects and fields
+
+```http
+GET /crm/SALESFORCE/objects
+```
+
+```json
+{
+  "provider": "SALESFORCE",
+  "objects": [
+    {
+      "objectType": "Account",
+      "label": "Account",
+      "pluralLabel": "Accounts",
+      "custom": false,
+      "readable": true,
+      "createable": true,
+      "updateable": true,
+      "deletable": true
+    },
+    {
+      "objectType": "Project__c",
+      "label": "Project",
+      "pluralLabel": "Projects",
+      "custom": true,
+      "readable": true,
+      "createable": true,
+      "updateable": true,
+      "deletable": true
+    }
+  ]
+}
+```
+
+Load field metadata only when the object is needed:
+
+```http
+GET /crm/SALESFORCE/objects/Account/schema
+```
+
+```json
+{
+  "provider": "SALESFORCE",
+  "objectType": "Account",
+  "label": "Account",
+  "pluralLabel": "Accounts",
+  "custom": false,
+  "readable": true,
+  "createable": true,
+  "updateable": true,
+  "deletable": true,
+  "fields": [
+    {
+      "name": "Name",
+      "label": "Account Name",
+      "dataType": "STRING",
+      "providerType": "string",
+      "custom": false,
+      "required": true,
+      "readable": true,
+      "createable": true,
+      "updateable": true,
+      "filterable": true,
+      "sortable": true,
+      "unique": false,
+      "calculated": false,
+      "referenceTo": [],
+      "options": []
+    }
+  ]
+}
+```
+
+Send `objectType` and field `name` exactly as returned; never send display
+labels or change casing. HubSpot custom objects use their returned stable
+identifier. Salesforce custom object names normally end in `__c`. The UI should
+allow selection only where `readable` is true.
+
+#### 19.5.4 Save sync configuration
+
+```http
+PUT /crm/connections/SALESFORCE/sync-config
+Content-Type: application/json
+```
+
+```json
+{
+  "objects": [
+    {
+      "objectType": "Account",
+      "fields": ["Name", "Industry", "Phone"]
+    },
+    {
+      "objectType": "Contact",
+      "fields": ["FirstName", "LastName", "Email", "Phone"]
+    },
+    {
+      "objectType": "Project__c",
+      "fields": ["Name", "Status__c", "Budget__c"]
+    }
+  ]
+}
+```
+
+Rules:
+
+- send the complete desired configuration, not a partial patch;
+- maximum 25 objects and 200 fields per object;
+- object types and fields must be unique within the request;
+- Main Backend validates every object and field against the live connected
+  account before saving;
+- send `{ "objects": [] }` to disable multi-object synchronization;
+- changing one object's fields resets only that object to `IDLE`; unchanged
+  object state is preserved;
+- on `409`, the configuration changed during synchronization; re-fetch the
+  connection and retry.
+
+Successful save response:
+
+```json
+{
+  "provider": "SALESFORCE",
+  "configuration": {
+    "schemaVersion": "1.0",
+    "objects": [
+      {
+        "objectType": "Account",
+        "fields": ["Name", "Industry", "Phone"]
+      },
+      {
+        "objectType": "Contact",
+        "fields": ["FirstName", "LastName", "Email", "Phone"]
+      },
+      {
+        "objectType": "Project__c",
+        "fields": ["Name", "Status__c", "Budget__c"]
+      }
+    ],
+    "updatedAt": "2026-10-08T08:00:00.000Z",
+    "updatedByUserId": "USER_ID"
+  },
+  "objects": [
+    { "objectType": "Account", "status": "IDLE" },
+    { "objectType": "Contact", "status": "IDLE" },
+    { "objectType": "Project__c", "status": "IDLE" }
+  ]
+}
+```
+
+For HubSpot, use the same body shape with the exact returned identifiers, for
+example `contacts` with `firstname`, `lastname`, `email`, and `phone`.
+
+#### 19.5.5 Trigger and monitor synchronization
+
+```http
+POST /crm/connections/SALESFORCE/sync
+```
+
+Do not send a request body.
+
+```json
+{
+  "provider": "SALESFORCE",
+  "status": "SYNCHRONIZED",
+  "synchronized": 120,
+  "pages": 1,
+  "lastSyncedAt": "2026-10-08T08:30:00.000Z",
+  "objectSync": {
+    "status": "SYNCHRONIZED",
+    "synchronized": 450,
+    "objects": [
+      {
+        "objectType": "Account",
+        "status": "SYNCHRONIZED",
+        "synchronized": 250,
+        "pages": 1
+      },
+      {
+        "objectType": "Contact",
+        "status": "SYNCHRONIZED",
+        "synchronized": 200,
+        "pages": 1
+      }
+    ]
+  }
+}
+```
+
+Top-level `synchronized` and `pages` describe the specialized `crm_deals`
+cache used by revenue analytics. `objectSync` describes configured generic
+records stored in `crm_records`.
+
+Status handling:
+
+- `IN_PROGRESS`: another recent sync owns the connection lock; poll the
+  connection status later;
+- `SYNCHRONIZED`: the current work completed;
+- `PARTIAL`: at least one object has more pages or failed; inspect each object;
+- `NOT_CONFIGURED`: no generic object selection has been saved;
+- object `FAILED`: display its returned error and provide retry guidance.
+
+Each object processes at most 20 pages per run. Main Backend saves the cursor,
+and its scheduler or the next manual sync resumes automatically. The frontend
+must not implement provider pagination.
+
+#### 19.5.6 Read synchronized records
+
+```http
+GET /crm/records?provider=SALESFORCE&objectType=Account&page=1&limit=20&archived=false
+```
+
+| Parameter     | Type     | Rule                                                   |
+| ------------- | -------- | ------------------------------------------------------ |
+| `page`        | integer  | default `1`, minimum `1`                                |
+| `limit`       | integer  | default `20`, range `1..100`                            |
+| `provider`    | string   | optional `HUBSPOT` or `SALESFORCE`                     |
+| `objectType`  | string   | optional exact provider object identifier              |
+| `externalId`  | string   | optional exact provider record ID                      |
+| `archived`    | boolean  | default `false`; `true` returns archived/deleted data   |
+| `updatedFrom` | ISO 8601 | optional inclusive provider-update lower bound         |
+| `updatedTo`   | ISO 8601 | optional inclusive provider-update upper bound         |
+
+`updatedFrom` must not be later than `updatedTo`.
+
+```json
+{
+  "items": [
+    {
+      "id": "LOCAL_CRM_RECORD_ID",
+      "provider": "SALESFORCE",
+      "objectType": "Account",
+      "externalId": "001XXXXXXXXXXXX",
+      "properties": {
+        "Name": "Acme Ltd",
+        "Industry": "Technology",
+        "Phone": "+8801812345678"
+      },
+      "associations": {},
+      "providerCreatedAt": "2026-10-01T08:00:00.000Z",
+      "providerUpdatedAt": "2026-10-08T08:25:00.000Z",
+      "archived": false,
+      "syncedAt": "2026-10-08T08:30:00.000Z",
+      "createdAt": "2026-10-08T08:30:00.000Z",
+      "updatedAt": "2026-10-08T08:30:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "pages": 1 }
+}
+```
+
+Use local `id`, not provider `externalId`, for details:
+
+```http
+GET /crm/records/LOCAL_CRM_RECORD_ID
+```
+
+To locate a provider record by its own ID:
+
+```http
+GET /crm/records?provider=SALESFORCE&objectType=Account&externalId=001XXXXXXXXXXXX
+```
+
+Record responses intentionally omit `organizationId`, `__v`, and the retained
+raw provider payload. `properties` keys are dynamic and match the organizer's
+configured provider fields.
+
+Expected errors for this flow:
+
+- `400`: invalid provider/object/field, duplicate selection, invalid date
+  range, or invalid local record ID;
+- `403`: current user is not an organization `OWNER` or `ADMIN`, or provider
+  permissions do not allow discovery;
+- `404`: object/schema or organization-scoped local record was not found;
+- `409`: configuration changed during sync or another state conflict occurred;
+- `503`: provider is disconnected, must be reconnected, rate limited, or is
+  temporarily unavailable.
+
+#### 19.5.7 OAuth, existing deal writes, and revenue analytics
 
 Salesforce uses server-side OAuth PKCE. The frontend must open the returned
 `authorizationUrl` unchanged; it must not generate, store, or append a
@@ -2148,7 +2516,7 @@ Revenue response shape:
 }
 ```
 
-CRM data is eventually consistent: `lastSyncedAt`, `syncStatus`, and `reconnectRequired` must be shown in the UI. `crm_deals` is the local analysis cache; provider confirmation completes before a platform deal write updates that cache.
+CRM data is eventually consistent: `lastSyncedAt`, `syncStatus`, `reconnectRequired`, and per-object sync states must be shown in the UI. `crm_deals` remains the specialized local analytics cache, while `crm_records` stores provider-independent selected objects. Provider confirmation completes before a platform deal write updates `crm_deals`; generic `crm_records` are refreshed by synchronization.
 
 ### 19.6 `call_recordings`, `meeting_bots`, `meeting_transcripts`, and `ai_source_analyses` — call intelligence
 

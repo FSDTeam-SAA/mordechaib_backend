@@ -1,16 +1,22 @@
 import {
-  BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Redirect,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -18,7 +24,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { CrmProviderType } from '../../common/types/crm-provider.interface';
 import {
   RequestOrganization,
   RequestUser,
@@ -26,6 +31,8 @@ import {
 import { CrmConnectionsService } from './crm-connections.service';
 import { CrmProviderRegistry } from './crm-provider.registry';
 import { CrmSyncService } from './crm-sync.service';
+import { CrmSyncConfigurationService } from './crm-sync-configuration.service';
+import { UpdateCrmSyncConfigurationDto } from './dto/update-crm-sync-configuration.dto';
 
 @ApiTags('CRM Connections')
 @ApiBearerAuth()
@@ -34,6 +41,7 @@ export class CrmConnectionsController {
   constructor(
     private readonly connections: CrmConnectionsService,
     private readonly sync: CrmSyncService,
+    private readonly syncConfiguration: CrmSyncConfigurationService,
     private readonly providers: CrmProviderRegistry,
   ) {}
 
@@ -51,7 +59,7 @@ export class CrmConnectionsController {
   ) {
     return this.connections.connection(
       organization.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
     );
   }
 
@@ -66,7 +74,7 @@ export class CrmConnectionsController {
     return this.connections.connectUrl(
       organization.id,
       user.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
     );
   }
 
@@ -79,7 +87,7 @@ export class CrmConnectionsController {
     @Query('state') state?: string,
     @Query('error') error?: string,
   ) {
-    const crmProvider = this.crmProvider(provider);
+    const crmProvider = this.providers.parse(provider);
     if (error || !code || !state) {
       return {
         url: this.connections.callbackUrl(
@@ -115,7 +123,7 @@ export class CrmConnectionsController {
     return this.connections.disconnect(
       organization.id,
       user.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
     );
   }
 
@@ -130,7 +138,7 @@ export class CrmConnectionsController {
     return this.connections.setDefault(
       organization.id,
       user.id,
-      this.crmProvider(provider),
+      this.providers.parse(provider),
     );
   }
 
@@ -142,13 +150,33 @@ export class CrmConnectionsController {
     @CurrentUser() user: RequestUser,
     @Param('provider') provider: string,
   ) {
-    return this.sync.sync(organization.id, this.crmProvider(provider), user.id);
+    return this.sync.sync(
+      organization.id,
+      this.providers.parse(provider),
+      user.id,
+    );
   }
 
-  private crmProvider(provider: string): CrmProviderType {
-    if (!this.providers.isCrmProvider(provider)) {
-      throw new BadRequestException('provider must be HUBSPOT or SALESFORCE');
-    }
-    return provider;
+  @Put(':provider/sync-config')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiParam({ name: 'provider', enum: ['HUBSPOT', 'SALESFORCE'] })
+  @ApiOperation({
+    summary: 'Configure CRM objects and fields for synchronization',
+    description:
+      'Validates every selected object and field against the connected provider schema before saving the organization-scoped configuration.',
+  })
+  configureSync(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Body() input: UpdateCrmSyncConfigurationDto,
+  ) {
+    return this.syncConfiguration.update(
+      organization.id,
+      user.id,
+      this.providers.parse(provider),
+      input,
+    );
   }
 }
