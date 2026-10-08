@@ -8,6 +8,7 @@ import {
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CrmConnectionsService } from './crm-connections.service';
 import { CrmDealsRepository } from './crm-deals.repository';
+import { CrmObjectSyncService } from './crm-object-sync.service';
 import { CrmProviderRegistry } from './crm-provider.registry';
 import { CrmRepository } from './crm.repository';
 
@@ -22,6 +23,7 @@ export class CrmSyncService {
     private readonly providers: CrmProviderRegistry,
     private readonly connectionsRepository: CrmRepository,
     private readonly deals: CrmDealsRepository,
+    private readonly objectSync: CrmObjectSyncService,
     private readonly auditLogs: AuditLogsService,
     private readonly config: ConfigService,
   ) {}
@@ -114,11 +116,19 @@ export class CrmSyncService {
         lastSyncError: undefined,
         reconnectRequired: false,
       };
-      await this.connectionsRepository.update(
+      const objectSync = await this.objectSync.syncConfigured(
+        organizationId,
+        resolvedProvider,
+      );
+      await this.connectionsRepository.updateSyncState(
         organizationId,
         resolvedProvider,
         {
-          metadata: nextMetadata,
+          status: 'IDLE',
+          lastSyncedAt: nextMetadata.lastSyncedAt,
+          cursor: nextMetadata.syncCursor,
+          syncSince: nextMetadata.syncSince,
+          reconnectRequired: false,
         },
       );
       if (userId) {
@@ -132,27 +142,29 @@ export class CrmSyncService {
             provider: resolvedProvider,
             synchronized: result.synchronized,
             completed: result.done,
+            objectSyncStatus: objectSync.status,
+            objectSyncSynchronized: objectSync.synchronized,
           },
         });
       }
+      const objectSyncComplete =
+        objectSync.status === 'SYNCHRONIZED' ||
+        objectSync.status === 'NOT_CONFIGURED';
       return {
         provider: resolvedProvider,
-        status: result.done ? 'SYNCHRONIZED' : 'PARTIAL',
+        status: result.done && objectSyncComplete ? 'SYNCHRONIZED' : 'PARTIAL',
         synchronized: result.synchronized,
         pages: result.pageCount,
         lastSyncedAt: nextMetadata.lastSyncedAt,
+        objectSync,
       };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'CRM sync failed';
       await this.connectionsRepository
-        .update(organizationId, resolvedProvider, {
-          metadata: {
-            ...before,
-            syncStatus: 'FAILED',
-            syncStartedAt: undefined,
-            lastSyncError: message.slice(0, 1000),
-          } satisfies CrmConnectionMetadata,
+        .updateSyncState(organizationId, resolvedProvider, {
+          status: 'FAILED',
+          lastSyncError: message.slice(0, 1000),
         })
         .catch(() => undefined);
       throw error;
@@ -188,6 +200,13 @@ export class CrmSyncService {
       return !startedAt || now.getTime() - startedAt.getTime() > 15 * 60_000;
     }
     if (metadata.syncCursor) return true;
+    if (
+      metadata.objectSync?.objects?.some(
+        ({ status, hasMore }) => status === 'PARTIAL' || hasMore === true,
+      )
+    ) {
+      return true;
+    }
     const lastSyncedAt = this.date(metadata.lastSyncedAt);
     if (!lastSyncedAt) return true;
     // The scheduler checks every ten minutes while each connection has its own
