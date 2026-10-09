@@ -16,6 +16,8 @@ import { Public } from '../../common/decorators/public.decorator';
 import { TwilioService } from './twilio.service';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
 import { TwilioSignatureGuard } from './guards/twilio-signature.guard';
+import { TwilioTranscriptionService } from './twilio-transcription.service';
+import { TwilioTranscriptionWebhookDto } from './dto/twilio-transcription-webhook.dto';
 
 type TwilioWebhookRequest = {
   body: Record<string, string | undefined>;
@@ -26,7 +28,10 @@ type TwilioWebhookRequest = {
 @Controller('webhooks/twilio')
 @UseGuards(TwilioSignatureGuard)
 export class TwilioController {
-  constructor(private readonly twilioService: TwilioService) {}
+  constructor(
+    private readonly twilioService: TwilioService,
+    private readonly transcriptionService: TwilioTranscriptionService,
+  ) {}
 
   @Post('voice')
   @HttpCode(HttpStatus.OK)
@@ -84,6 +89,12 @@ export class TwilioController {
     @Body() body: Record<string, string | undefined>,
   ) {
     return this.twilioService.handleRecordingCallback(primaryCallSid, body);
+  }
+
+  @Post('transcription')
+  @HttpCode(HttpStatus.OK)
+  handleTranscription(@Body() body: TwilioTranscriptionWebhookDto) {
+    return this.transcriptionService.handleWebhook(body);
   }
 
   @Post('dial-status')

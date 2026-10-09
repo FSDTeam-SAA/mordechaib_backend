@@ -187,6 +187,17 @@ Your backend:
 - Stores it locally via `RecordingStorageService.storeRecording` → `storage/recordings/{callSid}/{recordingSid}.wav`
 - Writes `localFilePath` to the MongoDB document
 
+When `TWILIO_TRANSCRIPTION_ENABLED=true`, the generated TwiML also starts
+Twilio Real-Time Transcription. Twilio posts signed lifecycle events and final
+utterances to:
+```
+POST https://abcd-123-456.ngrok-free.dev/api/v1/webhooks/twilio/transcription
+```
+
+Main Backend stores only final utterances, links them to the recording
+regardless of callback order, and queues the existing `CALL_TRANSCRIPT`
+analyze-source job. Main Backend does not use an OpenAI key for this flow.
+
 ---
 
 ## 7. Troubleshooting
@@ -199,6 +210,7 @@ Your backend:
 | TwiML says "This phone number is not currently configured" | No active `TwilioSetting` for the `To` number. Create one via `POST /api/v1/twilio/settings`. |
 | ngrok free tier interstitials | Add `?ngrok-skip-browser-warning=1` is not needed for webhooks; if you see it, open the ngrok URL in a browser once to accept, then re-run. |
 | Recording never arrives | Ensure `isRecordingEnabled: true` and that `recordingStatusCallback` URL in the generated TwiML is reachable (check `storage/recordings` + backend logs). |
+| Transcript never arrives | Set `TWILIO_TRANSCRIPTION_ENABLED=true`, keep `isRecordingEnabled: true`, use a public HTTPS `APP_BASE_URL`, and inspect Twilio Debugger for callback errors. |
 | `fetch` is not defined | Node < 18. Use Node 18+ (the project targets modern Node). |
 | Audio download fails with 404 | Trial Twilio accounts keep recordings only for a limited time; make sure the webhook fires shortly after the call ends. |
 

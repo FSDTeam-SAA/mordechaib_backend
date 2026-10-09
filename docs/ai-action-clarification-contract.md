@@ -111,13 +111,15 @@ Important current behavior:
 - Recall sends signed meeting events to
   `POST /api/v1/webhooks/recall`. Main Backend queues the webhook, fetches and
   stores the finished transcript, and only then queues AI analysis.
-- Twilio sends recording metadata as URL-encoded form data to
-  `POST /api/v1/webhooks/twilio/recording`. Main Backend downloads the audio,
-  stores the recording, transcribes it, and then queues transcript analysis.
-  These are provider-authenticated ingestion routes, not AI Backend routes.
+- Twilio sends recording metadata to
+  `POST /api/v1/webhooks/twilio/recording` and signed final transcript events
+  to `POST /api/v1/webhooks/twilio/transcription`. Main Backend stores both,
+  links them regardless of callback order, and then queues transcript
+  analysis. These are provider-authenticated ingestion routes, not AI Backend
+  routes.
 - Meeting analysis starts only after a completed transcript is stored.
-- Twilio currently sends locally stored audio to the Main Backend transcription
-  adapter first. The normal downstream source is `CALL_TRANSCRIPT`, not
+- Twilio produces the call transcript; Main Backend does not send call audio
+  to OpenAI. The normal downstream source is `CALL_TRANSCRIPT`, not
   `CALL_AUDIO`.
 - User-message analysis is delayed by 1.5 seconds by default. If a newer
   message exists when the job runs, the older job is marked completed and
@@ -1016,8 +1018,8 @@ The contract above was derived from these current files:
 - `src/modules/messages/messages.service.ts`: direct-message trigger.
 - `src/modules/meeting-bots/meeting-bots.service.ts`: Recall transcript trigger.
 - `src/modules/twilio/twilio.service.ts` and
-  `src/modules/ai-integration/call-transcription.service.ts`: Twilio audio and
-  transcription trigger.
+  `src/modules/twilio/twilio-transcription.service.ts`: Twilio recording,
+  signed transcript ingestion, and analysis trigger.
 - `debug/analyze-source-request-6aa8cd0bfbd336c941c82f89.json`: captured
   Google Meet analyze request.
 

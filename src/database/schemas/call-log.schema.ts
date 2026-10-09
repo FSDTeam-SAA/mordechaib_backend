@@ -3,6 +3,17 @@ import { HydratedDocument } from 'mongoose';
 
 export type CallLogDocument = HydratedDocument<CallLog>;
 
+export type CallTranscriptSegment = {
+  eventKey: string;
+  sequenceId: number;
+  track: string;
+  speakerLabel: string;
+  text: string;
+  confidence?: number;
+  languageCode?: string;
+  timestamp?: Date;
+};
+
 @Schema({ timestamps: true, collection: 'call_logs' })
 export class CallLog {
   @Prop({ required: true, index: true })
@@ -68,6 +79,24 @@ export class CallLog {
 
   @Prop()
   endedAt?: Date;
+
+  @Prop({ index: true })
+  transcriptionSid?: string;
+
+  @Prop({ enum: ['PROCESSING', 'COMPLETED', 'FAILED'] })
+  transcriptionStatus?: string;
+
+  @Prop({ type: [Object], default: [] })
+  transcriptSegments!: CallTranscriptSegment[];
+
+  @Prop()
+  transcriptText?: string;
+
+  @Prop()
+  transcriptionError?: string;
+
+  @Prop()
+  transcriptionCompletedAt?: Date;
 }
 
 export const CallLogSchema = SchemaFactory.createForClass(CallLog);

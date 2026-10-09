@@ -270,17 +270,18 @@ the same size, type, timeout, privacy, and expiry policy.
 
 ## Gap 5: call transcription production readiness
 
-The call-transcript analysis path already exists. However, local behavior is
+The call-transcript analysis path uses Twilio Real-Time Transcription and is
 disabled unless:
 
 ```text
-AI_CALL_TRANSCRIPTION_ENABLED=true
+TWILIO_TRANSCRIPTION_ENABLED=true
 ```
 
 Before declaring calls production-ready, verify:
 
 - the flag is enabled in the target deployment;
-- the transcription provider credentials are configured;
+- the organization has recording enabled in its Twilio setting;
+- Twilio can reach the signed transcription webhook on `APP_BASE_URL`;
 - callback/retry handling is observable;
 - transcript records are organization-scoped;
 - a completed transcript creates the expected analysis job;
@@ -289,8 +290,13 @@ Before declaring calls production-ready, verify:
 Do not assume the AI Backend can analyze raw call audio. The normal path is:
 
 ```text
-Twilio recording -> Main Backend transcription -> CALL_TRANSCRIPT analysis
+Twilio call -> signed transcript webhook -> CALL_TRANSCRIPT analysis
 ```
+
+Main Backend does not call OpenAI/Whisper for call transcription. Twilio sends
+final utterances to `POST /api/v1/webhooks/twilio/transcription`; Main Backend
+stores them idempotently, links the completed transcript to the recording, and
+reuses the existing analyze-source job.
 
 ## Gap 6: Executive Briefing persistence
 

@@ -10,11 +10,9 @@ import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiJobsProcessor } from './ai-jobs.processor';
 import {
   AI_ANALYZE_SOURCE_JOB,
-  AiJobsQueue,
   AnalyzeSourceJob,
 } from './ai-jobs.queue';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
-import { CallTranscriptionService } from './call-transcription.service';
 
 describe('AiJobsProcessor user message analysis', () => {
   const organizationId = 'org-1';
@@ -96,8 +94,6 @@ describe('AiJobsProcessor user message analysis', () => {
     };
     processor = new AiJobsProcessor(
       aiService as unknown as AiServiceClient,
-      {} as CallTranscriptionService,
-      {} as AiJobsQueue,
       actions as unknown as AiActionsService,
       sourceContext as unknown as AiSourceContextService,
       { get: jest.fn().mockReturnValue(false) } as unknown as ConfigService,
