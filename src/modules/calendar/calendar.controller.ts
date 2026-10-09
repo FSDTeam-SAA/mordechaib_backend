@@ -37,10 +37,9 @@ export class CalendarController {
 
   @Get('dashboard')
   @ApiOperation({
-    summary:
-      'Get the default-provider calendar dashboard for an explicit date range',
+    summary: 'Get the unified calendar dashboard for an explicit date range',
     description:
-      'Returns only records belonging to the organization default Google or Outlook calendar. Change the default connection to switch the dashboard provider.',
+      'Returns every platform-created meeting plus synchronized events from the organization default Google or Outlook calendar. Changing the default connection switches the synchronized-event source without hiding meetings created through another provider.',
   })
   dashboardView(
     @CurrentOrg() org: { id: string },
