@@ -9,6 +9,9 @@ export type TwilioTranscriptionWebhookDto = {
   LanguageCode?: string;
   Timestamp?: string;
   Final?: string;
+  TranscriptionErrorCode?: string;
+  TranscriptionError?: string;
+  // Kept for backwards compatibility with manually generated test payloads.
   ErrorCode?: string;
   ErrorMessage?: string;
 };

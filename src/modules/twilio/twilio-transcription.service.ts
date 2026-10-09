@@ -210,8 +210,12 @@ export class TwilioTranscriptionService {
   }
 
   private errorReason(body: TwilioTranscriptionWebhookDto) {
-    const code = body.ErrorCode?.trim();
-    const message = body.ErrorMessage?.trim() || 'Twilio transcription failed';
+    const code =
+      body.TranscriptionErrorCode?.trim() || body.ErrorCode?.trim();
+    const message =
+      body.TranscriptionError?.trim() ||
+      body.ErrorMessage?.trim() ||
+      'Twilio transcription failed';
     return `${code ? `${code}: ` : ''}${message}`.slice(0, 2000);
   }
 }
