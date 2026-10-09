@@ -18,6 +18,7 @@ import { MeetingTranscript } from '../../database/schemas/meeting-transcript.sch
 import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
 import { ZoomMeeting } from '../../database/schemas/zoom-meeting.schema';
 import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-transcript.schema';
+import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
@@ -166,15 +167,17 @@ export class CallIntelligenceService {
       ...recordings.map((recording) =>
         this.callListItem(recording, callsBySid.get(recording.callSid)),
       ),
-      ...meetings.map((meeting) =>
-        this.meetingListItem(
-          meeting,
-          connectedMeetingsById.get(
-            this.stringMetadataValue(meeting, 'platformMeetingId') || '',
+      ...meetings
+        .filter((meeting) => this.isMeetingIntelligenceSource(meeting))
+        .map((meeting) =>
+          this.meetingListItem(
+            meeting,
+            connectedMeetingsById.get(
+              this.stringMetadataValue(meeting, 'platformMeetingId') || '',
+            ),
+            false,
           ),
-          false,
         ),
-      ),
       ...legacyZoomMeetings.map((meeting) =>
         this.meetingListItem(meeting, undefined, true),
       ),
@@ -489,12 +492,31 @@ export class CallIntelligenceService {
       ...(includeGoogleMeet && includeZoom
         ? {}
         : { platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM' }),
+      status: { $ne: MeetingBotStatus.SCHEDULED },
       $or: [
-        { recordingId: { $exists: true, $ne: null } },
-        { transcriptId: { $exists: true, $ne: null } },
-        { transcriptCompletedAt: { $exists: true, $ne: null } },
+        { recordingId: { $type: 'string', $regex: /\S/ } },
+        { transcriptId: { $type: 'string', $regex: /\S/ } },
+        { transcriptCompletedAt: { $type: 'date' } },
       ],
     };
+  }
+
+  private isMeetingIntelligenceSource(meeting: LeanRecord) {
+    if (meeting.status === MeetingBotStatus.SCHEDULED) return false;
+    return Boolean(
+      this.nonEmptyString(meeting.recordingId) ||
+        this.nonEmptyString(meeting.transcriptId) ||
+        this.validDate(meeting.transcriptCompletedAt),
+    );
+  }
+
+  private nonEmptyString(value: unknown) {
+    return typeof value === 'string' && value.trim().length > 0;
+  }
+
+  private validDate(value: unknown) {
+    if (!(value instanceof Date)) return false;
+    return !Number.isNaN(value.getTime());
   }
 
   private async getCallMedia(
