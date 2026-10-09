@@ -77,6 +77,22 @@ describe('TwilioTranscriptionService', () => {
     expect(callRecords.appendTranscriptionSegment).not.toHaveBeenCalled();
   });
 
+  it('persists the official Twilio transcription error fields', async () => {
+    await service.handleWebhook({
+      CallSid: 'CA123',
+      TranscriptionSid: 'GT123',
+      TranscriptionEvent: 'transcription-error',
+      TranscriptionErrorCode: '32650',
+      TranscriptionError: 'Invalid transcription configuration',
+    });
+
+    expect(callRecords.failTranscription).toHaveBeenCalledWith({
+      callSid: 'CA123',
+      transcriptionSid: 'GT123',
+      reason: '32650: Invalid transcription configuration',
+    });
+  });
+
   it('attaches a completed transcript and queues the existing analysis flow', async () => {
     const completedAt = new Date('2026-10-08T09:01:00.000Z');
     callRecords.completeTranscription.mockResolvedValue({

@@ -210,7 +210,9 @@ analyze-source job. Main Backend does not use an OpenAI key for this flow.
 | TwiML says "This phone number is not currently configured" | No active `TwilioSetting` for the `To` number. Create one via `POST /api/v1/twilio/settings`. |
 | ngrok free tier interstitials | Add `?ngrok-skip-browser-warning=1` is not needed for webhooks; if you see it, open the ngrok URL in a browser once to accept, then re-run. |
 | Recording never arrives | Ensure `isRecordingEnabled: true` and that `recordingStatusCallback` URL in the generated TwiML is reachable (check `storage/recordings` + backend logs). |
-| Transcript never arrives | Set `TWILIO_TRANSCRIPTION_ENABLED=true`, keep `isRecordingEnabled: true`, use a public HTTPS `APP_BASE_URL`, and inspect Twilio Debugger for callback errors. |
+| Transcript never arrives | Set `TWILIO_TRANSCRIPTION_ENABLED=true`, keep `isRecordingEnabled: true`, use a public HTTPS `APP_BASE_URL`, and inspect Twilio Debugger for callback errors. Use `TWILIO_TRANSCRIPTION_ENGINE=google` unless the Twilio account has explicitly opted in to the `auto` engine. |
+| Transcription error `32650` | Twilio rejected the `<Transcription>` configuration. Keep track labels alphanumeric and use only attributes supported by Twilio's `<Transcription>` noun. The backend persists `TranscriptionErrorCode` and `TranscriptionError` for diagnosis. |
+| Twilio error `12300` on `/dial-status` | A `<Dial action>` callback must return XML/TwiML. The endpoint returns an empty `<Response>` after persisting call status; do not change it to JSON. |
 | `fetch` is not defined | Node < 18. Use Node 18+ (the project targets modern Node). |
 | Audio download fails with 404 | Trial Twilio accounts keep recordings only for a limited time; make sure the webhook fires shortly after the call ends. |
 
