@@ -90,6 +90,11 @@ export class CallIntelligenceService {
         query.sourceType === AiProposalSourceType.ZOOM_MEETING);
     const offset = (query.page - 1) * query.limit;
     const sourceLimit = offset + query.limit;
+    const meetingSourceFilter = this.meetingSourceFilter(
+      organizationId,
+      includeGoogleMeet,
+      includeZoom,
+    );
 
     const [
       recordings,
@@ -109,14 +114,7 @@ export class CallIntelligenceService {
       includeGoogleMeet || includeZoom
         ? this.listDocuments(
             this.meetingBots,
-            {
-              organizationId,
-              ...(includeGoogleMeet && includeZoom
-                ? {}
-                : {
-                    platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM',
-                  }),
-            },
+            meetingSourceFilter,
             sourceLimit,
           )
         : Promise.resolve([]),
@@ -127,12 +125,7 @@ export class CallIntelligenceService {
         ? this.countDocuments(this.callRecordings, { organizationId })
         : Promise.resolve(0),
       includeGoogleMeet || includeZoom
-        ? this.countDocuments(this.meetingBots, {
-            organizationId,
-            ...(includeGoogleMeet && includeZoom
-              ? {}
-              : { platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM' }),
-          })
+        ? this.countDocuments(this.meetingBots, meetingSourceFilter)
         : Promise.resolve(0),
       includeZoom
         ? this.countLegacyZoomDocuments(organizationId)
@@ -477,8 +470,31 @@ export class CallIntelligenceService {
   }
 
   private listItemTime(item: CallIntelligenceListItem) {
-    const date = new Date(String(item.createdAt || item.occurredAt || 0));
+    const date = new Date(String(item.occurredAt || item.createdAt || 0));
     return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  /**
+   * Scheduled bots belong to Calendar/Upcoming Meetings, not Call
+   * Intelligence. A bot becomes an intelligence source only after Recall has
+   * produced recording or transcript evidence for the completed meeting.
+   */
+  private meetingSourceFilter(
+    organizationId: string,
+    includeGoogleMeet: boolean,
+    includeZoom: boolean,
+  ) {
+    return {
+      organizationId,
+      ...(includeGoogleMeet && includeZoom
+        ? {}
+        : { platform: includeGoogleMeet ? 'GOOGLE_MEET' : 'ZOOM' }),
+      $or: [
+        { recordingId: { $exists: true, $ne: null } },
+        { transcriptId: { $exists: true, $ne: null } },
+        { transcriptCompletedAt: { $exists: true, $ne: null } },
+      ],
+    };
   }
 
   private async getCallMedia(

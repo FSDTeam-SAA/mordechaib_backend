@@ -482,7 +482,9 @@ export default () => {
       unusualCallMinutes: twilioUnusualCallMinutes,
       transcription: {
         enabled: twilioTranscriptionEnabled,
-        engine: process.env.TWILIO_TRANSCRIPTION_ENGINE?.trim() || 'auto',
+        // Google is supported for existing and new Twilio accounts. `auto`
+        // requires opt-in for some accounts created before its rollout.
+        engine: process.env.TWILIO_TRANSCRIPTION_ENGINE?.trim() || 'google',
         speechModel: process.env.TWILIO_TRANSCRIPTION_SPEECH_MODEL?.trim(),
         languageCode:
           process.env.TWILIO_TRANSCRIPTION_LANGUAGE_CODE?.trim() || 'en-US',

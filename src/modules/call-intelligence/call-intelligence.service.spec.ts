@@ -127,6 +127,22 @@ describe('CallIntelligenceService', () => {
         detailsPath: `/api/v1/call-intelligence/${meeting._id}/details?sourceType=GOOGLE_MEET`,
       }),
     ]);
+    expect(meetingBots.find).toHaveBeenCalledWith({
+      organizationId: '66cc9bdfa847ea856c7b4199',
+      $or: [
+        { recordingId: { $exists: true, $ne: null } },
+        { transcriptId: { $exists: true, $ne: null } },
+        { transcriptCompletedAt: { $exists: true, $ne: null } },
+      ],
+    });
+    expect(meetingBots.countDocuments).toHaveBeenCalledWith({
+      organizationId: '66cc9bdfa847ea856c7b4199',
+      $or: [
+        { recordingId: { $exists: true, $ne: null } },
+        { transcriptId: { $exists: true, $ne: null } },
+        { transcriptCompletedAt: { $exists: true, $ne: null } },
+      ],
+    });
   });
 
   it('aggregates call metadata, lightweight transcript state, analysis and actions', async () => {

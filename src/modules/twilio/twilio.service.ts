@@ -343,7 +343,9 @@ export class TwilioService {
       );
     }
 
-    return { received: true };
+    // A <Dial action> callback is a TwiML request. Returning JSON makes Twilio
+    // attempt to parse application/json as TwiML and raises error 12300.
+    return this.twilioProvider.twiml().toString();
   }
 
   private webhookUrl(path: string): string {
@@ -370,10 +372,10 @@ export class TwilioService {
     response.start().transcription({
       name: `noltra-${callSid}`,
       statusCallbackUrl: this.webhookUrl('transcription'),
-      statusCallbackMethod: 'POST',
       track: 'both_tracks',
-      inboundTrackLabel: 'inbound-participant',
-      outboundTrackLabel: 'outbound-participant',
+      // Twilio requires track labels to be alphanumeric.
+      inboundTrackLabel: 'inboundParticipant',
+      outboundTrackLabel: 'outboundParticipant',
       partialResults: false,
       enableAutomaticPunctuation: true,
       languageCode: this.config.get<string>(
