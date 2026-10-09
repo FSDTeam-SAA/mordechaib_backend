@@ -13,7 +13,6 @@ import {
 import { AiJobsProcessor } from './ai-jobs.processor';
 import { AI_JOBS_QUEUE, AiJobsQueue } from './ai-jobs.queue';
 import { AiServiceClient } from './ai-service.client';
-import { CallTranscriptionService } from './call-transcription.service';
 import { AiActionsModule } from '../ai-actions/ai-actions.module';
 import { AiSourceContextModule } from '../ai-internal/ai-internal.module';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
@@ -71,7 +70,6 @@ function redisConnection(urlValue: string) {
     AiServiceClient,
     AiJobsQueue,
     AiJobsProcessor,
-    CallTranscriptionService,
     AiActionClarificationWorkflowService,
     AiAnalysisResponseValidator,
     AiChatReplyService,

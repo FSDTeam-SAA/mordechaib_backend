@@ -158,18 +158,9 @@ export default () => {
     2_000,
     'AI_BRIEFING_POLL_AFTER_MS',
   );
-  const aiCallTranscriptionSetting =
-    process.env.AI_CALL_TRANSCRIPTION_ENABLED?.trim();
-  const aiCallTranscriptionEnabled = aiCallTranscriptionSetting
-    ? booleanValue(aiCallTranscriptionSetting, false)
-    : aiAutomationEnabled && Boolean(process.env.OPENAI_API_KEY?.trim());
-  const aiCallTranscriptionModel = (
-    process.env.AI_CALL_TRANSCRIPTION_MODEL || 'whisper-1'
-  ).trim();
-  const aiCallTranscriptionMaxBytes = positiveInteger(
-    process.env.AI_CALL_TRANSCRIPTION_MAX_BYTES,
-    25 * 1024 * 1024,
-    'AI_CALL_TRANSCRIPTION_MAX_BYTES',
+  const twilioTranscriptionEnabled = booleanValue(
+    process.env.TWILIO_TRANSCRIPTION_ENABLED,
+    false,
   );
   const twilioAllowedCallPrefixes = (
     process.env.TWILIO_ALLOWED_CALL_PREFIXES || '+1,+33,+44'
@@ -420,12 +411,6 @@ export default () => {
       'AI_SERVICE_URL and AI_SERVICE_SHARED_SECRET are required when AI automation is enabled',
     );
   }
-  if (aiCallTranscriptionEnabled && !process.env.OPENAI_API_KEY?.trim()) {
-    throw new Error(
-      'OPENAI_API_KEY is required when AI call transcription is enabled',
-    );
-  }
-
   return {
     NODE_ENV: nodeEnv,
     PORT: Number(process.env.PORT || 5000),
@@ -495,6 +480,13 @@ export default () => {
       maxOverageUsdPerPeriod: twilioMaxOverageUsdPerPeriod,
       numberRetentionDays: twilioNumberRetentionDays,
       unusualCallMinutes: twilioUnusualCallMinutes,
+      transcription: {
+        enabled: twilioTranscriptionEnabled,
+        engine: process.env.TWILIO_TRANSCRIPTION_ENGINE?.trim() || 'auto',
+        speechModel: process.env.TWILIO_TRANSCRIPTION_SPEECH_MODEL?.trim(),
+        languageCode:
+          process.env.TWILIO_TRANSCRIPTION_LANGUAGE_CODE?.trim() || 'en-US',
+      },
     },
 
     cloudinary: {
@@ -515,10 +507,6 @@ export default () => {
       downloadUrlTtlSeconds: cloudinaryDownloadUrlTtlSeconds,
     },
 
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY,
-    },
-
     aiService: {
       baseUrl: aiServiceBaseUrl,
       sharedSecret: aiServiceSharedSecret,
@@ -529,11 +517,6 @@ export default () => {
       messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
       briefingTimeoutMs: aiBriefingTimeoutMs,
       briefingPollAfterMs: aiBriefingPollAfterMs,
-      callTranscription: {
-        enabled: aiCallTranscriptionEnabled,
-        model: aiCallTranscriptionModel,
-        maxBytes: aiCallTranscriptionMaxBytes,
-      },
     },
 
     stripe: {

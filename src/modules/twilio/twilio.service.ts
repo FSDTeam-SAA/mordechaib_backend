@@ -13,7 +13,7 @@ import { TwilioSettingsService } from './twilio-settings.service';
 import { TwilioAccountsService } from './twilio-accounts.service';
 import { TwilioEligibilityService } from './twilio-eligibility.service';
 import { TwilioUsageService } from './twilio-usage.service';
-import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
+import { TwilioTranscriptionService } from './twilio-transcription.service';
 
 @Injectable()
 export class TwilioService {
@@ -26,7 +26,7 @@ export class TwilioService {
     private readonly accountsService: TwilioAccountsService,
     private readonly eligibility: TwilioEligibilityService,
     private readonly usage: TwilioUsageService,
-    private readonly aiJobs: AiJobsQueue,
+    private readonly transcriptionService: TwilioTranscriptionService,
   ) {}
 
   async handleIncomingCall(body: TwilioVoiceWebhookDto): Promise<string> {
@@ -64,6 +64,8 @@ export class TwilioService {
       forwardingNumber: setting.forwardingNumber,
       status: this.mapCallStatus(body.CallStatus, CallStatus.RINGING),
     });
+
+    this.startTranscription(response, callSid, setting.isRecordingEnabled);
 
     const callbackQuery = `?callSid=${encodeURIComponent(callSid)}`;
     const dialStatusCallback = this.webhookUrl(`dial-status${callbackQuery}`);
@@ -223,6 +225,12 @@ export class TwilioService {
       dialAttributes.recordingStatusCallbackMethod = 'POST';
     }
 
+    this.startTranscription(
+      response,
+      input.callSid,
+      Boolean(setting?.isRecordingEnabled),
+    );
+
     const dial = response.dial(dialAttributes);
     dial.number(input.clientPhone);
 
@@ -299,12 +307,12 @@ export class TwilioService {
       localFilePath: storedRecording?.localFilePath,
       ...storedRecording?.persistentStorage,
     });
-    if (storedRecording?.localFilePath || storedRecording?.persistentStorage) {
-      await this.aiJobs.enqueueCallTranscription({
-        organizationId: recording.organizationId,
-        recordingId: String(recording._id),
-      });
-    }
+    await this.transcriptionService.reconcileRecording({
+      recordingId: String(recording._id),
+      callSids: [primaryCallSid, providerCallSid].filter(
+        (value): value is string => Boolean(value),
+      ),
+    });
 
     return { received: true };
   }
@@ -343,6 +351,41 @@ export class TwilioService {
       this.config.get<string>('APP_BASE_URL') || 'http://localhost:5000'
     ).trim();
     return `${appBaseUrl.replace(/\/+$/, '')}/api/v1/webhooks/twilio/${path}`;
+  }
+
+  private startTranscription(
+    response: ReturnType<TwilioProvider['twiml']>,
+    callSid: string,
+    recordingEnabled: boolean,
+  ) {
+    if (
+      !recordingEnabled ||
+      !this.config.get<boolean>('twilio.transcription.enabled', false)
+    ) {
+      return;
+    }
+    const speechModel = this.config.get<string>(
+      'twilio.transcription.speechModel',
+    );
+    response.start().transcription({
+      name: `noltra-${callSid}`,
+      statusCallbackUrl: this.webhookUrl('transcription'),
+      statusCallbackMethod: 'POST',
+      track: 'both_tracks',
+      inboundTrackLabel: 'inbound-participant',
+      outboundTrackLabel: 'outbound-participant',
+      partialResults: false,
+      enableAutomaticPunctuation: true,
+      languageCode: this.config.get<string>(
+        'twilio.transcription.languageCode',
+        'en-US',
+      ),
+      transcriptionEngine: this.config.get<string>(
+        'twilio.transcription.engine',
+        'auto',
+      ),
+      ...(speechModel ? { speechModel } : {}),
+    });
   }
 
   private requiredField(

@@ -508,6 +508,9 @@ export class CallIntelligenceService {
         durationSeconds: call?.durationSeconds ?? recording.recordingDuration,
         recordingStatus: recording.recordingStatus,
         aiStatus: recording.aiStatus,
+        transcriptionProvider: recording.transcriptionProvider,
+        transcriptionStatus: recording.transcriptionStatus,
+        transcriptionError: recording.transcriptionError,
       },
       audio: {
         available: Boolean(recording.localFilePath || recording.storageKey),
@@ -519,7 +522,7 @@ export class CallIntelligenceService {
           (!includeTranscript || Boolean(recording.transcriptText)),
         included: includeTranscript,
         text: includeTranscript ? recording.transcriptText : undefined,
-        segments: [],
+        segments: includeTranscript ? recording.transcriptSegments || [] : [],
       },
     };
   }

@@ -167,6 +167,10 @@ describe('CrmConnectionsService', () => {
       syncStatus: 'IDLE',
       lastSyncError: undefined,
       reconnectRequired: false,
+      objectSync: {
+        configuration: { schemaVersion: '1.0', objects: [] },
+        objects: [],
+      },
     });
     expect(result).not.toHaveProperty('accessToken');
     expect(result).not.toHaveProperty('refreshToken');
@@ -181,6 +185,10 @@ describe('CrmConnectionsService', () => {
       provider: IntegrationProvider.SALESFORCE,
       connected: false,
       status: 'NOT_CONFIGURED',
+      objectSync: {
+        configuration: { schemaVersion: '1.0', objects: [] },
+        objects: [],
+      },
     });
   });
 
