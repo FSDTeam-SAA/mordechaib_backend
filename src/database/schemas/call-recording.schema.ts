@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { CallTranscriptSegment } from './call-log.schema';
 
 export type CallRecordingDocument = HydratedDocument<CallRecording>;
 
@@ -60,6 +61,24 @@ export class CallRecording {
 
   @Prop()
   transcriptText?: string;
+
+  @Prop({ type: [Object], default: [] })
+  transcriptSegments!: CallTranscriptSegment[];
+
+  @Prop({ index: true })
+  transcriptionSid?: string;
+
+  @Prop()
+  transcriptionProvider?: string;
+
+  @Prop({ enum: ['COMPLETED', 'FAILED'] })
+  transcriptionStatus?: string;
+
+  @Prop()
+  transcriptionCompletedAt?: Date;
+
+  @Prop()
+  transcriptionError?: string;
 
   @Prop()
   summary?: string;
