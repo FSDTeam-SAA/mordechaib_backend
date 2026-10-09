@@ -2581,11 +2581,13 @@ For meeting-source audio, use `GET /meeting-bots/:meetingBotId/audio`, not the c
 `meeting_bots`, `tasks`, `ai_action_proposals`, and `ai_source_analyses`.
 
 For the Calendar screen, use `GET /calendar/dashboard` as the canonical read
-model. It returns only the organization default calendar provider, then merges
-and deduplicates that provider's platform meetings and synchronized calendar
-events. Do not build this screen by merging `/meetings` and `/calendar/events`
-in the browser. Changing the default calendar connection changes this dashboard
-scope; the frontend does not pass a provider query parameter.
+model. It returns every platform-created meeting, including meetings created
+from approved AI proposals, and merges them with synchronized events from the
+organization's default calendar provider. Do not build this screen by merging
+`/meetings` and `/calendar/events` in the browser. Changing the default calendar
+connection changes the synchronized-event source, but does not hide canonical
+platform meetings created through another provider. The frontend does not pass
+a provider query parameter.
 
 | Endpoint                      | Access                 | Request body / query                                                        | Response data                            |
 | ----------------------------- | ---------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |

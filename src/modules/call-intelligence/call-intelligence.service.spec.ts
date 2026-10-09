@@ -3,6 +3,7 @@ import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { CallIntelligenceService } from './call-intelligence.service';
 import { CallIntelligenceItemKind } from './dto/list-call-intelligence-query.dto';
+import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
 
 const queryResult = (value: unknown) => ({
   select: jest.fn().mockReturnThis(),
@@ -129,20 +130,65 @@ describe('CallIntelligenceService', () => {
     ]);
     expect(meetingBots.find).toHaveBeenCalledWith({
       organizationId: '66cc9bdfa847ea856c7b4199',
+      status: { $ne: MeetingBotStatus.SCHEDULED },
       $or: [
-        { recordingId: { $exists: true, $ne: null } },
-        { transcriptId: { $exists: true, $ne: null } },
-        { transcriptCompletedAt: { $exists: true, $ne: null } },
+        { recordingId: { $type: 'string', $regex: /\S/ } },
+        { transcriptId: { $type: 'string', $regex: /\S/ } },
+        { transcriptCompletedAt: { $type: 'date' } },
       ],
     });
     expect(meetingBots.countDocuments).toHaveBeenCalledWith({
       organizationId: '66cc9bdfa847ea856c7b4199',
+      status: { $ne: MeetingBotStatus.SCHEDULED },
       $or: [
-        { recordingId: { $exists: true, $ne: null } },
-        { transcriptId: { $exists: true, $ne: null } },
-        { transcriptCompletedAt: { $exists: true, $ne: null } },
+        { recordingId: { $type: 'string', $regex: /\S/ } },
+        { transcriptId: { $type: 'string', $regex: /\S/ } },
+        { transcriptCompletedAt: { $type: 'date' } },
       ],
     });
+  });
+
+  it('does not expose an approved scheduled meeting as call intelligence', async () => {
+    const scheduledMeeting = {
+      _id: '66cc9bdfa847ea856c7b4104',
+      platform: 'GOOGLE_MEET',
+      status: MeetingBotStatus.SCHEDULED,
+      recordingId: '',
+      transcriptId: '',
+      joinAt: new Date('2026-10-10T05:24:00.000Z'),
+      createdAt: new Date('2026-10-09T05:25:53.351Z'),
+    };
+    const service = new CallIntelligenceService(
+      {
+        find: jest.fn().mockReturnValue(listQueryResult([scheduledMeeting])),
+        countDocuments: jest.fn().mockReturnValue(countQueryResult(0)),
+      } as never,
+      {} as never,
+      {
+        aggregate: jest
+          .fn()
+          .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) })
+          .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) }),
+      } as never,
+      {} as never,
+      {
+        find: jest.fn().mockReturnValue(listQueryResult([])),
+        countDocuments: jest.fn().mockReturnValue(countQueryResult(0)),
+      } as never,
+      {} as never,
+      { find: jest.fn().mockReturnValue(queryResult([])) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const result = await service.list('66cc9bdfa847ea856c7b4199', {
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.total).toBe(0);
   });
 
   it('aggregates call metadata, lightweight transcript state, analysis and actions', async () => {

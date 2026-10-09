@@ -37,6 +37,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
           : exception instanceof HttpException
             ? exception.message
             : 'Internal server error';
+    const metadata =
+      exceptionResponse && typeof exceptionResponse === 'object'
+        ? Object.fromEntries(
+            Object.entries(exceptionResponse).filter(
+              ([key]) => !['message', 'statusCode', 'error'].includes(key),
+            ),
+          )
+        : {};
 
     // Anything that isn't a deliberate HttpException is unexpected — log
     // the real error server-side (never in the client response) so a 500
@@ -49,6 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json({
+      ...metadata,
       success: false,
       statusCode: status,
       message,
