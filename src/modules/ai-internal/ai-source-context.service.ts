@@ -256,10 +256,15 @@ export class AiSourceContextService {
         recordingSid: recording.recordingSid,
         recordingDuration: recording.recordingDuration,
         recordingChannels: recording.recordingChannels,
-        audioAvailable: Boolean(recording.localFilePath),
+        audioAvailable: Boolean(
+          recording.localFilePath || recording.storageKey,
+        ),
       },
       transcript: recording.transcriptText
-        ? { text: recording.transcriptText, segments: [] }
+        ? {
+            text: recording.transcriptText,
+            segments: recording.transcriptSegments || [],
+          }
         : null,
     };
   }

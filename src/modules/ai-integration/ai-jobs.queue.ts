@@ -4,13 +4,11 @@ import { ConfigService } from '@nestjs/config';
 import crypto from 'crypto';
 import { Queue } from 'bullmq';
 import { AiServiceClient } from './ai-service.client';
-import { CallTranscriptionService } from './call-transcription.service';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { AgentType } from '../../common/enums/agent-type.enum';
 
 export const AI_JOBS_QUEUE = 'ai-jobs';
 export const AI_ANALYZE_SOURCE_JOB = 'analyze-source';
-export const AI_TRANSCRIBE_CALL_JOB = 'transcribe-call';
 export const AI_SYNC_AGENT_JOB = 'sync-agent';
 
 export type AgentSyncEventType =
@@ -50,11 +48,6 @@ export type RefineActionJob = {
   answer: string;
 };
 
-export type TranscribeCallJob = {
-  organizationId: string;
-  recordingId: string;
-};
-
 @Injectable()
 export class AiJobsQueue {
   private readonly logger = new Logger(AiJobsQueue.name);
@@ -62,7 +55,6 @@ export class AiJobsQueue {
   constructor(
     @InjectQueue(AI_JOBS_QUEUE) private readonly queue: Queue,
     private readonly aiService: AiServiceClient,
-    private readonly transcription: CallTranscriptionService,
     private readonly config: ConfigService,
   ) {}
 
@@ -107,20 +99,6 @@ export class AiJobsQueue {
   async enqueueAgentSync(event: AgentSyncEvent) {
     if (!this.aiService.enabled) return { queued: false };
     return this.enqueue(AI_SYNC_AGENT_JOB, event, event.eventId);
-  }
-
-  async enqueueCallTranscription(input: TranscribeCallJob) {
-    if (!this.aiService.enabled || !this.transcription.enabled) {
-      this.logger.warn(
-        `Call transcription was not queued: automationEnabled=${this.aiService.enabled}, transcriptionEnabled=${this.transcription.enabled}, recordingId=${input.recordingId}`,
-      );
-      return { queued: false };
-    }
-    return this.enqueue(
-      AI_TRANSCRIBE_CALL_JOB,
-      input,
-      `call-transcript:${input.recordingId}`,
-    );
   }
 
   private async enqueue(

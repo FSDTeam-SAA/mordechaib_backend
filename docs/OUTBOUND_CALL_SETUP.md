@@ -214,6 +214,9 @@ If `isRecordingEnabled` was `true`:
   `POST /api/v1/webhooks/twilio/recording?callSid=CA...`
 - The backend downloads the audio and stores it at
   `storage/recordings/CA.../RE....wav`
+- If `TWILIO_TRANSCRIPTION_ENABLED=true`, Twilio also sends final transcript
+  utterances to the signed transcription webhook. The completed text reuses
+  the existing `CALL_TRANSCRIPT` AI analysis flow.
 
 ---
 
@@ -277,6 +280,7 @@ Lists the authenticated organization's calls (newest first).
 | `POST /api/v1/webhooks/twilio/call-status` | Receives lifecycle events (`ringing`, `in-progress`, `completed`, `failed`, `busy`, `no-answer`, `canceled`) and updates the CallLog |
 | `POST /api/v1/webhooks/twilio/dial-status?callSid=...` | Receives Dial verb completion status |
 | `POST /api/v1/webhooks/twilio/recording?callSid=...` | Receives recording completion and stores the audio |
+| `POST /api/v1/webhooks/twilio/transcription` | Receives transcription lifecycle events and final utterances |
 
 ---
 
