@@ -56,7 +56,6 @@ export class CalendarDashboardRepository {
       this.platformMeetings
         .find({
           organizationId,
-          calendarProvider: provider,
           startsAt: { $lt: to },
           endsAt: { $gt: from },
         })
