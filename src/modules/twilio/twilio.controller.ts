@@ -99,11 +99,16 @@ export class TwilioController {
 
   @Post('dial-status')
   @HttpCode(HttpStatus.OK)
-  handleDialStatus(
+  async handleDialStatus(
     @Query('callSid') primaryCallSid: string | undefined,
     @Body() body: Record<string, string | undefined>,
-  ) {
-    return this.twilioService.handleDialStatusCallback(primaryCallSid, body);
+    @Res() response: Response,
+  ): Promise<void> {
+    const twiml = await this.twilioService.handleDialStatusCallback(
+      primaryCallSid,
+      body,
+    );
+    response.type('text/xml').send(twiml);
   }
 
   @Post('call-status')
