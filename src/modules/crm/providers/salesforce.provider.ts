@@ -16,6 +16,15 @@ import {
   NormalizedCrmDeal,
   UpdateCrmDealInput,
 } from '../../../common/types/crm-provider.interface';
+import type {
+  CrmFieldDataType,
+  CrmObjectDescriptor,
+  CrmObjectField,
+  CrmObjectSchema,
+  CrmRecordPage,
+  ListCrmRecordsInput,
+  NormalizedCrmRecord,
+} from '../../../common/types/crm-object-sync.interface';
 import { IntegrationProvider } from '../../../database/schemas/integration.schema';
 
 type SalesforceTokenResponse = {
@@ -42,14 +51,52 @@ type SalesforceOpportunity = {
   IsDeleted?: boolean;
 };
 
-type SalesforceQueryResponse = {
-  records?: SalesforceOpportunity[];
+type SalesforceQueryResponse<T = SalesforceOpportunity> = {
+  records?: T[];
   done?: boolean;
   nextRecordsUrl?: string;
 };
 
-type SalesforceDescribeResponse = {
-  fields?: Array<{ name?: string }>;
+type SalesforceObjectDefinition = {
+  name?: string;
+  label?: string;
+  labelPlural?: string;
+  custom?: boolean;
+  queryable?: boolean;
+  createable?: boolean;
+  updateable?: boolean;
+  deletable?: boolean;
+  deprecatedAndHidden?: boolean;
+};
+
+type SalesforceFieldDefinition = {
+  name?: string;
+  label?: string;
+  type?: string;
+  custom?: boolean;
+  nillable?: boolean;
+  defaultedOnCreate?: boolean;
+  autoNumber?: boolean;
+  createable?: boolean;
+  updateable?: boolean;
+  filterable?: boolean;
+  sortable?: boolean;
+  unique?: boolean;
+  calculated?: boolean;
+  referenceTo?: string[];
+  picklistValues?: Array<{
+    label?: string;
+    value?: string;
+    active?: boolean;
+  }>;
+};
+
+type SalesforceGlobalDescribeResponse = {
+  sobjects?: SalesforceObjectDefinition[];
+};
+
+type SalesforceDescribeResponse = SalesforceObjectDefinition & {
+  fields?: SalesforceFieldDefinition[];
 };
 
 type SalesforceOpportunityCapabilities = {
@@ -165,6 +212,49 @@ export class SalesforceProvider implements CrmProvider {
     };
   }
 
+  async listObjects(
+    accessToken: string,
+    context: { instanceUrl?: string } = {},
+  ): Promise<CrmObjectDescriptor[]> {
+    const instanceUrl = this.instanceUrl(context.instanceUrl);
+    const response = await this.request<SalesforceGlobalDescribeResponse>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects`,
+      accessToken,
+    );
+    return (response.sobjects || [])
+      .filter(
+        (object) =>
+          Boolean(object.name) &&
+          object.queryable === true &&
+          object.deprecatedAndHidden !== true,
+      )
+      .map((object) => this.objectDescriptor(object))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  async describeObject(
+    accessToken: string,
+    objectType: string,
+    context: { instanceUrl?: string } = {},
+  ): Promise<CrmObjectSchema> {
+    const instanceUrl = this.instanceUrl(context.instanceUrl);
+    const description = await this.request<SalesforceDescribeResponse>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/${encodeURIComponent(objectType)}/describe`,
+      accessToken,
+    );
+    const descriptor = this.objectDescriptor({
+      ...description,
+      name: description.name || objectType,
+    });
+    return {
+      ...descriptor,
+      fields: (description.fields || [])
+        .filter((field) => Boolean(field.name))
+        .map((field) => this.objectField(field))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    };
+  }
+
   async listDeals(
     accessToken: string,
     input: { cursor?: string; modifiedSince?: Date; instanceUrl?: string },
@@ -186,6 +276,32 @@ export class SalesforceProvider implements CrmProvider {
       items: (page.records || [])
         .map((deal) => this.normalizeDeal(deal, capabilities.defaultCurrency))
         .filter((deal): deal is NormalizedCrmDeal => Boolean(deal)),
+      cursor: page.nextRecordsUrl,
+      done: page.done !== false,
+    };
+  }
+
+  async listRecords(
+    accessToken: string,
+    input: ListCrmRecordsInput,
+  ): Promise<CrmRecordPage> {
+    const instanceUrl = this.instanceUrl(input.instanceUrl);
+    const url = input.cursor
+      ? `${instanceUrl}${input.cursor}`
+      : `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/queryAll?${new URLSearchParams(
+          {
+            q: await this.recordsQuery(accessToken, instanceUrl, input),
+          },
+        ).toString()}`;
+    const page = await this.request<
+      SalesforceQueryResponse<Record<string, unknown>>
+    >(url, accessToken);
+    return {
+      provider: this.provider,
+      objectType: input.objectType,
+      items: (page.records || [])
+        .map((record) => this.normalizeRecord(input, record))
+        .filter((record): record is NormalizedCrmRecord => Boolean(record)),
       cursor: page.nextRecordsUrl,
       done: page.done !== false,
     };
@@ -271,6 +387,152 @@ export class SalesforceProvider implements CrmProvider {
     if (!normalized)
       throw new BadGatewayException('Salesforce returned an invalid deal');
     return normalized;
+  }
+
+  private objectDescriptor(
+    object: SalesforceObjectDefinition,
+  ): CrmObjectDescriptor {
+    const objectType = object.name!;
+    return {
+      objectType,
+      label: object.label?.trim() || objectType,
+      pluralLabel: object.labelPlural?.trim() || object.label || objectType,
+      custom: object.custom === true,
+      readable: object.queryable === true,
+      createable: object.createable === true,
+      updateable: object.updateable === true,
+      deletable: object.deletable === true,
+    };
+  }
+
+  private async recordsQuery(
+    accessToken: string,
+    instanceUrl: string,
+    input: ListCrmRecordsInput,
+  ) {
+    const description = await this.request<SalesforceDescribeResponse>(
+      `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/${encodeURIComponent(input.objectType)}/describe`,
+      accessToken,
+    );
+    const available = new Set(
+      (description.fields || [])
+        .map((field) => field.name)
+        .filter((field): field is string => Boolean(field)),
+    );
+    const unavailable = input.fields.filter((field) => !available.has(field));
+    if (unavailable.length > 0) {
+      throw new CrmProviderHttpError(
+        400,
+        `Salesforce fields are no longer available on ${input.objectType}: ${unavailable.join(', ')}`,
+      );
+    }
+    if (!available.has('Id')) {
+      throw new CrmProviderHttpError(
+        400,
+        `Salesforce object ${input.objectType} does not expose an Id field`,
+      );
+    }
+
+    const fields = [
+      ...new Set([
+        'Id',
+        ...input.fields,
+        ...['CreatedDate', 'LastModifiedDate', 'IsDeleted'].filter((field) =>
+          available.has(field),
+        ),
+      ]),
+    ];
+    const modifiedFilter =
+      input.modifiedSince && available.has('LastModifiedDate')
+        ? ` WHERE LastModifiedDate >= ${input.modifiedSince.toISOString()}`
+        : '';
+    const order = available.has('LastModifiedDate')
+      ? ' ORDER BY LastModifiedDate ASC, Id ASC'
+      : ' ORDER BY Id ASC';
+    return `SELECT ${fields.join(',')} FROM ${input.objectType}${modifiedFilter}${order}`;
+  }
+
+  private normalizeRecord(
+    input: ListCrmRecordsInput,
+    value: Record<string, unknown>,
+  ): NormalizedCrmRecord | undefined {
+    if (typeof value.Id !== 'string' || !value.Id) return undefined;
+    return {
+      objectType: input.objectType,
+      externalId: value.Id,
+      properties: Object.fromEntries(
+        input.fields.map((field) => [field, value[field] ?? null]),
+      ),
+      providerCreatedAt: this.date(value.CreatedDate),
+      providerUpdatedAt: this.date(value.LastModifiedDate),
+      archived: value.IsDeleted === true,
+      rawPayload: value,
+    };
+  }
+
+  private objectField(field: SalesforceFieldDefinition): CrmObjectField {
+    const providerType = field.type || 'unknown';
+    const calculated = field.calculated === true;
+    return {
+      name: field.name!,
+      label: field.label?.trim() || field.name!,
+      dataType: this.fieldDataType(providerType),
+      providerType,
+      custom: field.custom === true,
+      required:
+        field.nillable === false &&
+        field.defaultedOnCreate !== true &&
+        field.autoNumber !== true &&
+        !calculated,
+      readable: true,
+      createable: field.createable === true,
+      updateable: field.updateable === true,
+      filterable: field.filterable === true,
+      sortable: field.sortable === true,
+      unique: field.unique === true,
+      calculated,
+      referenceTo: field.referenceTo || [],
+      options: (field.picklistValues || [])
+        .filter((option) => option.value !== undefined)
+        .map((option) => ({
+          label: option.label || option.value!,
+          value: option.value!,
+          active: option.active !== false,
+        })),
+    };
+  }
+
+  private fieldDataType(providerType: string): CrmFieldDataType {
+    switch (providerType.toLowerCase()) {
+      case 'int':
+      case 'double':
+      case 'currency':
+      case 'percent':
+        return 'NUMBER';
+      case 'boolean':
+        return 'BOOLEAN';
+      case 'date':
+        return 'DATE';
+      case 'datetime':
+      case 'time':
+        return 'DATETIME';
+      case 'picklist':
+      case 'multipicklist':
+      case 'combobox':
+        return 'ENUMERATION';
+      case 'reference':
+        return 'REFERENCE';
+      case 'id':
+      case 'string':
+      case 'textarea':
+      case 'email':
+      case 'phone':
+      case 'url':
+      case 'encryptedstring':
+        return 'STRING';
+      default:
+        return 'OTHER';
+    }
   }
 
   private query(modifiedSince: Date | undefined, availableFields: Set<string>) {

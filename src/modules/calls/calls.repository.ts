@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CallDirection } from '../../common/enums/call-direction.enum';
 import { CallStatus } from '../../common/enums/call-status.enum';
-import { CallLog } from '../../database/schemas/call-log.schema';
+import {
+  CallLog,
+  CallTranscriptSegment,
+} from '../../database/schemas/call-log.schema';
 import { CallRecording } from '../../database/schemas/call-recording.schema';
 
 type CreateCallInput = {
@@ -174,6 +177,151 @@ export class CallsRepository {
           { dialCallSid: { $in: callSids } },
         ],
       })
+      .lean()
+      .exec();
+  }
+
+  updateTranscriptionByCallSid(
+    callSid: string,
+    set: Record<string, unknown>,
+    unset?: Record<string, 1>,
+  ) {
+    return this.callModel
+      .findOneAndUpdate(
+        {
+          $or: [
+            { callSid },
+            { parentCallSid: callSid },
+            { dialCallSid: callSid },
+          ],
+        },
+        { $set: set, ...(unset ? { $unset: unset } : {}) },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  appendTranscriptionSegment(
+    callSid: string,
+    transcriptionSid: string,
+    segment: CallTranscriptSegment,
+  ) {
+    return this.callModel
+      .findOneAndUpdate(
+        {
+          $or: [
+            { callSid },
+            { parentCallSid: callSid },
+            { dialCallSid: callSid },
+          ],
+          'transcriptSegments.eventKey': { $ne: segment.eventKey },
+        },
+        {
+          $set: {
+            transcriptionSid,
+          },
+          $unset: { transcriptionError: 1 },
+          $push: { transcriptSegments: segment },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  findRecordingByCallSids(callSids: string[]) {
+    return this.recordingModel
+      .findOne({
+        $or: [
+          { callSid: { $in: callSids } },
+          { providerCallSid: { $in: callSids } },
+        ],
+      })
+      .lean()
+      .exec();
+  }
+
+  attachTranscriptToRecording(input: {
+    recordingId: string;
+    transcriptionSid: string;
+    transcriptText: string;
+    transcriptSegments: CallTranscriptSegment[];
+    completedAt: Date;
+  }) {
+    return this.recordingModel
+      .findOneAndUpdate(
+        {
+          _id: input.recordingId,
+          $or: [
+            { transcriptionSid: { $ne: input.transcriptionSid } },
+            { transcriptText: { $ne: input.transcriptText } },
+            { aiStatus: { $ne: 'COMPLETED' } },
+          ],
+        },
+        {
+          $set: {
+            transcriptionSid: input.transcriptionSid,
+            transcriptionProvider: 'TWILIO',
+            transcriptionStatus: 'COMPLETED',
+            transcriptionCompletedAt: input.completedAt,
+            transcriptText: input.transcriptText,
+            transcriptSegments: input.transcriptSegments,
+            aiStatus: 'COMPLETED',
+          },
+          $unset: { transcriptionError: 1, summary: 1 },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  markRecordingTranscriptionFailed(
+    callSid: string,
+    transcriptionSid: string,
+    reason: string,
+  ) {
+    return this.recordingModel
+      .findOneAndUpdate(
+        {
+          $or: [{ callSid }, { providerCallSid: callSid }],
+          aiStatus: { $ne: 'COMPLETED' },
+        },
+        {
+          $set: {
+            transcriptionSid,
+            transcriptionProvider: 'TWILIO',
+            transcriptionStatus: 'FAILED',
+            transcriptionError: reason,
+            aiStatus: 'FAILED',
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  markRecordingTranscriptionFailedById(
+    recordingId: string,
+    transcriptionSid: string,
+    reason: string,
+  ) {
+    return this.recordingModel
+      .findOneAndUpdate(
+        { _id: recordingId, aiStatus: { $ne: 'COMPLETED' } },
+        {
+          $set: {
+            transcriptionSid,
+            transcriptionProvider: 'TWILIO',
+            transcriptionStatus: 'FAILED',
+            transcriptionError: reason,
+            aiStatus: 'FAILED',
+          },
+        },
+        { new: true },
+      )
       .lean()
       .exec();
   }

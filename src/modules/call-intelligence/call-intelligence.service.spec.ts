@@ -165,7 +165,6 @@ describe('CallIntelligenceService', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
       { findOne: jest.fn().mockReturnValue(recordingQuery) } as never,
       { findOne: jest.fn().mockReturnValue(callQuery) } as never,
       {} as never,

@@ -3,18 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job, UnrecoverableError } from 'bullmq';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
-import { CallTranscriptionService } from './call-transcription.service';
 import {
   AI_ANALYZE_SOURCE_JOB,
   AI_JOBS_QUEUE,
   AI_REFINE_ACTION_JOB,
   AI_SYNC_AGENT_JOB,
-  AI_TRANSCRIBE_CALL_JOB,
   AgentSyncEvent,
-  AiJobsQueue,
   AnalyzeSourceJob,
   RefineActionJob,
-  TranscribeCallJob,
 } from './ai-jobs.queue';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { AiAnalysisAction } from '../ai-actions/dto/ai-analysis-result.dto';
@@ -46,8 +42,6 @@ export class AiJobsProcessor extends WorkerHost {
 
   constructor(
     private readonly aiService: AiServiceClient,
-    private readonly transcription: CallTranscriptionService,
-    private readonly jobs: AiJobsQueue,
     private readonly actions: AiActionsService,
     private readonly sourceContext: AiSourceContextService,
     private readonly config: ConfigService,
@@ -66,8 +60,6 @@ export class AiJobsProcessor extends WorkerHost {
           return await this.analyzeSource(job as Job<AnalyzeSourceJob>);
         case AI_REFINE_ACTION_JOB:
           return await this.refineAction(job as Job<RefineActionJob>);
-        case AI_TRANSCRIBE_CALL_JOB:
-          return await this.transcribeCall(job as Job<TranscribeCallJob>);
         case AI_SYNC_AGENT_JOB:
           return await this.syncAgent(job as Job<AgentSyncEvent>);
         default:
@@ -370,18 +362,6 @@ export class AiJobsProcessor extends WorkerHost {
     this.logger.warn(
       `AI clarification refinement restored for retry: proposalId=${data.proposalId}, reason=${error instanceof Error ? error.message : 'unknown error'}`,
     );
-  }
-
-  private async transcribeCall(job: Job<TranscribeCallJob>) {
-    const result = await this.transcription.transcribe(job.data.recordingId);
-    if (!result.duplicate) {
-      await this.jobs.enqueueSourceAnalysis({
-        organizationId: result.organizationId,
-        sourceType: 'CALL_TRANSCRIPT',
-        sourceId: job.data.recordingId,
-      });
-    }
-    return result;
   }
 
   private async syncAgent(job: Job<AgentSyncEvent>) {

@@ -625,12 +625,14 @@ Main Backend may send a short-lived attachment URL plus optional
 The normal production path is:
 
 ```text
-Twilio recording -> Main Backend transcription -> CALL_TRANSCRIPT analysis
+Twilio call -> signed transcript webhook -> CALL_TRANSCRIPT analysis
 ```
 
-Main Backend's local transcription feature defaults to disabled unless
-`AI_CALL_TRANSCRIPTION_ENABLED=true`. AI Backend must not assume raw audio is
-present merely because `source.type` is `CALL_AUDIO` or `audioAvailable=true`.
+Twilio transcription defaults to disabled unless
+`TWILIO_TRANSCRIPTION_ENABLED=true`. Main Backend persists only final Twilio
+utterances and sends the resulting transcript through the same analyze-source
+contract used for meetings. AI Backend must not assume raw audio is present
+merely because `source.type` is `CALL_AUDIO` or `audioAvailable=true`.
 
 ## 11. Error contract
 

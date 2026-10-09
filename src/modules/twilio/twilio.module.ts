@@ -28,6 +28,7 @@ import { TwilioProvisioningService } from './twilio-provisioning.service';
 import { TwilioUsageRepository } from './twilio-usage.repository';
 import { TwilioUsageService } from './twilio-usage.service';
 import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
+import { TwilioTranscriptionService } from './twilio-transcription.service';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -84,6 +85,7 @@ function redisConnection(urlValue: string) {
     TwilioUsageRepository,
     TwilioUsageService,
     TwilioSignatureGuard,
+    TwilioTranscriptionService,
   ],
   exports: [
     TwilioService,
