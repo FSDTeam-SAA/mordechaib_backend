@@ -113,16 +113,7 @@ export class AiActionsService {
     answer: string,
   ) {
     const proposal = await this.getStored(organizationId, id);
-    if (proposal.status !== AiActionProposalStatus.NEEDS_CLARIFICATION) {
-      throw new ConflictException(
-        `Only a clarification proposal can be answered; current status is ${proposal.status}`,
-      );
-    }
-    const question = proposal.clarificationQuestions?.find(
-      (item) => item.id === questionId,
-    );
-    if (!question)
-      throw new BadRequestException('Unknown clarification question');
+    this.assertClarificationQuestion(proposal, questionId);
     const updated = await this.repository.startClarificationRefinement(
       organizationId,
       id,
@@ -136,16 +127,32 @@ export class AiActionsService {
     return this.toResponse(updated as StoredProposal);
   }
 
+  async validateClarificationAnswer(
+    organizationId: string,
+    id: string,
+    questionId: string,
+  ) {
+    const proposal = await this.getStored(organizationId, id);
+    this.assertClarificationQuestion(proposal, questionId);
+    return { revision: proposal.revision };
+  }
+
   async restoreClarificationAfterRefinementFailure(
     organizationId: string,
     id: string,
+    expectedUpdatedAt?: Date,
   ) {
     const restored =
       await this.repository.restoreClarificationAfterRefinementFailure(
         organizationId,
         id,
+        expectedUpdatedAt,
       );
     return restored ? this.toResponse(restored as StoredProposal) : undefined;
+  }
+
+  findStaleClarificationRefinements(updatedBefore: Date) {
+    return this.repository.findStaleClarificationRefinements(updatedBefore);
   }
 
   async applyClarificationResult(
@@ -247,7 +254,7 @@ export class AiActionsService {
       );
     }
 
-    const expectedRevision = input.expectedRevision;
+    const expectedRevision = input.expectedRevision ?? proposal.revision;
     if (
       typeof expectedRevision !== 'number' ||
       !Number.isFinite(expectedRevision)
@@ -1097,6 +1104,23 @@ export class AiActionsService {
     return proposal as StoredProposal;
   }
 
+  private assertClarificationQuestion(
+    proposal: StoredProposal,
+    questionId: string,
+  ) {
+    if (proposal.status !== AiActionProposalStatus.NEEDS_CLARIFICATION) {
+      throw new ConflictException(
+        `Only a clarification proposal can be answered; current status is ${proposal.status}`,
+      );
+    }
+    const question = proposal.clarificationQuestions?.find(
+      (item) => item.id === questionId,
+    );
+    if (!question) {
+      throw new BadRequestException('Unknown clarification question');
+    }
+  }
+
   private reviewer(actor: RequestUser) {
     return {
       id: actor.id,
@@ -1155,6 +1179,7 @@ export class AiActionsService {
       proposedByAgent: proposal.proposedByAgent,
       source: proposal.source,
       confidence: proposal.confidence,
+      revision: proposal.revision,
       status,
       clarificationQuestions: Array.isArray(proposal.clarificationQuestions)
         ? proposal.clarificationQuestions

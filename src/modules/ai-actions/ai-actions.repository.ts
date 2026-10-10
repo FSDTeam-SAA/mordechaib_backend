@@ -352,6 +352,7 @@ export class AiActionsRepository {
   restoreClarificationAfterRefinementFailure(
     organizationId: string,
     id: string,
+    expectedUpdatedAt?: Date,
   ) {
     return this.model
       .findOneAndUpdate(
@@ -359,10 +360,24 @@ export class AiActionsRepository {
           _id: id,
           organizationId,
           status: AiActionProposalStatus.ANALYZING,
+          ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
         },
         { $set: { status: AiActionProposalStatus.NEEDS_CLARIFICATION } },
         { new: true, runValidators: true },
       )
+      .lean()
+      .exec();
+  }
+
+  findStaleClarificationRefinements(updatedBefore: Date, limit = 100) {
+    return this.model
+      .find({
+        status: AiActionProposalStatus.ANALYZING,
+        updatedAt: { $lte: updatedBefore },
+      })
+      .select('_id organizationId updatedAt')
+      .sort({ updatedAt: 1 })
+      .limit(limit)
       .lean()
       .exec();
   }
