@@ -41,11 +41,21 @@ export type AnalyzeSourceJob = {
 };
 
 export const AI_REFINE_ACTION_JOB = 'refine-action';
+export const AI_RECOVER_ACTION_REFINEMENT_JOB = 'recover-action-refinement';
+const ACTION_REFINEMENT_START_DELAY_MS = 250;
+export const ACTION_REFINEMENT_STALE_MS = 10 * 60 * 1000;
 export type RefineActionJob = {
   organizationId: string;
   proposalId: string;
   questionId: string;
   answer: string;
+  revision: number;
+};
+
+export type RecoverActionRefinementJob = {
+  organizationId: string;
+  proposalId: string;
+  proposalUpdatedAt: string;
 };
 
 @Injectable()
@@ -92,7 +102,20 @@ export class AiJobsQueue {
     return this.enqueue(
       AI_REFINE_ACTION_JOB,
       input,
-      `refine:${input.proposalId}:${input.questionId}:${input.answer}`,
+      `refine:${input.proposalId}:${input.revision}:${input.questionId}:${input.answer}`,
+      ACTION_REFINEMENT_START_DELAY_MS,
+    );
+  }
+
+  async enqueueActionRefinementRecovery(
+    input: RecoverActionRefinementJob,
+    delay = ACTION_REFINEMENT_STALE_MS,
+  ) {
+    return this.enqueue(
+      AI_RECOVER_ACTION_REFINEMENT_JOB,
+      input,
+      `recover-refinement:${input.proposalId}:${input.proposalUpdatedAt}`,
+      delay,
     );
   }
 

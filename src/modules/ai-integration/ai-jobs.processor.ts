@@ -6,10 +6,12 @@ import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
 import {
   AI_ANALYZE_SOURCE_JOB,
   AI_JOBS_QUEUE,
+  AI_RECOVER_ACTION_REFINEMENT_JOB,
   AI_REFINE_ACTION_JOB,
   AI_SYNC_AGENT_JOB,
   AgentSyncEvent,
   AnalyzeSourceJob,
+  RecoverActionRefinementJob,
   RefineActionJob,
 } from './ai-jobs.queue';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
@@ -60,6 +62,10 @@ export class AiJobsProcessor extends WorkerHost {
           return await this.analyzeSource(job as Job<AnalyzeSourceJob>);
         case AI_REFINE_ACTION_JOB:
           return await this.refineAction(job as Job<RefineActionJob>);
+        case AI_RECOVER_ACTION_REFINEMENT_JOB:
+          return await this.recoverActionRefinement(
+            job as Job<RecoverActionRefinementJob>,
+          );
         case AI_SYNC_AGENT_JOB:
           return await this.syncAgent(job as Job<AgentSyncEvent>);
         default:
@@ -313,7 +319,30 @@ export class AiJobsProcessor extends WorkerHost {
     const proposal = (await this.actions.get(
       job.data.organizationId,
       job.data.proposalId,
-    )) as unknown as { requestId: string; [key: string]: unknown };
+    )) as unknown as {
+      requestId: string;
+      status: string;
+      revision: number;
+      clarificationAnswers?: Record<string, string>;
+      [key: string]: unknown;
+    };
+    if (
+      proposal.status === 'NEEDS_CLARIFICATION' &&
+      proposal.revision === job.data.revision &&
+      proposal.clarificationAnswers?.[job.data.questionId] !== job.data.answer
+    ) {
+      throw new Error('Clarification answer is not persisted yet');
+    }
+    if (
+      proposal.status !== 'ANALYZING' ||
+      proposal.revision !== job.data.revision ||
+      proposal.clarificationAnswers?.[job.data.questionId] !== job.data.answer
+    ) {
+      return {
+        skipped: true,
+        reason: 'clarification-refinement-superseded',
+      };
+    }
     const result = await this.aiService.request<{ action: AiAnalysisAction }>(
       '/api/v1/ai/actions/refine',
       {
@@ -334,6 +363,14 @@ export class AiJobsProcessor extends WorkerHost {
       job.data.organizationId,
       job.data.proposalId,
       result.action,
+    );
+  }
+
+  private recoverActionRefinement(job: Job<RecoverActionRefinementJob>) {
+    return this.clarificationWorkflow.recoverStaleRefinement(
+      job.data.organizationId,
+      job.data.proposalId,
+      job.data.proposalUpdatedAt,
     );
   }
 
