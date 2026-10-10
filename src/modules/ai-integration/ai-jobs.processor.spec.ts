@@ -10,7 +10,11 @@ import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiJobsProcessor } from './ai-jobs.processor';
 import {
   AI_ANALYZE_SOURCE_JOB,
+  AI_RECOVER_ACTION_REFINEMENT_JOB,
+  AI_REFINE_ACTION_JOB,
   AnalyzeSourceJob,
+  RecoverActionRefinementJob,
+  RefineActionJob,
 } from './ai-jobs.queue';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
 
@@ -170,6 +174,144 @@ describe('AiJobsProcessor user message analysis', () => {
       sourceId,
       'FAILED',
       'bad request',
+    );
+  });
+});
+
+describe('AiJobsProcessor clarification refinement', () => {
+  const organizationId = 'org-1';
+  const proposalId = 'proposal-1';
+  const questionId = 'meeting-platform';
+  const answer = 'Google Meet';
+  let aiService: { request: jest.Mock };
+  let actions: {
+    get: jest.Mock;
+    applyClarificationResult: jest.Mock;
+  };
+  let clarificationWorkflow: {
+    recoverAfterFinalFailure: jest.Mock;
+    recoverStaleRefinement: jest.Mock;
+  };
+  let processor: AiJobsProcessor;
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    aiService = {
+      request: jest.fn().mockResolvedValue({
+        action: {
+          actionId: 'meeting-001',
+          actionType: 'SCHEDULE_MEETING',
+          payload: {},
+          confidence: 0.9,
+        },
+      }),
+    };
+    actions = {
+      get: jest.fn().mockResolvedValue({
+        requestId: 'source-call_transcript-recording-1',
+        status: 'ANALYZING',
+        revision: 3,
+        clarificationAnswers: { [questionId]: answer },
+      }),
+      applyClarificationResult: jest.fn().mockResolvedValue({
+        status: 'NEEDS_CLARIFICATION',
+      }),
+    };
+    clarificationWorkflow = {
+      recoverAfterFinalFailure: jest.fn(),
+      recoverStaleRefinement: jest.fn().mockResolvedValue({
+        status: 'NEEDS_CLARIFICATION',
+      }),
+    };
+    processor = new AiJobsProcessor(
+      aiService as unknown as AiServiceClient,
+      actions as unknown as AiActionsService,
+      {} as AiSourceContextService,
+      {} as ConfigService,
+      clarificationWorkflow as unknown as AiActionClarificationWorkflowService,
+      {} as AiAnalysisResponseValidator,
+      {} as AiChatReplyService,
+      {} as AgentActivityService,
+    );
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('refines only after the queued answer is persisted on the proposal', async () => {
+    const refinementJob = {
+      id: 'refinement-job',
+      name: AI_REFINE_ACTION_JOB,
+      attemptsMade: 0,
+      opts: { attempts: 6 },
+      data: {
+        organizationId,
+        proposalId,
+        questionId,
+        answer,
+        revision: 3,
+      },
+    } as unknown as Job<RefineActionJob>;
+
+    await processor.process(refinementJob);
+
+    expect(aiService.request).toHaveBeenCalledWith(
+      '/api/v1/ai/actions/refine',
+      expect.objectContaining({
+        clarification: { questionId, answer },
+      }),
+    );
+    expect(actions.applyClarificationResult).toHaveBeenCalledWith(
+      organizationId,
+      proposalId,
+      expect.any(Object),
+    );
+  });
+
+  it('skips an old refinement job instead of restoring a newer answer', async () => {
+    actions.get.mockResolvedValue({
+      requestId: 'source-call_transcript-recording-1',
+      status: 'ANALYZING',
+      revision: 3,
+      clarificationAnswers: { [questionId]: 'Zoom' },
+    });
+    const refinementJob = {
+      id: 'old-refinement-job',
+      name: AI_REFINE_ACTION_JOB,
+      attemptsMade: 0,
+      opts: { attempts: 6 },
+      data: {
+        organizationId,
+        proposalId,
+        questionId,
+        answer,
+        revision: 3,
+      },
+    } as unknown as Job<RefineActionJob>;
+
+    await expect(processor.process(refinementJob)).resolves.toEqual({
+      skipped: true,
+      reason: 'clarification-refinement-superseded',
+    });
+    expect(aiService.request).not.toHaveBeenCalled();
+    expect(clarificationWorkflow.recoverAfterFinalFailure).not.toHaveBeenCalled();
+  });
+
+  it('restores the exact stale ANALYZING attempt through the existing queue', async () => {
+    const proposalUpdatedAt = '2026-10-10T05:59:54.014Z';
+    const recoveryJob = {
+      id: 'recovery-job',
+      name: AI_RECOVER_ACTION_REFINEMENT_JOB,
+      attemptsMade: 0,
+      opts: { attempts: 6 },
+      data: { organizationId, proposalId, proposalUpdatedAt },
+    } as unknown as Job<RecoverActionRefinementJob>;
+
+    await processor.process(recoveryJob);
+
+    expect(clarificationWorkflow.recoverStaleRefinement).toHaveBeenCalledWith(
+      organizationId,
+      proposalId,
+      proposalUpdatedAt,
     );
   });
 });
