@@ -13,6 +13,9 @@ import { UsersService } from '../users/users.service';
 import { AiActionsRepository } from './ai-actions.repository';
 import { AiActionsService } from './ai-actions.service';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { UpdateAiActionProposalDto } from './dto/update-ai-action-proposal.dto';
 
 describe('AiActionsService analysis ingestion', () => {
   const organizationId = '66cc9bdfa847ea856c7b41d2';
@@ -137,6 +140,7 @@ describe('AiActionsService analysis ingestion', () => {
             timezone: 'UTC',
           },
           confidence: 0.81,
+          revision: 3,
           status: AiActionProposalStatus.NEEDS_CLARIFICATION,
           clarificationQuestions: [
             {
@@ -171,6 +175,7 @@ describe('AiActionsService analysis ingestion', () => {
 
     expect(result.meetingSchedules[0]).toEqual(
       expect.objectContaining({
+        revision: 3,
         clarificationQuestions: [
           expect.objectContaining({ id: 'meeting-time' }),
           expect.objectContaining({ id: 'invitee-email' }),
@@ -275,6 +280,48 @@ describe('AiActionsService analysis ingestion', () => {
       }),
     );
     expect(result).toEqual(expect.objectContaining({ revision: 4 }));
+  });
+
+  it('uses the stored revision when an older client omits expectedRevision', async () => {
+    repository.findById.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.PENDING,
+      revision: 3,
+      payload: { title: 'Review notes', priority: 'MEDIUM' },
+    });
+    repository.updatePendingPayload.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.PENDING,
+      revision: 4,
+      payload: { title: 'Updated notes', priority: 'MEDIUM' },
+    });
+
+    await service.updatePending(
+      organizationId,
+      owner,
+      '66cc9bdfa847ea856c7b41d5',
+      { payload: { title: 'Updated notes' } },
+    );
+
+    expect(repository.updatePendingPayload).toHaveBeenCalledWith(
+      organizationId,
+      '66cc9bdfa847ea856c7b41d5',
+      3,
+      expect.objectContaining({ title: 'Updated notes' }),
+      { id: owner.id, name: 'Test Owner' },
+    );
+  });
+
+  it('accepts an edit DTO without expectedRevision for older clients', async () => {
+    const input = plainToInstance(UpdateAiActionProposalDto, {
+      payload: { title: 'Updated notes' },
+    });
+
+    await expect(validate(input)).resolves.toHaveLength(0);
   });
 
   it('rejects a stale proposal edit without writing', async () => {

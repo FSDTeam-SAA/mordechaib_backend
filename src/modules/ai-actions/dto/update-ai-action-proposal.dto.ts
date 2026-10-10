@@ -1,18 +1,19 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsObject, Min } from 'class-validator';
+import { IsInt, IsObject, IsOptional, Min } from 'class-validator';
 
 export class UpdateAiActionProposalDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Current proposal revision returned by the API. The edit is rejected if another update has already changed the proposal.',
+      'Current proposal revision returned by the API. When omitted by an older client, the backend uses the latest stored revision and still performs an atomic update.',
     example: 1,
     minimum: 1,
   })
   @Type(() => Number)
+  @IsOptional()
   @IsInt()
   @Min(1)
-  expectedRevision!: number;
+  expectedRevision?: number;
 
   @ApiProperty({
     type: Object,
