@@ -8,14 +8,25 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
+import { AgentType } from '../../common/enums/agent-type.enum';
 import { AgentsService } from './agents.service';
+import { AGENT_IMAGE_UPLOAD_OPTIONS } from './agent-image-upload.config';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { ListAgentsQueryDto } from './dto/list-agents-query.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -28,9 +39,36 @@ export class AgentsController {
 
   @Post()
   @UseGuards(PlatformAdminGuard)
-  @ApiOperation({ summary: 'Create a platform AI agent profile' })
-  create(@Body() dto: CreateAgentDto) {
-    return this.agents.create(dto);
+  @UseInterceptors(FileInterceptor('image', AGENT_IMAGE_UPLOAD_OPTIONS))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    required: true,
+    schema: {
+      type: 'object',
+      required: ['name', 'type'],
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 120 },
+        type: { type: 'string', enum: Object.values(AgentType) },
+        imageUrl: {
+          type: 'string',
+          format: 'uri',
+          description: 'Existing image URL; do not combine with image.',
+        },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'JPEG, PNG, or WebP agent image; maximum 5 MB. Stored in Cloudinary.',
+        },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Create an AI agent profile and upload its image' })
+  create(
+    @Body() dto: CreateAgentDto,
+    @UploadedFile() image: Express.Multer.File | undefined,
+  ) {
+    return this.agents.create(dto, image);
   }
 
   @Get()
@@ -55,9 +93,39 @@ export class AgentsController {
 
   @Patch(':id')
   @UseGuards(PlatformAdminGuard)
-  @ApiOperation({ summary: 'Update a platform AI agent profile' })
-  update(@Param('id') id: string, @Body() dto: UpdateAgentDto) {
-    return this.agents.update(id, dto);
+  @UseInterceptors(FileInterceptor('image', AGENT_IMAGE_UPLOAD_OPTIONS))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    required: true,
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 120 },
+        type: { type: 'string', enum: Object.values(AgentType) },
+        status: { type: 'string', enum: Object.values(AgentStatus) },
+        imageUrl: {
+          type: 'string',
+          format: 'uri',
+          description: 'Existing URL-based update; do not combine with image.',
+        },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'JPEG, PNG, or WebP agent image; maximum 5 MB. Stored in Cloudinary.',
+        },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: 'Update an AI agent profile and/or upload its image',
+  })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAgentDto,
+    @UploadedFile() image: Express.Multer.File | undefined,
+  ) {
+    return this.agents.update(id, dto, image);
   }
 
   @Delete(':id')

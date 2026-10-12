@@ -3,6 +3,7 @@ import { AgentType } from '../../common/enums/agent-type.enum';
 import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 import { AgentsRepository } from './agents.repository';
 import { AgentsService } from './agents.service';
+import { AgentImageStorageService } from './agent-image-storage.service';
 
 describe('AgentsService', () => {
   const agentId = '66cc9bdfa847ea856c7b41a1';
@@ -15,15 +16,18 @@ describe('AgentsService', () => {
     listForSync: jest.fn(),
   };
   const aiJobs = { enqueueAgentSync: jest.fn() };
+  const imageStorage = { upload: jest.fn(), delete: jest.fn() };
   let service: AgentsService;
 
   beforeEach(() => {
     jest.resetAllMocks();
     repository.findByNameKey.mockResolvedValue(null);
     aiJobs.enqueueAgentSync.mockResolvedValue({ queued: true });
+    imageStorage.delete.mockResolvedValue(undefined);
     service = new AgentsService(
       repository as unknown as AgentsRepository,
       aiJobs as unknown as AiJobsQueue,
+      imageStorage as unknown as AgentImageStorageService,
     );
   });
 
@@ -59,6 +63,68 @@ describe('AgentsService', () => {
         }),
       }),
     );
+  });
+
+  it('uploads an image while creating an agent and saves its Cloudinary URL', async () => {
+    const imageUrl = 'https://res.cloudinary.com/demo/image/upload/agent.png';
+    const image = { buffer: Buffer.from('image') } as Express.Multer.File;
+    imageStorage.upload.mockResolvedValue(imageUrl);
+    repository.create.mockImplementation(async (input) => ({
+      ...input,
+      name: 'Layla',
+      type: AgentType.OPERATIONS,
+    }));
+
+    const result = await service.create(
+      { name: 'Layla', type: AgentType.OPERATIONS },
+      image,
+    );
+
+    const createdId = String(repository.create.mock.calls[0][0]._id);
+    expect(imageStorage.upload).toHaveBeenCalledWith(createdId, image);
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrl,
+        status: AgentStatus.ACTIVE,
+        version: 1,
+      }),
+    );
+    expect(result).toEqual(expect.objectContaining({ imageUrl }));
+    expect(imageStorage.delete).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a newly uploaded image when agent creation fails', async () => {
+    const image = { buffer: Buffer.from('image') } as Express.Multer.File;
+    imageStorage.upload.mockResolvedValue(
+      'https://res.cloudinary.com/demo/image/upload/agent.png',
+    );
+    repository.create.mockRejectedValue({ code: 11000 });
+
+    await expect(
+      service.create(
+        { name: 'Layla', type: AgentType.OPERATIONS },
+        image,
+      ),
+    ).rejects.toThrow('An agent with this name already exists');
+
+    const uploadedId = String(imageStorage.upload.mock.calls[0][0]);
+    expect(imageStorage.delete).toHaveBeenCalledWith(uploadedId);
+  });
+
+  it('rejects create with both an uploaded image and imageUrl', async () => {
+    await expect(
+      service.create(
+        {
+          name: 'Layla',
+          type: AgentType.OPERATIONS,
+          imageUrl: 'https://example.com/agent.png',
+        },
+        { buffer: Buffer.from('image') } as Express.Multer.File,
+      ),
+    ).rejects.toThrow('Send either image or imageUrl, not both');
+
+    expect(imageStorage.upload).not.toHaveBeenCalled();
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   it('soft-disables an agent and keeps its MongoDB identity', async () => {
@@ -117,6 +183,59 @@ describe('AgentsService', () => {
         eventType: 'AGENT_ACTIVATED',
       }),
     );
+  });
+
+  it('uploads an agent image and persists its Cloudinary URL', async () => {
+    const imageUrl = 'https://res.cloudinary.com/demo/image/upload/agent.png';
+    const image = { buffer: Buffer.from('image') } as Express.Multer.File;
+    repository.findById.mockResolvedValue({
+      _id: agentId,
+      name: 'Layla',
+      type: AgentType.OPERATIONS,
+      status: AgentStatus.ACTIVE,
+      version: 1,
+    });
+    imageStorage.upload.mockResolvedValue(imageUrl);
+    repository.updateById.mockResolvedValue({
+      _id: agentId,
+      name: 'Layla',
+      imageUrl,
+      type: AgentType.OPERATIONS,
+      status: AgentStatus.ACTIVE,
+      version: 2,
+    });
+
+    await service.update(agentId, {}, image);
+
+    expect(imageStorage.upload).toHaveBeenCalledWith(agentId, image);
+    expect(repository.updateById).toHaveBeenCalledWith(agentId, { imageUrl });
+    expect(aiJobs.enqueueAgentSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: `agent-${agentId}-v2`,
+        agent: expect.objectContaining({ imageUrl }),
+      }),
+    );
+  });
+
+  it('rejects an uploaded image combined with imageUrl', async () => {
+    repository.findById.mockResolvedValue({
+      _id: agentId,
+      name: 'Layla',
+      type: AgentType.OPERATIONS,
+      status: AgentStatus.ACTIVE,
+      version: 1,
+    });
+
+    await expect(
+      service.update(
+        agentId,
+        { imageUrl: 'https://example.com/agent.png' },
+        { buffer: Buffer.from('image') } as Express.Multer.File,
+      ),
+    ).rejects.toThrow('Send either image or imageUrl, not both');
+
+    expect(imageStorage.upload).not.toHaveBeenCalled();
+    expect(repository.updateById).not.toHaveBeenCalled();
   });
 
   it('returns an opaque cursor for the next catalog page', async () => {

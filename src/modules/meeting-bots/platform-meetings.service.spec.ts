@@ -51,6 +51,7 @@ describe('PlatformMeetingsService', () => {
       }),
       findInternalById: jest.fn(),
       restartFailedAiProposal: jest.fn(),
+      deleteTerminal: jest.fn(),
       list: jest.fn(),
     };
     meetingBots = {
@@ -331,5 +332,54 @@ describe('PlatformMeetingsService', () => {
         startsAt: new Date('2099-09-01T11:00:00.000Z'),
       }),
     );
+  });
+
+  it.each([
+    PlatformMeetingStatus.COMPLETED,
+    PlatformMeetingStatus.CANCELLED,
+    PlatformMeetingStatus.FAILED,
+  ])('permanently deletes a %s local meeting record', async (status) => {
+    const terminalMeeting = {
+      ...stored,
+      status,
+      meetingBotId: 'meeting-bot-1',
+    };
+    repository.findInternalById.mockResolvedValue(terminalMeeting);
+    repository.deleteTerminal.mockResolvedValue(terminalMeeting);
+
+    const result = await service.deletePermanent(
+      'org-1',
+      { id: 'user-1', role: UserRole.OWNER },
+      meetingId,
+    );
+
+    expect(repository.deleteTerminal).toHaveBeenCalledWith(meetingId, 'org-1');
+    expect(result).toEqual({
+      id: meetingId,
+      deleted: true,
+      previousStatus: status,
+      retainedMeetingIntelligence: true,
+    });
+    expect(meetingBots.cancel).not.toHaveBeenCalled();
+    expect(calendar.cancelMeetingEvent).not.toHaveBeenCalled();
+    expect(googleProvider.deleteMeeting).not.toHaveBeenCalled();
+  });
+
+  it('requires an active meeting to be cancelled before permanent deletion', async () => {
+    repository.findInternalById.mockResolvedValue({
+      ...stored,
+      status: PlatformMeetingStatus.SCHEDULED,
+    });
+
+    await expect(
+      service.deletePermanent(
+        'org-1',
+        { id: 'user-1', role: UserRole.OWNER },
+        meetingId,
+      ),
+    ).rejects.toThrow(
+      'Only a completed, cancelled, or failed meeting can be permanently deleted',
+    );
+    expect(repository.deleteTerminal).not.toHaveBeenCalled();
   });
 });

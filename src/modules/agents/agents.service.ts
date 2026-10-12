@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { isValidObjectId } from 'mongoose';
+import { isValidObjectId, Types } from 'mongoose';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { Agent } from '../../database/schemas/agent.schema';
@@ -15,6 +15,7 @@ import {
   AiJobsQueue,
 } from '../ai-integration/ai-jobs.queue';
 import { AgentsRepository } from './agents.repository';
+import { AgentImageStorageService } from './agent-image-storage.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { ListAgentCatalogQueryDto } from './dto/list-agent-catalog-query.dto';
 import { ListAgentsQueryDto } from './dto/list-agents-query.dto';
@@ -34,14 +35,26 @@ export class AgentsService {
   constructor(
     private readonly repository: AgentsRepository,
     private readonly aiJobs: AiJobsQueue,
+    private readonly imageStorage: AgentImageStorageService,
   ) {}
 
-  async create(dto: CreateAgentDto) {
+  async create(dto: CreateAgentDto, image?: Express.Multer.File) {
+    if (image && dto.imageUrl !== undefined) {
+      throw new BadRequestException('Send either image or imageUrl, not both');
+    }
     const nameKey = this.nameKey(dto.name);
     await this.assertNameAvailable(nameKey);
+    const agentId = new Types.ObjectId();
+    let uploadedImage = false;
     try {
+      const imageUrl = image
+        ? await this.imageStorage.upload(String(agentId), image)
+        : dto.imageUrl;
+      uploadedImage = Boolean(image);
       const agent = await this.repository.create({
         ...dto,
+        _id: agentId,
+        ...(imageUrl ? { imageUrl } : {}),
         nameKey,
         status: AgentStatus.ACTIVE,
         version: 1,
@@ -49,6 +62,17 @@ export class AgentsService {
       await this.notifyAi(agent as unknown as StoredAgent, 'AGENT_UPSERTED');
       return agent;
     } catch (error) {
+      if (uploadedImage) {
+        await this.imageStorage.delete(String(agentId)).catch((cleanupError) => {
+          this.logger.warn(
+            `Unable to roll back image for agent ${String(agentId)}: ${
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : 'unknown error'
+            }`,
+          );
+        });
+      }
       if (this.isDuplicateKey(error)) {
         throw new ConflictException('An agent with this name already exists');
       }
@@ -91,10 +115,17 @@ export class AgentsService {
     return normalized;
   }
 
-  async update(id: string, dto: UpdateAgentDto) {
+  async update(
+    id: string,
+    dto: UpdateAgentDto,
+    image?: Express.Multer.File,
+  ) {
     const current = (await this.get(id)) as unknown as StoredAgent;
-    if (!Object.keys(dto).length) {
+    if (!Object.keys(dto).length && !image) {
       throw new BadRequestException('No changes were provided');
+    }
+    if (image && dto.imageUrl !== undefined) {
+      throw new BadRequestException('Send either image or imageUrl, not both');
     }
 
     const update: Record<string, unknown> = { ...dto };
@@ -105,6 +136,9 @@ export class AgentsService {
     }
     if (dto.status === AgentStatus.DISABLED) {
       update.disabledAt = new Date();
+    }
+    if (image) {
+      update.imageUrl = await this.imageStorage.upload(id, image);
     }
     let agent;
     try {

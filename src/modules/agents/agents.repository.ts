@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { AgentStatus } from '../../common/enums/agent-status.enum';
 import { Agent } from '../../database/schemas/agent.schema';
@@ -17,6 +17,7 @@ export class AgentsRepository {
 
   create(
     input: Pick<Agent, 'name' | 'nameKey' | 'type' | 'status' | 'version'> & {
+      _id?: Types.ObjectId;
       imageUrl?: string;
     },
   ) {

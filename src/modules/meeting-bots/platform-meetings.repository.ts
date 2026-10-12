@@ -132,6 +132,23 @@ export class PlatformMeetingsRepository {
       .exec();
   }
 
+  deleteTerminal(id: string, organizationId: string) {
+    return this.model
+      .findOneAndDelete({
+        _id: id,
+        organizationId,
+        status: {
+          $in: [
+            PlatformMeetingStatus.COMPLETED,
+            PlatformMeetingStatus.CANCELLED,
+            PlatformMeetingStatus.FAILED,
+          ],
+        },
+      })
+      .lean()
+      .exec();
+  }
+
   markCompletedByMeetingBotId(organizationId: string, meetingBotId: string) {
     return this.model
       .findOneAndUpdate(
