@@ -648,6 +648,40 @@ export class PlatformMeetingsService {
     return this.toResponse(cancelled || meeting, true);
   }
 
+  async deletePermanent(
+    organizationId: string,
+    actor: { id: string; role: UserRole },
+    id: string,
+  ) {
+    const meeting = await this.getInternal(organizationId, id);
+    this.assertCanManage(meeting, actor.id, actor.role);
+    if (
+      ![
+        PlatformMeetingStatus.COMPLETED,
+        PlatformMeetingStatus.CANCELLED,
+        PlatformMeetingStatus.FAILED,
+      ].includes(meeting.status)
+    ) {
+      throw new ConflictException(
+        'Only a completed, cancelled, or failed meeting can be permanently deleted',
+      );
+    }
+
+    const deleted = await this.repository.deleteTerminal(id, organizationId);
+    if (!deleted) {
+      throw new ConflictException(
+        'The meeting status changed before it could be permanently deleted',
+      );
+    }
+
+    return {
+      id,
+      deleted: true,
+      previousStatus: deleted.status,
+      retainedMeetingIntelligence: Boolean(deleted.meetingBotId),
+    };
+  }
+
   private async createWithProvider(
     organizationId: string,
     platform: MeetingPlatform,

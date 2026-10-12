@@ -117,6 +117,23 @@ export class PlatformMeetingsController {
     return this.meetings.update(organization.id, user, id, input);
   }
 
+  @Delete(':id/permanent')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Permanently delete a completed, cancelled, or failed meeting record',
+    description:
+      'Deletes only the local platform meeting record. Provider cancellation must use DELETE /meetings/:id first. Linked recordings, transcripts, and AI intelligence are retained.',
+  })
+  deletePermanent(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+  ) {
+    return this.meetings.deletePermanent(organization.id, user, id);
+  }
+
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.OWNER, UserRole.ADMIN)
