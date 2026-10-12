@@ -500,6 +500,8 @@ export default () => {
         process.env.CLOUDINARY_SUPPORT_FOLDER || 'noltra/support-requests',
       profileAvatarFolder:
         process.env.CLOUDINARY_PROFILE_AVATAR_FOLDER || 'noltra/avatars',
+      agentImageFolder:
+        process.env.CLOUDINARY_AGENT_IMAGE_FOLDER || 'noltra/agents',
       organizationLogoFolder:
         process.env.CLOUDINARY_ORGANIZATION_LOGO_FOLDER ||
         'noltra/organization-logos',
