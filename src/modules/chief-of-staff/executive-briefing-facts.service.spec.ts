@@ -20,6 +20,7 @@ import { TaskItem } from '../../database/schemas/task-item.schema';
 import { User } from '../../database/schemas/user.schema';
 import { StrategicNote } from '../../database/schemas/strategic-note.schema';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
+import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { ExecutiveBriefingFactsService } from './executive-briefing-facts.service';
 
 describe('ExecutiveBriefingFactsService', () => {
@@ -131,6 +132,18 @@ describe('ExecutiveBriefingFactsService', () => {
           truncated: false,
         }),
       } as unknown as AgentActivityService,
+      {
+        prepare: jest.fn().mockResolvedValue({
+          sales: {
+            availability: BriefingFactAvailability.UNAVAILABLE,
+            items: [],
+          },
+          customers: {
+            availability: BriefingFactAvailability.UNAVAILABLE,
+            items: [],
+          },
+        }),
+      } as unknown as CrmBriefingFactsService,
     );
     const asOf = new Date('2026-09-18T06:00:00.000Z');
 

@@ -19,7 +19,13 @@ import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema'
 import { ZoomMeeting } from '../../database/schemas/zoom-meeting.schema';
 import { ZoomMeetingTranscript } from '../../database/schemas/zoom-meeting-transcript.schema';
 import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
+import {
+  aiActionSourceKey,
+  createEmptyAiActionSourceSummary,
+} from '../../common/helpers/ai-action-source.helper';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
+import { ContactsService } from '../contacts/contacts.service';
+import { MessagesService } from '../messages/messages.service';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
 import { GetCallIntelligenceQueryDto } from './dto/get-call-intelligence-query.dto';
@@ -41,6 +47,10 @@ type CallIntelligenceListItem = {
   direction?: unknown;
   fromNumber?: unknown;
   toNumber?: unknown;
+  contactId?: string;
+  callerName?: string;
+  phoneNumber?: string;
+  displayStatus?: string;
   occurredAt?: unknown;
   durationSeconds?: unknown;
   botName?: unknown;
@@ -74,6 +84,8 @@ export class CallIntelligenceService {
     private readonly sourceAnalyses: SourceAnalysesRepository,
     private readonly aiActions: AiActionsService,
     private readonly cloudinaryStorage: CloudinaryMessageAttachmentStorage,
+    private readonly contacts: ContactsService,
+    private readonly messages: MessagesService,
   ) {}
 
   async list(organizationId: string, query: ListCallIntelligenceQueryDto) {
@@ -113,11 +125,7 @@ export class CallIntelligenceService {
           )
         : Promise.resolve([]),
       includeGoogleMeet || includeZoom
-        ? this.listDocuments(
-            this.meetingBots,
-            meetingSourceFilter,
-            sourceLimit,
-          )
+        ? this.listDocuments(this.meetingBots, meetingSourceFilter, sourceLimit)
         : Promise.resolve([]),
       includeZoom
         ? this.listLegacyZoomDocuments(organizationId, sourceLimit)
@@ -163,7 +171,7 @@ export class CallIntelligenceService {
       ]),
     );
 
-    const items = [
+    const pageItems = [
       ...recordings.map((recording) =>
         this.callListItem(recording, callsBySid.get(recording.callSid)),
       ),
@@ -185,8 +193,55 @@ export class CallIntelligenceService {
       .sort((left, right) => this.listItemTime(right) - this.listItemTime(left))
       .slice(offset, offset + query.limit);
     const total = callTotal + meetingTotal + legacyZoomTotal;
+    const contactIds = pageItems
+      .map((item) => item.contactId)
+      .filter((id): id is string => Boolean(id));
+    const [contactRows, actionSummaries, callMetrics] = await Promise.all([
+      this.contacts.listActiveSummaries(organizationId, contactIds),
+      this.aiActions.summarizeSources(
+        organizationId,
+        pageItems.map((item) => item.source),
+      ),
+      includeCalls
+        ? this.callListMetrics(organizationId)
+        : Promise.resolve({
+            aiProcessedCalls: 0,
+            averageCallDurationSeconds: null,
+          }),
+    ]);
+    const contactsById = new Map(
+      contactRows.map((contact) => [contact.id, contact]),
+    );
+    const items = pageItems.map((item) => {
+      const contact = item.contactId
+        ? contactsById.get(item.contactId)
+        : undefined;
+      return {
+        ...item,
+        ...(contact?.name ? { callerName: contact.name } : {}),
+        ...(contact?.phone && !item.phoneNumber
+          ? { phoneNumber: contact.phone }
+          : {}),
+        actionSummary:
+          actionSummaries.get(aiActionSourceKey(item.source)) ||
+          createEmptyAiActionSourceSummary(),
+      };
+    });
 
     return {
+      summary: {
+        totalSources: total,
+        totalCalls: callTotal,
+        totalMeetings: meetingTotal + legacyZoomTotal,
+        aiProcessedCalls: callMetrics.aiProcessedCalls,
+        averageCallDurationSeconds: callMetrics.averageCallDurationSeconds,
+        aiAutoAnsweredCalls: {
+          available: false,
+          value: null,
+          reason:
+            'The current call model does not persist whether a call was auto-answered by AI.',
+        },
+      },
       items,
       total,
       page: query.page,
@@ -220,6 +275,7 @@ export class CallIntelligenceService {
       metadata: media.metadata,
       audio: media.audio,
       transcript: media.transcript,
+      ...('message' in media ? { message: media.message } : {}),
       analysis,
       actions,
       extensions: {
@@ -328,7 +384,50 @@ export class CallIntelligenceService {
     ) {
       return this.getCallMedia(organizationId, source, includeTranscript);
     }
+    if (source.type === AiProposalSourceType.USER_MESSAGE) {
+      return this.getUserMessageMedia(organizationId, source);
+    }
     return this.getMeetingMedia(organizationId, source, includeTranscript);
+  }
+
+  private async getUserMessageMedia(
+    organizationId: string,
+    source: AiProposalSource,
+  ) {
+    const message = await this.messages.getIntelligenceSource(
+      organizationId,
+      source.id,
+    );
+
+    return {
+      metadata: {
+        kind: 'MESSAGE',
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        senderType: message.senderType,
+        messageType: message.type,
+        processingStatus: message.processingStatus,
+        occurredAt: message.createdAt,
+        attachmentCount: message.attachmentCount,
+      },
+      message: {
+        available: true,
+        content: message.content,
+        type: message.type,
+        senderType: message.senderType,
+        processingStatus: message.processingStatus,
+      },
+      audio: {
+        available: false,
+        downloadPath: null,
+      },
+      transcript: {
+        available: false,
+        included: false,
+        text: null,
+        segments: [],
+      },
+    };
   }
 
   private listDocuments<T>(
@@ -346,6 +445,43 @@ export class CallIntelligenceService {
 
   private countDocuments<T>(model: Model<T>, filter: Record<string, unknown>) {
     return model.countDocuments(filter).exec();
+  }
+
+  private async callListMetrics(organizationId: string) {
+    const result = await this.callRecordings
+      .aggregate<{
+        aiProcessedCalls: number;
+        averageCallDurationSeconds: number | null;
+      }>([
+        { $match: { organizationId } },
+        {
+          $group: {
+            _id: null,
+            aiProcessedCalls: {
+              $sum: { $cond: [{ $eq: ['$aiStatus', 'COMPLETED'] }, 1, 0] },
+            },
+            averageCallDurationSeconds: {
+              $avg: {
+                $convert: {
+                  input: '$recordingDuration',
+                  to: 'double',
+                  onError: null,
+                  onNull: null,
+                },
+              },
+            },
+          },
+        },
+      ])
+      .exec();
+    const metrics = result[0];
+    return {
+      aiProcessedCalls: metrics?.aiProcessedCalls || 0,
+      averageCallDurationSeconds:
+        typeof metrics?.averageCallDurationSeconds === 'number'
+          ? Number(metrics.averageCallDurationSeconds.toFixed(2))
+          : null,
+    };
   }
 
   private listLegacyZoomDocuments(
@@ -413,6 +549,10 @@ export class CallIntelligenceService {
       direction: call?.direction,
       fromNumber,
       toNumber,
+      contactId:
+        typeof call?.contactId === 'string' ? call.contactId : undefined,
+      phoneNumber: this.callPartyNumber(call),
+      displayStatus: this.callDisplayStatus(call),
       occurredAt: call?.startedAt ?? recording.createdAt,
       durationSeconds: call?.durationSeconds ?? recording.recordingDuration,
       transcriptAvailable: recording.aiStatus === 'COMPLETED',
@@ -446,6 +586,8 @@ export class CallIntelligenceService {
         `${platform === 'GOOGLE_MEET' ? 'Google Meet' : 'Zoom'} meeting`,
       platform,
       status: meeting.status,
+      displayStatus:
+        typeof meeting.status === 'string' ? meeting.status : undefined,
       occurredAt:
         meeting.transcriptCompletedAt || meeting.joinAt || meeting.createdAt,
       durationSeconds:
@@ -477,6 +619,28 @@ export class CallIntelligenceService {
     return Number.isNaN(date.getTime()) ? 0 : date.getTime();
   }
 
+  private callPartyNumber(call?: LeanRecord) {
+    if (!call) return undefined;
+    const value =
+      call.direction === 'INBOUND' ? call.fromNumber : call.toNumber;
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  private callDisplayStatus(call?: LeanRecord) {
+    if (!call || typeof call.status !== 'string') return undefined;
+    const status = call.status.toUpperCase();
+    if (call.direction === 'INBOUND' && status === 'COMPLETED') {
+      return 'RECEIVED';
+    }
+    if (
+      call.direction === 'INBOUND' &&
+      ['FAILED', 'BUSY', 'NO_ANSWER', 'CANCELED'].includes(status)
+    ) {
+      return 'MISSED_CALL';
+    }
+    return status;
+  }
+
   /**
    * Scheduled bots belong to Calendar/Upcoming Meetings, not Call
    * Intelligence. A bot becomes an intelligence source only after Recall has
@@ -505,8 +669,8 @@ export class CallIntelligenceService {
     if (meeting.status === MeetingBotStatus.SCHEDULED) return false;
     return Boolean(
       this.nonEmptyString(meeting.recordingId) ||
-        this.nonEmptyString(meeting.transcriptId) ||
-        this.validDate(meeting.transcriptCompletedAt),
+      this.nonEmptyString(meeting.transcriptId) ||
+      this.validDate(meeting.transcriptCompletedAt),
     );
   }
 

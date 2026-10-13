@@ -4,6 +4,10 @@ import { SourceAnalysesRepository } from '../source-analyses/source-analyses.rep
 import { CallIntelligenceService } from './call-intelligence.service';
 import { CallIntelligenceItemKind } from './dto/list-call-intelligence-query.dto';
 import { MeetingBotStatus } from '../../common/enums/meeting-bot-status.enum';
+import {
+  aiActionSourceKey,
+  createEmptyAiActionSourceSummary,
+} from '../../common/helpers/ai-action-source.helper';
 
 const queryResult = (value: unknown) => ({
   select: jest.fn().mockReturnThis(),
@@ -47,6 +51,13 @@ describe('CallIntelligenceService', () => {
     const callRecordings = {
       find: jest.fn().mockReturnValue(listQueryResult([callRecording])),
       countDocuments: jest.fn().mockReturnValue(countQueryResult(1)),
+      aggregate: jest.fn().mockReturnValue({
+        exec: jest
+          .fn()
+          .mockResolvedValue([
+            { aiProcessedCalls: 1, averageCallDurationSeconds: 75 },
+          ]),
+      }),
     };
     const meetingBots = {
       find: jest.fn().mockReturnValue(listQueryResult([meeting])),
@@ -67,6 +78,7 @@ describe('CallIntelligenceService', () => {
             status: 'COMPLETED',
             fromNumber: '+10000000000',
             toNumber: '+12222222222',
+            contactId: '66cc9bdfa847ea856c7b4104',
             startedAt: new Date('2026-09-17T09:59:00.000Z'),
             durationSeconds: 75,
           },
@@ -84,6 +96,13 @@ describe('CallIntelligenceService', () => {
         ]),
       ),
     };
+    const callActionSummary = {
+      ...createEmptyAiActionSourceSummary(),
+      total: 1,
+      meetings: 1,
+      needsClarification: 1,
+      hasUserActionRequired: true,
+    };
     const service = new CallIntelligenceService(
       meetingBots as never,
       {} as never,
@@ -93,7 +112,29 @@ describe('CallIntelligenceService', () => {
       callLogs as never,
       platformMeetings as never,
       {} as never,
+      {
+        summarizeSources: jest.fn().mockResolvedValue(
+          new Map([
+            [
+              aiActionSourceKey({
+                type: AiProposalSourceType.CALL_TRANSCRIPT,
+                id: callRecording._id,
+              }),
+              callActionSummary,
+            ],
+          ]),
+        ),
+      } as never,
       {} as never,
+      {
+        listActiveSummaries: jest.fn().mockResolvedValue([
+          {
+            id: '66cc9bdfa847ea856c7b4104',
+            name: 'Marvin McKinney',
+            phone: '+12222222222',
+          },
+        ]),
+      } as never,
       {} as never,
     );
 
@@ -103,7 +144,20 @@ describe('CallIntelligenceService', () => {
     });
 
     expect(result).toEqual(
-      expect.objectContaining({ total: 2, page: 1, limit: 20, pages: 1 }),
+      expect.objectContaining({
+        summary: expect.objectContaining({
+          totalSources: 2,
+          totalCalls: 1,
+          totalMeetings: 1,
+          aiProcessedCalls: 1,
+          averageCallDurationSeconds: 75,
+          aiAutoAnsweredCalls: expect.objectContaining({ available: false }),
+        }),
+        total: 2,
+        page: 1,
+        limit: 20,
+        pages: 1,
+      }),
     );
     expect(result.items).toEqual([
       expect.objectContaining({
@@ -115,6 +169,10 @@ describe('CallIntelligenceService', () => {
         },
         transcriptAvailable: true,
         audioAvailable: true,
+        callerName: 'Marvin McKinney',
+        phoneNumber: '+12222222222',
+        displayStatus: 'COMPLETED',
+        actionSummary: callActionSummary,
         detailsPath: `/api/v1/call-intelligence/${callRecording._id}/details?sourceType=CALL_TRANSCRIPT`,
       }),
       expect.objectContaining({
@@ -174,11 +232,18 @@ describe('CallIntelligenceService', () => {
       {
         find: jest.fn().mockReturnValue(listQueryResult([])),
         countDocuments: jest.fn().mockReturnValue(countQueryResult(0)),
+        aggregate: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue([]),
+        }),
       } as never,
       {} as never,
       { find: jest.fn().mockReturnValue(queryResult([])) } as never,
       {} as never,
+      {
+        summarizeSources: jest.fn().mockResolvedValue(new Map()),
+      } as never,
       {} as never,
+      { listActiveSummaries: jest.fn().mockResolvedValue([]) } as never,
       {} as never,
     );
 
@@ -233,6 +298,8 @@ describe('CallIntelligenceService', () => {
       sourceAnalyses as unknown as SourceAnalysesRepository,
       actions as unknown as AiActionsService,
       {} as never,
+      {} as never,
+      {} as never,
     );
 
     const result = await service.getDetails(
@@ -267,8 +334,82 @@ describe('CallIntelligenceService', () => {
     );
   });
 
+  it('returns a user message with its analysis and actions', async () => {
+    const sourceId = '66cc9bdfa847ea856c7b41d2';
+    const actions = {
+      getActionCenter: jest.fn().mockResolvedValue({
+        status: 'ALL',
+        priorityTasks: [],
+        meetingSchedules: [{ id: 'proposal-1' }],
+      }),
+    };
+    const service = new CallIntelligenceService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { findBySource: jest.fn().mockResolvedValue(null) } as never,
+      actions as unknown as AiActionsService,
+      {} as never,
+      {} as never,
+      {
+        getIntelligenceSource: jest.fn().mockResolvedValue({
+          id: sourceId,
+          conversationId: '66cc9bdfa847ea856c7b41d3',
+          senderId: '66cc9bdfa847ea856c7b41d4',
+          senderType: 'USER',
+          type: 'TEXT',
+          content: 'Schedule a meeting with Amit.',
+          attachmentCount: 0,
+          processingStatus: 'COMPLETED',
+          createdAt: new Date('2026-10-12T05:45:21.862Z'),
+        }),
+      } as never,
+    );
+
+    const result = await service.getDetails(
+      '66cc9bdfa847ea856c7b41d1',
+      sourceId,
+      {
+        sourceType: AiProposalSourceType.USER_MESSAGE,
+        taskLimit: 4,
+        meetingLimit: 4,
+        includeTranscript: false,
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        source: { type: AiProposalSourceType.USER_MESSAGE, id: sourceId },
+        metadata: expect.objectContaining({
+          kind: 'MESSAGE',
+          processingStatus: 'COMPLETED',
+        }),
+        message: expect.objectContaining({
+          content: 'Schedule a meeting with Amit.',
+        }),
+        audio: { available: false, downloadPath: null },
+        actions: expect.objectContaining({
+          meetingSchedules: [{ id: 'proposal-1' }],
+        }),
+      }),
+    );
+    expect(actions.getActionCenter).toHaveBeenCalledWith(
+      '66cc9bdfa847ea856c7b41d1',
+      sourceId,
+      expect.objectContaining({
+        sourceType: AiProposalSourceType.USER_MESSAGE,
+      }),
+    );
+  });
+
   it('escapes AI text in the downloadable HTML report', () => {
     const service = new CallIntelligenceService(
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

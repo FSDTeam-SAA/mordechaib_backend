@@ -24,6 +24,7 @@ import { CrmSchemaDiscoveryService } from './crm-schema-discovery.service';
 import { CrmService } from './crm.service';
 import { CrmRepository } from './crm.repository';
 import { CrmRecordsRepository } from './crm-records.repository';
+import { CrmBriefingFactsService } from './crm-briefing-facts.service';
 import { HubSpotProvider } from './providers/hubspot.provider';
 import { SalesforceProvider } from './providers/salesforce.provider';
 
@@ -56,9 +57,10 @@ import { SalesforceProvider } from './providers/salesforce.provider';
     CrmProviderRegistry,
     CrmObjectSyncService,
     CrmSchemaDiscoveryService,
+    CrmBriefingFactsService,
     HubSpotProvider,
     SalesforceProvider,
   ],
-  exports: [CrmService],
+  exports: [CrmService, CrmBriefingFactsService],
 })
 export class CrmModule {}

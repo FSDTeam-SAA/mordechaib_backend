@@ -102,6 +102,29 @@ export class CrmRecordsRepository {
     return this.records.findOne({ _id: id, organizationId }).lean().exec();
   }
 
+  findForBriefing(input: {
+    organizationId: string;
+    provider: CrmProviderType;
+    objectTypes: string[];
+    limit: number;
+  }) {
+    if (input.objectTypes.length === 0) return Promise.resolve([]);
+    return this.records
+      .find({
+        organizationId: input.organizationId,
+        provider: input.provider,
+        objectType: { $in: input.objectTypes },
+        archived: false,
+      })
+      .select(
+        'provider objectType externalId properties associations providerCreatedAt providerUpdatedAt syncedAt createdAt updatedAt',
+      )
+      .sort({ providerUpdatedAt: -1, syncedAt: -1, _id: -1 })
+      .limit(input.limit)
+      .lean()
+      .exec();
+  }
+
   private emptyWriteResult(): CrmRecordsWriteResult {
     return { processed: 0, matched: 0, modified: 0, upserted: 0 };
   }

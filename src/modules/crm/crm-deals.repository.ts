@@ -137,4 +137,32 @@ export class CrmDealsRepository {
       ])
       .exec();
   }
+
+  findForBriefing(input: {
+    organizationId: string;
+    provider: CrmProviderType;
+    from: Date;
+    to: Date;
+    limit: number;
+  }) {
+    return this.deals
+      .find({
+        organizationId: input.organizationId,
+        provider: input.provider,
+        archived: false,
+        $or: [
+          { stageCategory: CrmDealStageCategory.OPEN },
+          { closeDate: { $gte: input.from, $lt: input.to } },
+          { providerUpdatedAt: { $gte: input.from, $lt: input.to } },
+          { updatedLocallyAt: { $gte: input.from, $lt: input.to } },
+        ],
+      })
+      .select(
+        'provider externalId name amount currency providerStage stageCategory closeDate ownerId ownerName providerUpdatedAt syncedAt updatedLocallyAt createdAt updatedAt',
+      )
+      .sort({ stageCategory: 1, closeDate: 1, providerUpdatedAt: -1, _id: -1 })
+      .limit(input.limit)
+      .lean()
+      .exec();
+  }
 }

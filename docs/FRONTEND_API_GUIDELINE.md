@@ -2524,7 +2524,7 @@ This is the read model for completed Twilio calls and meeting-bot sources. It is
 
 | Endpoint                                      | Request body / query                                                                       | Response data                                                                         |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `GET /call-intelligence`                      | `page`, `limit`, optional `kind`, `sourceType`                                             | newest-first mixed call/meeting source list                                           |
+| `GET /call-intelligence`                      | `page`, `limit`, optional `kind`, `sourceType`                                             | lightweight newest-first rows, page-level action summaries, metrics, and pagination   |
 | `GET /call-intelligence/:sourceId/details`    | required `sourceType`; optional `status`, `taskLimit`, `meetingLimit`, `includeTranscript` | source metadata, audio/transcript availability, stored analysis, and action proposals |
 | `DELETE /call-intelligence/:sourceId/details` | required `sourceType` query                                                                | deletion result; active/processing source deletion is rejected                        |
 | `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`                                        | binary attachment download, not JSON envelope                                         |
@@ -2535,6 +2535,18 @@ in one response (`actions.status` is then `ALL`). Every returned task or meeting
 proposal retains its own status, so the frontend can locally filter values such
 as `PENDING`, `APPROVED`, and `NEEDS_CLARIFICATION`. Passing `status` remains
 available when an explicit server-side filter is needed.
+
+For a chat source, pass the user message ID—not the conversation ID—and use
+`sourceType=USER_MESSAGE`:
+
+```http
+GET /call-intelligence/USER_MESSAGE_ID/details?sourceType=USER_MESSAGE
+```
+
+The response keeps the shared `source`, `metadata`, `analysis`, `actions`, and
+`extensions` contract and adds a `message` object containing the source text
+and processing state. Audio and transcript remain unavailable for a text
+message. Existing call and meeting detail response shapes are unchanged.
 
 Every list item returned by `GET /call-intelligence` includes a flat
 `sourceId` alongside the existing `source` object. For meeting items,
@@ -2550,6 +2562,19 @@ source ID. Pass it directly to the details/report route together with
   "detailsPath": "/api/v1/call-intelligence/MEETING_BOT_ID/details?sourceType=GOOGLE_MEET"
 }
 ```
+
+The list route is deliberately lightweight. Call rows additionally expose
+`contactId`, `callerName`, `phoneNumber`, `displayStatus`, and an
+`actionSummary`; meeting rows receive the same `actionSummary` without loading
+full transcripts or proposal payloads. The response also includes `summary`
+with total call/meeting counts, AI-processed call count, and average call
+duration. `summary.aiAutoAnsweredCalls.available` is currently `false` because
+the call model does not persist whether AI answered a call; the frontend must
+not infer that metric from `aiStatus`.
+
+Use each row's `detailsPath` for the Details action. The existing single-source
+details contract is unchanged and remains the only endpoint that returns full
+media, transcript, analysis, and proposal data.
 
 Details response shape:
 
