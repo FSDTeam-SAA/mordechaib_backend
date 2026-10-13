@@ -10,12 +10,18 @@ import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { assertValidTimezone } from '../../common/helpers/timezone.helper';
+import {
+  aiActionSourceKey,
+  createEmptyAiActionSourceSummary,
+  type AiActionSourceSummary,
+} from '../../common/helpers/ai-action-source.helper';
 import { TranscriptInsightCategory } from '../../database/schemas/ai-source-analysis.schema';
 import {
   AiActionProposal,
   AiActionProposalStatus,
   AiActionTargetType,
   AiActionType,
+  AiProposalSource,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -51,6 +57,11 @@ type IngestAnalysisOptions = {
   effectiveTimezone?: string;
   expectedRequestId?: string;
 };
+
+type AiActionSummaryCountKey = Exclude<
+  keyof AiActionSourceSummary,
+  'hasUserActionRequired'
+>;
 
 @Injectable()
 export class AiActionsService {
@@ -234,6 +245,48 @@ export class AiActionsService {
         this.toActionCenterMeeting(proposal as StoredProposal),
       ),
     };
+  }
+
+  async summarizeSources(organizationId: string, sources: AiProposalSource[]) {
+    const uniqueSources = [
+      ...new Map(
+        sources.map((source) => [aiActionSourceKey(source), source]),
+      ).values(),
+    ];
+    const rows = await this.repository.summarizeSources(
+      organizationId,
+      uniqueSources,
+    );
+    const summaries = new Map(
+      uniqueSources.map((source) => [
+        aiActionSourceKey(source),
+        createEmptyAiActionSourceSummary(),
+      ]),
+    );
+    for (const row of rows) {
+      const summary = summaries.get(
+        aiActionSourceKey({
+          type: row._id.sourceType,
+          id: row._id.sourceId,
+        }),
+      );
+      if (!summary) continue;
+      summary.total += row.count;
+      if (row._id.actionType === AiActionType.CREATE_TASK) {
+        summary.tasks += row.count;
+      } else if (row._id.actionType === AiActionType.SCHEDULE_MEETING) {
+        summary.meetings += row.count;
+      }
+      const statusKey = this.actionSummaryStatusKey(row._id.status);
+      summary[statusKey] += row.count;
+    }
+    for (const summary of summaries.values()) {
+      summary.hasUserActionRequired =
+        summary.needsClarification > 0 ||
+        summary.pending > 0 ||
+        summary.failed > 0;
+    }
+    return summaries;
   }
 
   async get(organizationId: string, id: string) {
@@ -1198,6 +1251,22 @@ export class AiActionsService {
       createdAt: proposal.createdAt,
       updatedAt: proposal.updatedAt,
     };
+  }
+
+  private actionSummaryStatusKey(
+    status: AiActionProposalStatus,
+  ): AiActionSummaryCountKey {
+    const keys: Record<AiActionProposalStatus, AiActionSummaryCountKey> = {
+      [AiActionProposalStatus.ANALYZING]: 'analyzing',
+      [AiActionProposalStatus.NEEDS_CLARIFICATION]: 'needsClarification',
+      [AiActionProposalStatus.PENDING]: 'pending',
+      [AiActionProposalStatus.APPROVED]: 'approved',
+      [AiActionProposalStatus.REJECTED]: 'rejected',
+      [AiActionProposalStatus.EXECUTING]: 'executing',
+      [AiActionProposalStatus.EXECUTED]: 'executed',
+      [AiActionProposalStatus.FAILED]: 'failed',
+    };
+    return keys[status];
   }
 
   private validationMessages(errors: ValidationError[]): string[] {

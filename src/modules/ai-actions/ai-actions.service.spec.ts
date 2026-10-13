@@ -43,6 +43,7 @@ describe('AiActionsService analysis ingestion', () => {
     list: jest.fn(),
     getActionCenter: jest.fn(),
     updatePendingPayload: jest.fn(),
+    summarizeSources: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
@@ -92,6 +93,52 @@ describe('AiActionsService analysis ingestion', () => {
       auditLogs as unknown as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
     );
+  });
+
+  it('builds one lightweight status and action-type summary per source', async () => {
+    repository.summarizeSources.mockResolvedValue([
+      {
+        _id: {
+          sourceType: source.type,
+          sourceId: source.id,
+          actionType: AiActionType.SCHEDULE_MEETING,
+          status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+        },
+        count: 1,
+      },
+      {
+        _id: {
+          sourceType: source.type,
+          sourceId: source.id,
+          actionType: AiActionType.CREATE_TASK,
+          status: AiActionProposalStatus.PENDING,
+        },
+        count: 2,
+      },
+    ]);
+
+    const summaries = await service.summarizeSources(organizationId, [
+      source,
+      source,
+    ]);
+
+    expect(repository.summarizeSources).toHaveBeenCalledWith(organizationId, [
+      source,
+    ]);
+    expect(summaries.values().next().value).toEqual({
+      total: 3,
+      tasks: 2,
+      meetings: 1,
+      analyzing: 0,
+      needsClarification: 1,
+      pending: 2,
+      approved: 0,
+      rejected: 0,
+      executing: 0,
+      executed: 0,
+      failed: 0,
+      hasUserActionRequired: true,
+    });
   });
 
   it('filters the canonical proposal list by source identity', async () => {

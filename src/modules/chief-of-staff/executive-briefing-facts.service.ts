@@ -30,6 +30,7 @@ import { TaskItem } from '../../database/schemas/task-item.schema';
 import { User } from '../../database/schemas/user.schema';
 import { StrategicNote } from '../../database/schemas/strategic-note.schema';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
+import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { executiveBriefingPeriod } from './executive-briefing-period';
 import {
   BriefingFact,
@@ -71,6 +72,7 @@ export class ExecutiveBriefingFactsService {
     @InjectModel(StrategicNote.name)
     private readonly strategicNotes: Model<StrategicNote>,
     private readonly activities: AgentActivityService,
+    private readonly crmFacts: CrmBriefingFactsService,
   ) {}
 
   async prepare(
@@ -107,6 +109,7 @@ export class ExecutiveBriefingFactsService {
       activityRows,
       aiHealth,
       strategicNoteRows,
+      crmFacts,
     ] = await Promise.all([
       this.tasks
         .find({
@@ -208,6 +211,7 @@ export class ExecutiveBriefingFactsService {
         .limit(FACT_LIMITS.strategicNotes + 1)
         .lean()
         .exec(),
+      this.crmFacts.prepare({ organizationId, from: start, to: end }),
     ]);
 
     const boundedTasks = boundedRows(taskRows, FACT_LIMITS.tasks);
@@ -507,8 +511,8 @@ export class ExecutiveBriefingFactsService {
         items: analysisFacts,
       },
       agentActivity: this.available(activityFacts, boundedActivities.truncated),
-      sales: unavailable(),
-      customers: unavailable(),
+      sales: crmFacts.sales,
+      customers: crmFacts.customers,
       support: unavailable(),
       finance: unavailable(),
       vendors: unavailable(),
