@@ -59,12 +59,15 @@ export class GetCallIntelligenceQueryDto {
 
 export class DownloadCallIntelligenceReportQueryDto extends GetCallIntelligenceQueryDto {
   @ApiPropertyOptional({
-    enum: AiActionProposalStatus,
-    default: AiActionProposalStatus.PENDING,
+    type: Boolean,
+    default: true,
+    description:
+      'Include transcript content in the downloaded report. Set false only for a smaller report.',
   })
+  @Transform(({ value }) => value === true || value === 'true')
   @IsOptional()
-  @IsEnum(AiActionProposalStatus)
-  override status?: AiActionProposalStatus = AiActionProposalStatus.PENDING;
+  @IsBoolean()
+  override includeTranscript: boolean = true;
 
   @ApiPropertyOptional({ enum: ['html', 'json'], default: 'html' })
   @IsOptional()
