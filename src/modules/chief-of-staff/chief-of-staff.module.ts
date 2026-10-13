@@ -53,12 +53,14 @@ import { ExecutiveBriefingsService } from './executive-briefings.service';
 import { StrategicNotesController } from './strategic-notes.controller';
 import { StrategicNotesRepository } from './strategic-notes.repository';
 import { StrategicNotesService } from './strategic-notes.service';
+import { OrganizationAgentSettingsModule } from '../organization-agent-settings/organization-agent-settings.module';
 
 @Module({
   imports: [
     AiIntegrationModule,
     AiTelemetryModule,
     CrmModule,
+    OrganizationAgentSettingsModule,
     BullModule.registerQueue({ name: EXECUTIVE_BRIEFINGS_QUEUE }),
     MongooseModule.forFeature([
       { name: ExecutiveBriefing.name, schema: ExecutiveBriefingSchema },

@@ -31,6 +31,7 @@ import { User } from '../../database/schemas/user.schema';
 import { StrategicNote } from '../../database/schemas/strategic-note.schema';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
+import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 import { executiveBriefingPeriod } from './executive-briefing-period';
 import {
   BriefingFact,
@@ -73,6 +74,7 @@ export class ExecutiveBriefingFactsService {
     private readonly strategicNotes: Model<StrategicNote>,
     private readonly activities: AgentActivityService,
     private readonly crmFacts: CrmBriefingFactsService,
+    private readonly agentSettings: OrganizationAgentSettingsService,
   ) {}
 
   async prepare(
@@ -110,6 +112,7 @@ export class ExecutiveBriefingFactsService {
       aiHealth,
       strategicNoteRows,
       crmFacts,
+      agentPolicy,
     ] = await Promise.all([
       this.tasks
         .find({
@@ -212,6 +215,7 @@ export class ExecutiveBriefingFactsService {
         .lean()
         .exec(),
       this.crmFacts.prepare({ organizationId, from: start, to: end }),
+      this.agentSettings.policyContract(organizationId),
     ]);
 
     const boundedTasks = boundedRows(taskRows, FACT_LIMITS.tasks);
@@ -549,12 +553,20 @@ export class ExecutiveBriefingFactsService {
         name: organization.name,
         industry: organization.industry,
       },
-      agents: agents.map((agent) => ({
-        id: String(agent._id),
-        name: agent.name,
-        type: agent.type,
-        status: agent.status,
-      })),
+      agents: agents
+        .filter((agent) => {
+          const override = agentPolicy.overrides.find(
+            (item) => item.agentId === String(agent._id),
+          );
+          return override?.enabled ?? agentPolicy.defaults.enabled;
+        })
+        .map((agent) => ({
+          id: String(agent._id),
+          name: agent.name,
+          type: agent.type,
+          status: agent.status,
+        })),
+      agentPolicy,
       facts,
     };
     const inputHash = this.hash(this.stableStringify(inputIdentity));

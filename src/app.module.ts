@@ -40,6 +40,7 @@ import { EmailModule } from './modules/email/email.module';
 import { SupportRequestsModule } from './modules/support-requests/support-requests.module';
 import { OrganizationsAdminModule } from './modules/organizations-admin/organizations-admin.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { AgentWorkforceModule } from './modules/agent-workforce/agent-workforce.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { ContactsModule } from './modules/contacts/contacts.module';
     SupportRequestsModule,
     OrganizationsAdminModule,
     ContactsModule,
+    AgentWorkforceModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

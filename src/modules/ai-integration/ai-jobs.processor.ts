@@ -23,6 +23,7 @@ import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { AgentOperationType } from '../../common/enums/agent-activity.enum';
+import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 
 type MessageAnalysisContext = {
   organizationId: string;
@@ -51,6 +52,7 @@ export class AiJobsProcessor extends WorkerHost {
     private readonly responseValidator: AiAnalysisResponseValidator,
     private readonly chatReplies: AiChatReplyService,
     private readonly activity: AgentActivityService,
+    private readonly agentSettings: OrganizationAgentSettingsService,
   ) {
     super();
   }
@@ -177,6 +179,8 @@ export class AiJobsProcessor extends WorkerHost {
         context.requesterUserId,
       );
       const effectiveTimezone = requester?.timezone || organization.timezone;
+      const agentPolicy =
+        await this.agentSettings.policyContract(organizationId);
       const boundedContext = { ...context };
       delete boundedContext.requesterUserId;
       const requestId = `source-${sourceType.toLowerCase()}-${sourceId}`;
@@ -191,6 +195,7 @@ export class AiJobsProcessor extends WorkerHost {
           organization,
           ...(requester ? { requester } : {}),
           effectiveTimezone,
+          agentPolicy,
         },
         generatedAt: new Date().toISOString(),
       };
@@ -211,6 +216,19 @@ export class AiJobsProcessor extends WorkerHost {
           sourceId,
         },
       );
+      const responseAgentIds = [
+        analysisResult.assistantMessage?.agent?.id,
+        ...analysisResult.actions.map((action) => action.proposedByAgent?.id),
+      ].filter((id): id is string => Boolean(id));
+      const disabledAgentIds = await this.agentSettings.disabledAgentIds(
+        organizationId,
+        [...new Set(responseAgentIds)],
+      );
+      if (disabledAgentIds.length) {
+        throw new UnrecoverableError(
+          `AI response used organization-disabled agent(s): ${disabledAgentIds.join(', ')}`,
+        );
+      }
       this.logger.log(
         `AI analysis response accepted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}, actions=${analysisResult.actions.length}`,
       );
