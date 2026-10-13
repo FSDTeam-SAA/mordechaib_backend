@@ -2527,8 +2527,18 @@ This is the read model for completed Twilio calls and meeting-bot sources. It is
 | `GET /call-intelligence`                      | `page`, `limit`, optional `kind`, `sourceType`                                             | lightweight newest-first rows, page-level action summaries, metrics, and pagination   |
 | `GET /call-intelligence/:sourceId/details`    | required `sourceType`; optional `status`, `taskLimit`, `meetingLimit`, `includeTranscript` | source metadata, audio/transcript availability, stored analysis, and action proposals |
 | `DELETE /call-intelligence/:sourceId/details` | required `sourceType` query                                                                | deletion result; active/processing source deletion is rejected                        |
-| `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`                                        | binary attachment download, not JSON envelope                                         |
-| `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | streamed audio response, not JSON envelope                                            |
+| `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`; transcript defaults to included       | full source report attachment across all proposal statuses                            |
+| `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | authorized backend-streamed audio bytes, not a storage redirect or JSON envelope       |
+
+The audio endpoint supports standard HTTP byte ranges. Browser audio players may
+send `Range: bytes=...`; the backend returns `206 Partial Content` with
+`Content-Range` and `Accept-Ranges: bytes`. A full request still returns `200`.
+
+`CALL_AUDIO` is accepted as a compatibility alias for call details and report
+requests. Analysis and action lookup is normalized to the canonical
+`CALL_TRANSCRIPT` source used by the AI pipeline, so both values return the
+stored analysis. New frontend code should pass the `source.type` returned by the
+list endpoint.
 
 For the details route, omit `status` to receive proposals across all statuses
 in one response (`actions.status` is then `ALL`). Every returned task or meeting
@@ -3257,6 +3267,7 @@ Use `connectPath` or the dedicated canonical OAuth routes. Do not construct a pr
 | `GET /meta/connect`                              | Authenticated     | none                            | `{ "authorizationUrl": "..." }`                 |
 | `GET /meta/callback`                             | Provider callback | `code`, `state`, `error?` query | provider callback result; not an app-screen API |
 | `GET /meta/connection`                           | Authenticated     | none                            | current Meta connection state                   |
+| `DELETE /meta/connection`                        | Authenticated     | none                            | disconnect confirmation; stored tokens removed  |
 | `GET /meta/pages/:pageId/posts`                  | Authenticated     | list query                      | provider post list                              |
 | `GET /meta/pages/:pageId/posts/:postId/comments` | Authenticated     | list query                      | provider comment list                           |
 | `GET /meta/pages/:pageId/messages`               | Authenticated     | list query                      | provider message list                           |

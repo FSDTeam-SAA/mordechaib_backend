@@ -77,4 +77,14 @@ describe('MetaProvider date filtering', () => {
       'messages.limit(25).since(100).until(200)',
     );
   });
+
+  it('revokes the connected Meta user permissions', async () => {
+    await provider.revokePermissions('meta-token');
+
+    const [request, options] = fetchMock.mock.calls[0];
+    const requestUrl = new URL(request as string);
+    expect(requestUrl.pathname).toBe('/v23.0/me/permissions');
+    expect(requestUrl.searchParams.get('access_token')).toBe('meta-token');
+    expect(options).toEqual({ method: 'DELETE' });
+  });
 });

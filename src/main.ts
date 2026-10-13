@@ -31,6 +31,14 @@ async function bootstrap() {
     helmet({
       // Allow cross-origin consumption of API responses.
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // Swagger UI and authenticated frontend players create a temporary
+      // blob URL from the streamed recording response. Keep scripts and other
+      // resources on Helmet's strict defaults while allowing media blobs.
+      contentSecurityPolicy: {
+        directives: {
+          mediaSrc: ["'self'", 'blob:'],
+        },
+      },
     }),
   );
 
@@ -45,12 +53,18 @@ async function bootstrap() {
       'Content-Type',
       'Authorization',
       'Accept',
+      'Range',
       'Origin',
       'X-Requested-With',
       'Stripe-Signature',
       'X-Twilio-Signature',
     ],
-    exposedHeaders: ['Content-Disposition'],
+    exposedHeaders: [
+      'Content-Disposition',
+      'Content-Length',
+      'Content-Range',
+      'Accept-Ranges',
+    ],
     maxAge: 86400,
   });
 
