@@ -33,6 +33,7 @@ import {
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 import { AiTelemetryModule } from '../ai-telemetry/ai-telemetry.module';
+import { CrmModule } from '../crm/crm.module';
 import {
   StrategicNote,
   StrategicNoteSchema,
@@ -57,6 +58,7 @@ import { StrategicNotesService } from './strategic-notes.service';
   imports: [
     AiIntegrationModule,
     AiTelemetryModule,
+    CrmModule,
     BullModule.registerQueue({ name: EXECUTIVE_BRIEFINGS_QUEUE }),
     MongooseModule.forFeature([
       { name: ExecutiveBriefing.name, schema: ExecutiveBriefingSchema },

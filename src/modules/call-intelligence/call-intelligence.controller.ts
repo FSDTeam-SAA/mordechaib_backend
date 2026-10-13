@@ -45,7 +45,7 @@ export class CallIntelligenceController {
   @ApiOperation({
     summary: 'List all call and meeting intelligence sources',
     description:
-      'Returns one organization-scoped, newest-first list of Twilio call recordings, Google Meet sessions, and Zoom sessions. Each item contains sourceId and source.type required by the details endpoint; for meetings, sourceId is the meeting bot id.',
+      'Returns a lightweight organization-scoped, newest-first list for the Call Intelligence table. Each row includes display metadata, media availability, a bulk-computed actionSummary, and the unchanged details path. Full transcript, analysis, evidence, and proposal payloads remain exclusive to the details endpoint.',
   })
   list(
     @CurrentOrg() organization: RequestOrganization,
@@ -56,9 +56,9 @@ export class CallIntelligenceController {
 
   @Get(':sourceId/details')
   @ApiOperation({
-    summary: 'Get an aggregated call or meeting intelligence view',
+    summary: 'Get an aggregated call, meeting, or user-message intelligence view',
     description:
-      'Transcript content is omitted by default for a fast first paint. Set includeTranscript=true to include it. Action proposals across every status are returned when status is omitted, allowing the frontend to filter one response.',
+      'For call and meeting sources, transcript content is omitted by default for a fast first paint; set includeTranscript=true to include it. USER_MESSAGE returns the source message in the message field. Action proposals across every status are returned when status is omitted, allowing the frontend to filter one response.',
   })
   getDetails(
     @CurrentOrg() organization: RequestOrganization,

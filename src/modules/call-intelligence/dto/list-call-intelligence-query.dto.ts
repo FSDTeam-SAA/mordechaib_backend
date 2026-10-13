@@ -12,6 +12,7 @@ export const CALL_INTELLIGENCE_LIST_SOURCE_TYPES = [
   AiProposalSourceType.CALL_TRANSCRIPT,
   AiProposalSourceType.ZOOM_MEETING,
   AiProposalSourceType.GOOGLE_MEET,
+  AiProposalSourceType.USER_MESSAGE,
 ] as const;
 
 export class ListCallIntelligenceQueryDto {

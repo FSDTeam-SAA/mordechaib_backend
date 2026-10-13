@@ -71,4 +71,33 @@ describe('ContactsService', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('returns bounded public contact fields for bulk list enrichment', async () => {
+    repository.findActiveByIds.mockResolvedValue([
+      {
+        _id: '66cc9bdfa847ea856c7b41d2',
+        name: 'Tahid Rahman',
+        phone: '+8801812345678',
+        email: 'private@example.com',
+        notes: 'not needed by a call list',
+      },
+    ]);
+
+    await expect(
+      service.listActiveSummaries('org-1', [
+        '66cc9bdfa847ea856c7b41d2',
+        '66cc9bdfa847ea856c7b41d2',
+        'invalid-id',
+      ]),
+    ).resolves.toEqual([
+      {
+        id: '66cc9bdfa847ea856c7b41d2',
+        name: 'Tahid Rahman',
+        phone: '+8801812345678',
+      },
+    ]);
+    expect(repository.findActiveByIds).toHaveBeenCalledWith('org-1', [
+      '66cc9bdfa847ea856c7b41d2',
+    ]);
+  });
 });

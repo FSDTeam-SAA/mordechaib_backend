@@ -123,6 +123,22 @@ export class ContactsService {
     await this.requireActiveMany(organizationId, ids);
   }
 
+  async listActiveSummaries(organizationId: string, ids: string[]) {
+    const uniqueIds = [...new Set(ids)].filter((id) =>
+      Types.ObjectId.isValid(id),
+    );
+    if (!uniqueIds.length) return [];
+    const contacts = await this.repository.findActiveByIds(
+      organizationId,
+      uniqueIds,
+    );
+    return contacts.map((contact) => ({
+      id: String(contact._id),
+      name: contact.name,
+      phone: contact.phone,
+    }));
+  }
+
   private async requireActive(organizationId: string, id: string) {
     this.assertId(id);
     const contact = await this.repository.findById(organizationId, id);

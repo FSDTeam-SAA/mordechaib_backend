@@ -8,6 +8,7 @@ import {
   AiActionProposalStatus,
   AiActionTargetType,
   AiActionType,
+  AiProposalSource,
   AiProposalSourceType,
 } from '../../database/schemas/ai-action-proposal.schema';
 
@@ -24,6 +25,16 @@ export type AiActionCenterFilters = {
   sourceType?: AiProposalSourceType;
   taskLimit: number;
   meetingLimit: number;
+};
+
+export type AiActionSourceSummaryRow = {
+  _id: {
+    sourceType: AiProposalSourceType;
+    sourceId: string;
+    actionType: AiActionType;
+    status: AiActionProposalStatus;
+  };
+  count: number;
 };
 
 @Injectable()
@@ -124,6 +135,34 @@ export class AiActionsRepository {
       limit,
       pages: Math.max(Math.ceil(total / limit), 1),
     };
+  }
+
+  summarizeSources(organizationId: string, sources: AiProposalSource[]) {
+    if (!sources.length) return Promise.resolve([]);
+    return this.model
+      .aggregate<AiActionSourceSummaryRow>([
+        {
+          $match: {
+            organizationId,
+            $or: sources.map((source) => ({
+              'source.type': source.type,
+              'source.id': source.id,
+            })),
+          },
+        },
+        {
+          $group: {
+            _id: {
+              sourceType: '$source.type',
+              sourceId: '$source.id',
+              actionType: '$actionType',
+              status: '$status',
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
   }
 
   async getActionCenter(

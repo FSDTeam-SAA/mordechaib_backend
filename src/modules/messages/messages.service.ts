@@ -323,6 +323,33 @@ export class MessagesService {
     return this.withAttachments(organizationId, message);
   }
 
+  async getIntelligenceSource(organizationId: string, messageId: string) {
+    this.assertObjectId(messageId, 'messageId');
+    const message = await this.messages.findActiveById(
+      organizationId,
+      messageId,
+    );
+    if (!message) throw new NotFoundException('Message not found');
+
+    const source = message as typeof message & {
+      createdAt?: Date;
+      updatedAt?: Date;
+    };
+
+    return {
+      id: String(message._id),
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      senderType: message.senderType,
+      type: message.type,
+      content: message.content ?? null,
+      attachmentCount: message.attachmentCount,
+      processingStatus: message.processingStatus,
+      createdAt: source.createdAt,
+      updatedAt: source.updatedAt,
+    };
+  }
+
   async getAttachmentDownload(
     organizationId: string,
     actor: RequestUser,

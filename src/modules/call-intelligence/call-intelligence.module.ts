@@ -4,6 +4,8 @@ import { AiIntegrationModule } from '../ai-integration/ai-integration.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { SourceAnalysesModule } from '../source-analyses/source-analyses.module';
 import { TwilioModule } from '../twilio/twilio.module';
+import { ContactsModule } from '../contacts/contacts.module';
+import { MessagesModule } from '../messages/messages.module';
 import { CallIntelligenceController } from './call-intelligence.controller';
 import { CallIntelligenceDeletionService } from './call-intelligence-deletion.service';
 import { CallIntelligenceProposalsController } from './call-intelligence-proposals.controller';
@@ -17,6 +19,8 @@ import { CallIntelligenceService } from './call-intelligence.service';
     AuditLogsModule,
     SourceAnalysesModule,
     TwilioModule,
+    ContactsModule,
+    MessagesModule,
   ],
   controllers: [
     CallIntelligenceController,

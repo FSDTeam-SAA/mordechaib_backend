@@ -42,17 +42,20 @@ export class CrmRepository {
       .exec();
   }
 
-  findDefaultConnected(organizationId: string) {
-    return this.integrationModel
-      .findOne({
-        organizationId,
-        provider: { $in: CRM_PROVIDERS },
-        status: 'CONNECTED',
-        isDefaultCrm: true,
-      })
-      .select('+accessToken +refreshToken')
-      .lean()
-      .exec();
+  findDefaultConnected(
+    organizationId: string,
+    options: { includeCredentials?: boolean } = {},
+  ) {
+    const query = this.integrationModel.findOne({
+      organizationId,
+      provider: { $in: CRM_PROVIDERS },
+      status: 'CONNECTED',
+      isDefaultCrm: true,
+    });
+    if (options.includeCredentials !== false) {
+      query.select('+accessToken +refreshToken');
+    }
+    return query.lean().exec();
   }
 
   listConnected(organizationId?: string) {
