@@ -40,6 +40,7 @@ import { EmailModule } from './modules/email/email.module';
 import { SupportRequestsModule } from './modules/support-requests/support-requests.module';
 import { OrganizationsAdminModule } from './modules/organizations-admin/organizations-admin.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { AgentWorkforceModule } from './modules/agent-workforce/agent-workforce.module';
 import { OperationalDiagnosticModule } from './modules/operational-diagnostic/operational-diagnostic.module';
 
 @Module({
@@ -83,6 +84,7 @@ import { OperationalDiagnosticModule } from './modules/operational-diagnostic/op
     SupportRequestsModule,
     OrganizationsAdminModule,
     ContactsModule,
+    AgentWorkforceModule,
     OperationalDiagnosticModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

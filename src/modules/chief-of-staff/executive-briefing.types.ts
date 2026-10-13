@@ -58,6 +58,19 @@ export type ExecutiveBriefingAiRequest = {
     type: string;
     status: string;
   }>;
+  agentPolicy: {
+    defaults: {
+      enabled: boolean;
+      approvalRequired: boolean;
+      concurrencyLimit: null;
+    };
+    overrides: Array<{
+      agentId: string;
+      enabled: boolean;
+      approvalRequired: boolean;
+      concurrencyLimit: number | null;
+    }>;
+  };
   facts: ExecutiveBriefingFacts;
   generatedAt: string;
 };
