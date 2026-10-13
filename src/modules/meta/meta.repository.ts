@@ -20,12 +20,39 @@ export class MetaRepository {
       .exec();
   }
 
+  findByOrganizationWithAccessToken(organizationId: string) {
+    return this.integrationModel
+      .findOne({ organizationId, provider: IntegrationProvider.META })
+      .select('+accessToken')
+      .lean()
+      .exec();
+  }
+
   upsert(organizationId: string, input: Partial<Integration>) {
     return this.integrationModel
       .findOneAndUpdate(
         { organizationId, provider: IntegrationProvider.META },
         { $set: input },
         { new: true, upsert: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  disconnect(organizationId: string) {
+    return this.integrationModel
+      .findOneAndUpdate(
+        { organizationId, provider: IntegrationProvider.META },
+        {
+          $set: { status: 'DISCONNECTED' },
+          $unset: {
+            accessToken: 1,
+            refreshToken: 1,
+            expiresAt: 1,
+            metadata: 1,
+          },
+        },
+        { new: true, runValidators: true },
       )
       .lean()
       .exec();

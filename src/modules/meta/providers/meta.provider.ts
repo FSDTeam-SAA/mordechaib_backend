@@ -142,6 +142,14 @@ export class MetaProvider {
     );
   }
 
+  revokePermissions(token: string) {
+    return this.request<{ success: boolean }>(
+      '/me/permissions',
+      { access_token: token },
+      'DELETE',
+    );
+  }
+
   getPagePosts(
     pageId: string,
     token: string,
@@ -250,12 +258,15 @@ export class MetaProvider {
   private async request<T>(
     path: string,
     params: Record<string, string | number | undefined>,
+    method: 'GET' | 'DELETE' = 'GET',
   ): Promise<T> {
     const query = new URLSearchParams();
     Object.entries(params).forEach(
       ([key, value]) => value !== undefined && query.set(key, String(value)),
     );
-    const response = await fetch(`${this.graphBaseUrl}${path}?${query}`);
+    const response = await fetch(`${this.graphBaseUrl}${path}?${query}`, {
+      method,
+    });
     const body = (await response.json()) as T & {
       error?: { message?: string };
     };

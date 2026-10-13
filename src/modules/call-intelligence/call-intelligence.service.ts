@@ -257,12 +257,13 @@ export class CallIntelligenceService {
   ) {
     this.assertSourceId(sourceId);
     const source = { type: query.sourceType, id: sourceId };
+    const intelligenceSource = this.canonicalIntelligenceSource(source);
     const [media, storedAnalysis, actions] = await Promise.all([
       this.getSourceMedia(organizationId, source, query.includeTranscript),
-      this.sourceAnalyses.findBySource(organizationId, source),
+      this.sourceAnalyses.findBySource(organizationId, intelligenceSource),
       this.aiActions.getActionCenter(organizationId, sourceId, {
         status: query.status,
-        sourceType: query.sourceType,
+        sourceType: intelligenceSource.type,
         taskLimit: query.taskLimit,
         meetingLimit: query.meetingLimit,
       }),
@@ -365,7 +366,8 @@ export class CallIntelligenceService {
     }
     const analysis = details.analysis as Record<string, unknown> | null;
     const actions = details.actions as Record<string, unknown>;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Call Intelligence Report</title><style>body{font:14px Arial,sans-serif;color:#172033;max-width:960px;margin:40px auto;line-height:1.5}h1,h2{color:#172554}section{margin:24px 0;padding:18px;border:1px solid #dbe3f0;border-radius:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;padding:14px;border-radius:8px}</style></head><body><h1>Call Intelligence Report</h1><p>Source: ${this.escapeHtml(details.source.type)} / ${this.escapeHtml(details.source.id)}</p><section><h2>Summary</h2><p>${this.escapeHtml(String(analysis?.summary || 'Not available'))}</p></section><section><h2>Analysis</h2><pre>${this.escapeHtml(JSON.stringify(analysis || {}, null, 2))}</pre></section><section><h2>Proposed Actions</h2><pre>${this.escapeHtml(JSON.stringify(actions, null, 2))}</pre></section></body></html>`;
+    const message = 'message' in details ? details.message : undefined;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Call Intelligence Report</title><style>body{font:14px Arial,sans-serif;color:#172033;max-width:960px;margin:40px auto;line-height:1.5}h1,h2{color:#172554}section{margin:24px 0;padding:18px;border:1px solid #dbe3f0;border-radius:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;padding:14px;border-radius:8px}</style></head><body><h1>Call Intelligence Report</h1><p>Source: ${this.escapeHtml(details.source.type)} / ${this.escapeHtml(details.source.id)}</p><section><h2>Summary</h2><p>${this.escapeHtml(String(analysis?.summary || 'Not available'))}</p></section><section><h2>Source Details</h2><pre>${this.escapeHtml(JSON.stringify(details.metadata || {}, null, 2))}</pre></section>${message ? `<section><h2>Message</h2><pre>${this.escapeHtml(JSON.stringify(message, null, 2))}</pre></section>` : ''}<section><h2>Transcript</h2><pre>${this.escapeHtml(JSON.stringify(details.transcript || {}, null, 2))}</pre></section><section><h2>Analysis</h2><pre>${this.escapeHtml(JSON.stringify(analysis || {}, null, 2))}</pre></section><section><h2>Proposed Actions</h2><pre>${this.escapeHtml(JSON.stringify(actions, null, 2))}</pre></section></body></html>`;
     return {
       content: Buffer.from(html, 'utf8'),
       contentType: 'text/html; charset=utf-8',
@@ -624,6 +626,14 @@ export class CallIntelligenceService {
     const value =
       call.direction === 'INBOUND' ? call.fromNumber : call.toNumber;
     return typeof value === 'string' ? value : undefined;
+  }
+
+  private canonicalIntelligenceSource(
+    source: AiProposalSource,
+  ): AiProposalSource {
+    return source.type === AiProposalSourceType.CALL_AUDIO
+      ? { ...source, type: AiProposalSourceType.CALL_TRANSCRIPT }
+      : source;
   }
 
   private callDisplayStatus(call?: LeanRecord) {

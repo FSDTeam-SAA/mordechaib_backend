@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -43,6 +44,8 @@ type MetaIntegrationMetadata = {
 
 @Injectable()
 export class MetaService {
+  private readonly logger = new Logger(MetaService.name);
+
   constructor(
     private readonly repository: MetaRepository,
     private readonly provider: MetaProvider,
@@ -117,6 +120,41 @@ export class MetaService {
       status: integration.status,
       expiresAt: integration.expiresAt,
       metadata: { ...metadata, pages },
+    };
+  }
+
+  async disconnect(organizationId: string) {
+    const integration =
+      await this.repository.findByOrganizationWithAccessToken(organizationId);
+    if (!integration) {
+      return {
+        provider: IntegrationProvider.META,
+        connected: false,
+        disconnected: false,
+      };
+    }
+
+    if (integration.accessToken) {
+      try {
+        const accessToken = decryptText(
+          integration.accessToken,
+          this.encryptionKey,
+        );
+        await this.provider.revokePermissions(accessToken);
+      } catch (error) {
+        this.logger.warn(
+          `Unable to revoke Meta permissions for organization ${organizationId}; continuing local disconnect: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
+
+    await this.repository.disconnect(organizationId);
+    return {
+      provider: IntegrationProvider.META,
+      connected: false,
+      disconnected: true,
     };
   }
 

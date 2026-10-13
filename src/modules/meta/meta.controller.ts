@@ -1,12 +1,13 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   Param,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -54,6 +55,13 @@ export class MetaController {
   @UseGuards(OrganizationGuard)
   connection(@CurrentOrg() organization: RequestOrganization) {
     return this.service.getConnection(organization.id);
+  }
+
+  @Delete('connection')
+  @UseGuards(OrganizationGuard)
+  @ApiOperation({ summary: 'Disconnect the organization Meta account' })
+  disconnect(@CurrentOrg() organization: RequestOrganization) {
+    return this.service.disconnect(organization.id);
   }
 
   @Get('pages/:pageId/posts')

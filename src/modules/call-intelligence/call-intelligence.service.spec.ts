@@ -306,7 +306,7 @@ describe('CallIntelligenceService', () => {
       '66cc9bdfa847ea856c7b41d1',
       '66cc9bdfa847ea856c7b41d2',
       {
-        sourceType: AiProposalSourceType.CALL_TRANSCRIPT,
+        sourceType: AiProposalSourceType.CALL_AUDIO,
         taskLimit: 4,
         meetingLimit: 4,
         includeTranscript: false,
@@ -331,6 +331,13 @@ describe('CallIntelligenceService', () => {
         sourceType: AiProposalSourceType.CALL_TRANSCRIPT,
         status: undefined,
       }),
+    );
+    expect(sourceAnalyses.findBySource).toHaveBeenCalledWith(
+      '66cc9bdfa847ea856c7b41d1',
+      {
+        type: AiProposalSourceType.CALL_TRANSCRIPT,
+        id: '66cc9bdfa847ea856c7b41d2',
+      },
     );
   });
 
@@ -440,6 +447,9 @@ describe('CallIntelligenceService', () => {
     expect(report.content.toString('utf8')).toContain(
       '&lt;script&gt;alert(1)&lt;/script&gt;',
     );
+    expect(report.content.toString('utf8')).toContain('Source Details');
+    expect(report.content.toString('utf8')).toContain('Transcript');
+    expect(report.content.toString('utf8')).toContain('Proposed Actions');
     expect(report.content.toString('utf8')).not.toContain(
       '<script>alert(1)</script>',
     );
