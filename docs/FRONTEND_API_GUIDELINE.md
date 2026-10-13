@@ -3427,3 +3427,70 @@ If a future screen needs one of these capabilities, add it deliberately to this 
 - [ ] `409` causes a resource re-fetch; `429` preserves the form and applies retry guidance; `5xx` never causes fabricated success state.
 - [ ] Platform-admin endpoints are hidden from organization users and require a verified `isPlatformAdmin` user.
 - [ ] Deprecated and internal route families in section 23 are not used.
+## AI Agent Workforce
+
+The workforce APIs separate platform agent catalog state, organization policy,
+and measured runtime health. Owner/Admin authentication is required.
+
+### Workforce dashboard
+
+```http
+GET /api/v1/agent-workforce/dashboard?from=2026-10-12T00:00:00.000Z&to=2026-10-13T00:00:00.000Z&page=1&limit=20&runningFreshnessMinutes=60
+```
+
+Each item contains:
+
+- global agent identity and catalog status;
+- `organizationSettings.enabled`, `approvalRequired`, and
+  `concurrencyLimit`;
+- `runtime.status`: `DISABLED`, `WORKING`, `HEALTHY`, `FAILED`, or `NO_DATA`;
+- measured job totals, failures, retry attempts, success rate, and average
+  processing time;
+- proposal and AI-created task counts;
+- explicit availability for capacity, compliance, and revenue attribution.
+
+`runningJobs` is based on Main Backend activities that remain `STARTED` within
+`runningFreshnessMinutes`. Older unfinished activities are returned as
+`staleStartedJobs`. `queuedJobs` and current `retryingJobs` remain
+`UNAVAILABLE` until the AI Backend telemetry contract is implemented.
+
+Do not render unavailable metrics as zero. Use `reason` for the UI tooltip or
+empty-state message.
+
+### Organization agent settings
+
+List saved overrides:
+
+```http
+GET /api/v1/agent-workforce/settings
+```
+
+Agents without an override use these defaults:
+
+```json
+{
+  "enabled": true,
+  "approvalRequired": true,
+  "concurrencyLimit": null
+}
+```
+
+Create or update one override:
+
+```http
+PATCH /api/v1/agent-workforce/settings/{agentId}
+Content-Type: application/json
+
+{
+  "enabled": true,
+  "approvalRequired": true,
+  "concurrencyLimit": 2
+}
+```
+
+At least one property is required. `concurrencyLimit` must be between 1 and
+100, or `null` to clear the configured limit. The agent must be an active platform agent. Disabling an agent is scoped
+to the signed-in organization and never disables the global catalog record.
+
+The full AI Backend integration contract is documented in
+`docs/AI_AGENT_WORKFORCE_AI_BACKEND_CONTRACT.md`.

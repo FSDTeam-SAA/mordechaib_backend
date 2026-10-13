@@ -22,6 +22,7 @@ import { StrategicNote } from '../../database/schemas/strategic-note.schema';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { ExecutiveBriefingFactsService } from './executive-briefing-facts.service';
+import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 
 describe('ExecutiveBriefingFactsService', () => {
   const organizationId = '507f1f77bcf86cd799439011';
@@ -144,6 +145,16 @@ describe('ExecutiveBriefingFactsService', () => {
           },
         }),
       } as unknown as CrmBriefingFactsService,
+      {
+        policyContract: jest.fn().mockResolvedValue({
+          defaults: {
+            enabled: true,
+            approvalRequired: true,
+            concurrencyLimit: null,
+          },
+          overrides: [],
+        }),
+      } as unknown as OrganizationAgentSettingsService,
     );
     const asOf = new Date('2026-09-18T06:00:00.000Z');
 

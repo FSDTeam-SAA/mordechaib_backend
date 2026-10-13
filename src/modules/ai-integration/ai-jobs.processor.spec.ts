@@ -17,6 +17,7 @@ import {
   RefineActionJob,
 } from './ai-jobs.queue';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
+import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 
 describe('AiJobsProcessor user message analysis', () => {
   const organizationId = 'org-1';
@@ -40,6 +41,10 @@ describe('AiJobsProcessor user message analysis', () => {
   let validator: { validate: jest.Mock };
   let chatReplies: { persist: jest.Mock };
   let activity: { start: jest.Mock; succeed: jest.Mock; fail: jest.Mock };
+  let agentSettings: {
+    policyContract: jest.Mock;
+    disabledAgentIds: jest.Mock;
+  };
   let processor: AiJobsProcessor;
 
   beforeEach(() => {
@@ -96,6 +101,13 @@ describe('AiJobsProcessor user message analysis', () => {
       succeed: jest.fn().mockResolvedValue(undefined),
       fail: jest.fn().mockResolvedValue(undefined),
     };
+    agentSettings = {
+      policyContract: jest.fn().mockResolvedValue({
+        defaults: { enabled: true },
+        overrides: [],
+      }),
+      disabledAgentIds: jest.fn().mockResolvedValue([]),
+    };
     processor = new AiJobsProcessor(
       aiService as unknown as AiServiceClient,
       actions as unknown as AiActionsService,
@@ -105,6 +117,7 @@ describe('AiJobsProcessor user message analysis', () => {
       validator as unknown as AiAnalysisResponseValidator,
       chatReplies as unknown as AiChatReplyService,
       activity as unknown as AgentActivityService,
+      agentSettings as unknown as OrganizationAgentSettingsService,
     );
   });
 
@@ -121,6 +134,14 @@ describe('AiJobsProcessor user message analysis', () => {
       { type: 'USER_MESSAGE', id: sourceId },
       expect.objectContaining({ actions: expect.any(Array) }),
       expect.objectContaining({ conversationId }),
+    );
+    expect(aiService.request).toHaveBeenCalledWith(
+      '/api/v1/ai/jobs/analyze-source',
+      expect.objectContaining({
+        context: expect.objectContaining({
+          agentPolicy: expect.objectContaining({ overrides: [] }),
+        }),
+      }),
     );
     expect(chatReplies.persist).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -142,6 +163,21 @@ describe('AiJobsProcessor user message analysis', () => {
       organizationId,
       sourceId,
       'COMPLETED',
+    );
+  });
+
+  it('rejects a response attributed to an organization-disabled agent', async () => {
+    agentSettings.disabledAgentIds.mockResolvedValue(['agent-1']);
+
+    await expect(processor.process(job)).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+    expect(actions.ingestAnalysis).not.toHaveBeenCalled();
+    expect(activity.fail).toHaveBeenCalledWith(
+      'activity-1',
+      expect.objectContaining({
+        failureMessage: expect.stringContaining('organization-disabled'),
+      }),
     );
   });
 
@@ -232,6 +268,10 @@ describe('AiJobsProcessor clarification refinement', () => {
       {} as AiAnalysisResponseValidator,
       {} as AiChatReplyService,
       {} as AgentActivityService,
+      {
+        policyContract: jest.fn(),
+        disabledAgentIds: jest.fn(),
+      } as unknown as OrganizationAgentSettingsService,
     );
   });
 
@@ -293,7 +333,9 @@ describe('AiJobsProcessor clarification refinement', () => {
       reason: 'clarification-refinement-superseded',
     });
     expect(aiService.request).not.toHaveBeenCalled();
-    expect(clarificationWorkflow.recoverAfterFinalFailure).not.toHaveBeenCalled();
+    expect(
+      clarificationWorkflow.recoverAfterFinalFailure,
+    ).not.toHaveBeenCalled();
   });
 
   it('restores the exact stale ANALYZING attempt through the existing queue', async () => {

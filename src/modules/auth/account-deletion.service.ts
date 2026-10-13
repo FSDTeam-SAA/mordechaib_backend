@@ -58,6 +58,7 @@ const ORGANIZATION_COLLECTIONS = [
   'ai_action_proposals',
   'ai_source_analyses',
   'agent_activities',
+  'organization_agent_settings',
   'executive_briefings',
   'strategic_notes',
   'notifications',

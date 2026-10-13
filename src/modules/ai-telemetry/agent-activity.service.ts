@@ -161,6 +161,146 @@ export class AgentActivityService {
     };
   }
 
+  /**
+   * Returns only telemetry measured by this backend. Queue depth and active
+   * retries are intentionally excluded because the AI service does not yet
+   * publish those dimensions per agent.
+   */
+  agentSummaries(
+    organizationId: string,
+    agentIds: string[],
+    range: { from: Date; to: Date },
+    runningFreshSince: Date,
+  ) {
+    if (!agentIds.length) return Promise.resolve([]);
+    return this.activities
+      .aggregate<{
+        agentId: string;
+        totalRuns: number;
+        succeeded: number;
+        failed: number;
+        skipped: number;
+        running: number;
+        staleStarted: number;
+        retryAttempts: number;
+        averageProcessingTimeMs: number | null;
+        latestStatus: AgentActivityStatus;
+        latestActivityAt: Date;
+      }>([
+        {
+          $match: {
+            organizationId,
+            agentId: { $in: agentIds },
+            startedAt: { $gte: range.from, $lt: range.to },
+          },
+        },
+        { $sort: { startedAt: -1 } },
+        {
+          $group: {
+            _id: '$agentId',
+            latestStatus: { $first: '$status' },
+            latestActivityAt: { $first: '$startedAt' },
+            totalRuns: { $sum: 1 },
+            succeeded: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$status', AgentActivityStatus.SUCCEEDED] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            failed: {
+              $sum: {
+                $cond: [{ $eq: ['$status', AgentActivityStatus.FAILED] }, 1, 0],
+              },
+            },
+            skipped: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$status', AgentActivityStatus.SKIPPED] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            running: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$status', AgentActivityStatus.STARTED] },
+                      { $gte: ['$startedAt', runningFreshSince] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            staleStarted: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$status', AgentActivityStatus.STARTED] },
+                      { $lt: ['$startedAt', runningFreshSince] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            retryAttempts: {
+              $sum: { $cond: [{ $gt: ['$attempt', 1] }, 1, 0] },
+            },
+            averageProcessingTimeMs: {
+              $avg: {
+                $cond: [
+                  {
+                    $in: [
+                      '$status',
+                      [
+                        AgentActivityStatus.SUCCEEDED,
+                        AgentActivityStatus.FAILED,
+                        AgentActivityStatus.SKIPPED,
+                      ],
+                    ],
+                  },
+                  '$latencyMs',
+                  null,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            agentId: '$_id',
+            totalRuns: 1,
+            succeeded: 1,
+            failed: 1,
+            skipped: 1,
+            running: 1,
+            staleStarted: 1,
+            retryAttempts: 1,
+            latestStatus: 1,
+            latestActivityAt: 1,
+            averageProcessingTimeMs: {
+              $cond: [
+                { $eq: ['$averageProcessingTimeMs', null] },
+                null,
+                { $round: ['$averageProcessingTimeMs', 0] },
+              ],
+            },
+          },
+        },
+      ])
+      .exec();
+  }
+
   private async finish(
     activityId: string | undefined,
     status: AgentActivityStatus,

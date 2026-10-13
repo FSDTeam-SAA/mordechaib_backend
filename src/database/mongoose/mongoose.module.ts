@@ -129,6 +129,10 @@ import {
   CustomerContact,
   CustomerContactSchema,
 } from '../schemas/customer-contact.schema';
+import {
+  OrganizationAgentSetting,
+  OrganizationAgentSettingSchema,
+} from '../schemas/organization-agent-setting.schema';
 
 @Global()
 @Module({
@@ -206,6 +210,10 @@ import {
       { name: AiSourceAnalysis.name, schema: AiSourceAnalysisSchema },
       { name: AddonProduct.name, schema: AddonProductSchema },
       { name: CustomerContact.name, schema: CustomerContactSchema },
+      {
+        name: OrganizationAgentSetting.name,
+        schema: OrganizationAgentSettingSchema,
+      },
     ]),
   ],
   exports: [MongooseModule],

@@ -26,6 +26,7 @@ import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiTelemetryModule } from '../ai-telemetry/ai-telemetry.module';
 import { EmailModule } from '../email/email.module';
+import { OrganizationAgentSettingsModule } from '../organization-agent-settings/organization-agent-settings.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -48,6 +49,7 @@ function redisConnection(urlValue: string) {
     AiSourceContextModule,
     AiTelemetryModule,
     EmailModule,
+    OrganizationAgentSettingsModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: CallRecording.name, schema: CallRecordingSchema },
