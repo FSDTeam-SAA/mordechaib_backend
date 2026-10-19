@@ -124,7 +124,10 @@ export class ExecutiveBriefingsService {
       type,
       instant,
     );
-    if (!record) throw new NotFoundException('Executive briefing not found');
+    // Absence is a normal first-load state for a period-based dashboard view.
+    // Keep 404 semantics for explicit ID lookups, where the client requested a
+    // concrete resource, but return null for the latest-period projection.
+    if (!record) return null;
     return this.toResponse(record as unknown as Record<string, unknown>);
   }
 

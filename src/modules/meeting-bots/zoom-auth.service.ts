@@ -14,6 +14,28 @@ import {
 import { RecallZoomAuthProvider } from './providers/recall-zoom-auth.provider';
 import { ZoomConnectionsRepository } from './zoom-connections.repository';
 
+export type ZoomOAuthConnectionStage =
+  | 'STATE_VALIDATION'
+  | 'RECALL_CREDENTIAL_CREATION'
+  | 'TOKEN_FETCH'
+  | 'ZOOM_PROFILE_FETCH'
+  | 'CONNECTION_LOOKUP'
+  | 'CONNECTION_PERSIST';
+
+export class ZoomOAuthConnectionError extends Error {
+  constructor(
+    readonly stage: ZoomOAuthConnectionStage,
+    readonly originalError: unknown,
+  ) {
+    super(
+      originalError instanceof Error
+        ? originalError.message
+        : 'Unknown Zoom OAuth error',
+    );
+    this.name = ZoomOAuthConnectionError.name;
+  }
+}
+
 @Injectable()
 export class ZoomAuthService {
   constructor(
@@ -52,21 +74,26 @@ export class ZoomAuthService {
   }
 
   async completeAuthorization(code: string, state: string) {
-    const context = await this.oauthState.consume(state, MeetingPlatform.ZOOM);
-    const credential = await this.provider.createCredential(code);
-    const accessToken = await this.provider.getAccessToken(credential.id);
-    const profile = await this.provider.getCurrentUser(accessToken);
-    const existing = await this.repository.find(
-      context.organizationId,
-      MeetingPlatform.ZOOM,
+    const context = await this.runConnectionStage('STATE_VALIDATION', () =>
+      this.oauthState.consume(state, MeetingPlatform.ZOOM),
+    );
+    const credential = await this.runConnectionStage(
+      'RECALL_CREDENTIAL_CREATION',
+      () => this.provider.createCredential(code),
+    );
+    const accessToken = await this.runConnectionStage('TOKEN_FETCH', () =>
+      this.provider.getAccessToken(credential.id),
+    );
+    const profile = await this.runConnectionStage('ZOOM_PROFILE_FETCH', () =>
+      this.provider.getCurrentUser(accessToken),
+    );
+    const existing = await this.runConnectionStage('CONNECTION_LOOKUP', () =>
+      this.repository.find(context.organizationId, MeetingPlatform.ZOOM),
     );
     const previousMetadata = existing?.metadata as
-      | MeetingConnectionMetadata
-      | undefined;
-    await this.repository.upsert(
-      context.organizationId,
-      MeetingPlatform.ZOOM,
-      {
+      MeetingConnectionMetadata | undefined;
+    await this.runConnectionStage('CONNECTION_PERSIST', () =>
+      this.repository.upsert(context.organizationId, MeetingPlatform.ZOOM, {
         status: 'CONNECTED',
         metadata: {
           connectedByUserId: context.userId,
@@ -80,7 +107,7 @@ export class ZoomAuthService {
             'recall.zoom.oauthAppId',
           ),
         } satisfies MeetingConnectionMetadata,
-      },
+      }),
     );
     if (
       previousMetadata?.recallCredentialId &&
@@ -100,8 +127,7 @@ export class ZoomAuthService {
     );
     if (!connection) return { connected: false };
     const metadata = connection.metadata as
-      | MeetingConnectionMetadata
-      | undefined;
+      MeetingConnectionMetadata | undefined;
     return {
       connected: connection.status === 'CONNECTED',
       status: connection.status,
@@ -122,8 +148,7 @@ export class ZoomAuthService {
     );
     if (!connection) return { connected: false };
     const metadata = connection.metadata as
-      | MeetingConnectionMetadata
-      | undefined;
+      MeetingConnectionMetadata | undefined;
     if (metadata?.recallCredentialId) {
       await this.provider
         .deleteCredential(metadata.recallCredentialId)
@@ -185,14 +210,24 @@ export class ZoomAuthService {
       MeetingPlatform.ZOOM,
     );
     const metadata = connection?.metadata as
-      | MeetingConnectionMetadata
-      | undefined;
+      MeetingConnectionMetadata | undefined;
     if (!metadata?.recallCredentialId) {
       throw new ServiceUnavailableException(
         'The organization Zoom account is not connected',
       );
     }
     return metadata;
+  }
+
+  private async runConnectionStage<T>(
+    stage: ZoomOAuthConnectionStage,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      throw new ZoomOAuthConnectionError(stage, error);
+    }
   }
 
   private get callbackSecret() {
