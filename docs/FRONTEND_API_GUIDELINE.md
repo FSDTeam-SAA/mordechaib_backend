@@ -1070,7 +1070,7 @@ GET /chief-of-staff/briefings/WEEKLY_REVIEW
 GET /chief-of-staff/briefings/WEEKLY_REVIEW?asOf=2026-09-23T10:00:00.000Z
 ```
 
-Use latest-read on screen revisit. If it returns `404`, show an empty state with Generate rather than treating it as a system failure.
+Use latest-read on screen revisit. When no briefing has been generated for the selected period, the route returns `200` with `data: null`. Show an empty state with Generate rather than treating it as a system failure. `404` remains reserved for an explicit `GET /chief-of-staff/briefings/id/:briefingId` lookup whose resource does not exist.
 
 ### 9.5 Render the content contract
 
@@ -1689,7 +1689,7 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 
 ```text
 1. GET  /chief-of-staff/briefings/:type                  (load existing)
-2. If 404 or user requests refresh:
+2. If data is null or user requests refresh:
    POST /chief-of-staff/briefings/:type/generate
 3. GET  /chief-of-staff/briefings/id/:briefingId         (poll using pollAfterMs)
 4. READY: render content by stable section id

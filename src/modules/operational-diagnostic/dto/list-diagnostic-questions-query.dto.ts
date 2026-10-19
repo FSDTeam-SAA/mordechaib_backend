@@ -46,4 +46,3 @@ export class ListDiagnosticQuestionsQueryDto {
   @IsBoolean()
   isActive?: boolean;
 }
-

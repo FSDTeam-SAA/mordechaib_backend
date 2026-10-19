@@ -42,4 +42,3 @@ export class DiagnosticQuestion {
 export const DiagnosticQuestionSchema =
   SchemaFactory.createForClass(DiagnosticQuestion);
 DiagnosticQuestionSchema.index({ categoryId: 1, isActive: 1, order: 1 });
-

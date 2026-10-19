@@ -214,6 +214,13 @@ export class OrganizerDashboardService {
         ExecutiveBriefingType.TODAY,
         now.toISOString(),
       );
+      if (!briefing) {
+        return {
+          availability: 'UNAVAILABLE',
+          briefing: null,
+          reason: 'TODAY_BRIEFING_NOT_GENERATED',
+        };
+      }
       return { availability: 'AVAILABLE', briefing };
     } catch (error) {
       if (error instanceof NotFoundException) {

@@ -26,4 +26,3 @@ export class SubmitDiagnosticAssessmentDto {
   @Type(() => DiagnosticAnswerDto)
   answers!: DiagnosticAnswerDto[];
 }
-

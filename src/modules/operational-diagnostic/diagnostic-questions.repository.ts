@@ -75,7 +75,10 @@ export class DiagnosticQuestionsRepository {
   }
 
   findByIds(ids: string[]) {
-    return this.model.find({ _id: { $in: ids } }).lean().exec();
+    return this.model
+      .find({ _id: { $in: ids } })
+      .lean()
+      .exec();
   }
 
   countByCategoryId(categoryId: string) {
@@ -93,4 +96,3 @@ export class DiagnosticQuestionsRepository {
     return this.model.findByIdAndDelete(id).lean().exec();
   }
 }
-

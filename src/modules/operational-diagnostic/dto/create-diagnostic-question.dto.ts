@@ -47,7 +47,8 @@ export class CreateDiagnosticQuestionDto {
   title!: string;
 
   @ApiPropertyOptional({
-    example: 'How documented, accessible, and enforced are your core operational processes?',
+    example:
+      'How documented, accessible, and enforced are your core operational processes?',
   })
   @IsOptional()
   @IsString()
@@ -71,4 +72,3 @@ export class CreateDiagnosticQuestionDto {
   @Type(() => DiagnosticChoiceDto)
   choices!: DiagnosticChoiceDto[];
 }
-

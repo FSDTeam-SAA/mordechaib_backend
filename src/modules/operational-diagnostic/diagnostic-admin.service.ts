@@ -44,7 +44,10 @@ export class DiagnosticAdminService {
     return categories.map((cat) => ({
       ...cat,
       id: String((cat as unknown as { _id: unknown })._id),
-      questions: questionsByCategoryId.get(String((cat as unknown as { _id: unknown })._id)) ?? [],
+      questions:
+        questionsByCategoryId.get(
+          String((cat as unknown as { _id: unknown })._id),
+        ) ?? [],
     }));
   }
 
@@ -84,7 +87,8 @@ export class DiagnosticAdminService {
     const categoryIds = [...new Set(dto.questions.map((q) => q.categoryId))];
     for (const catId of categoryIds) {
       const category = await this.categoriesRepo.findById(catId);
-      if (!category) throw new NotFoundException(`Category not found: ${catId}`);
+      if (!category)
+        throw new NotFoundException(`Category not found: ${catId}`);
     }
     return this.questionsRepo.createMany(dto.questions);
   }
@@ -148,14 +152,17 @@ export class DiagnosticAdminService {
       questions.map((q) => [String((q as unknown as { _id: unknown })._id), q]),
     );
 
-    const categoryIds = [...new Set(assessment.answers.map((a) => a.categoryId))];
+    const categoryIds = [
+      ...new Set(assessment.answers.map((a) => a.categoryId)),
+    ];
     const categories =
-      categoryIds.length > 0
-        ? await this.categoriesRepo.findAll(true)
-        : [];
+      categoryIds.length > 0 ? await this.categoriesRepo.findAll(true) : [];
 
     const categoryMap = new Map(
-      categories.map((c) => [String((c as unknown as { _id: unknown })._id), c]),
+      categories.map((c) => [
+        String((c as unknown as { _id: unknown })._id),
+        c,
+      ]),
     );
 
     const enrichedAnswers = assessment.answers.map((answer) => {
@@ -182,4 +189,3 @@ export class DiagnosticAdminService {
     };
   }
 }
-

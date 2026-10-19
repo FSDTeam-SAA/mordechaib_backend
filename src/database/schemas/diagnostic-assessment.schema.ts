@@ -66,5 +66,8 @@ export const DiagnosticAssessmentSchema =
   SchemaFactory.createForClass(DiagnosticAssessment);
 DiagnosticAssessmentSchema.index({ organizationId: 1, createdAt: -1 });
 DiagnosticAssessmentSchema.index({ userId: 1, createdAt: -1 });
-DiagnosticAssessmentSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
-
+DiagnosticAssessmentSchema.index({
+  organizationId: 1,
+  userId: 1,
+  createdAt: -1,
+});

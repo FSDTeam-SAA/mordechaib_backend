@@ -16,7 +16,11 @@ export class DiagnosticCategoriesRepository {
 
   findAll(includeInactive = false) {
     const filter = includeInactive ? {} : { isActive: true };
-    return this.model.find(filter).sort({ order: 1, createdAt: 1 }).lean().exec();
+    return this.model
+      .find(filter)
+      .sort({ order: 1, createdAt: 1 })
+      .lean()
+      .exec();
   }
 
   findById(id: string) {
@@ -34,4 +38,3 @@ export class DiagnosticCategoriesRepository {
     return this.model.findByIdAndDelete(id).lean().exec();
   }
 }
-

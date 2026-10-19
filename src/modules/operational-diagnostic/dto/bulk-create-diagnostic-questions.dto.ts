@@ -10,4 +10,3 @@ export class BulkCreateDiagnosticQuestionsDto {
   @Type(() => CreateDiagnosticQuestionDto)
   questions!: CreateDiagnosticQuestionDto[];
 }
-

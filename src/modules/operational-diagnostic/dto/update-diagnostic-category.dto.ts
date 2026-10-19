@@ -4,4 +4,3 @@ import { CreateDiagnosticCategoryDto } from './create-diagnostic-category.dto';
 export class UpdateDiagnosticCategoryDto extends PartialType(
   CreateDiagnosticCategoryDto,
 ) {}
-

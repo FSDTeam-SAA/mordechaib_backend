@@ -20,4 +20,3 @@ export class ListDiagnosticAssessmentsUserQueryDto {
   @IsOptional()
   status?: string;
 }
-
