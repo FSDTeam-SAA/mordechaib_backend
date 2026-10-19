@@ -47,4 +47,3 @@ import {
   exports: [DiagnosticAdminService, DiagnosticUserService],
 })
 export class OperationalDiagnosticModule {}
-

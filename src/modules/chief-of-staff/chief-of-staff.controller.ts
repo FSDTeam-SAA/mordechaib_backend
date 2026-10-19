@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -70,6 +71,10 @@ export class ChiefOfStaffController {
   @Get(':type')
   @ApiParam({ name: 'type', enum: ExecutiveBriefingType })
   @ApiOperation({ summary: 'Get the latest Executive Briefing for a period' })
+  @ApiOkResponse({
+    description:
+      'Returns the latest briefing, or null when the selected period has not been generated yet.',
+  })
   getLatest(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,

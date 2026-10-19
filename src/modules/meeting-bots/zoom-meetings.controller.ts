@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Patch,
   Post,
@@ -32,12 +33,15 @@ import { CreateZoomMeetingDto } from './dto/create-zoom-meeting.dto';
 import { ListMeetingBotsQueryDto } from './dto/list-meeting-bots-query.dto';
 import { UpdateMeetingBotDto } from './dto/update-meeting-bot.dto';
 import { MeetingBotsService } from './meeting-bots.service';
-import { ZoomAuthService } from './zoom-auth.service';
+import { RecallApiError } from './providers/recall.types';
+import { ZoomAuthService, ZoomOAuthConnectionError } from './zoom-auth.service';
 
 @ApiTags('Connections')
 @ApiBearerAuth()
 @Controller('zoom-meetings')
 export class ZoomMeetingsController {
+  private readonly logger = new Logger(ZoomMeetingsController.name);
+
   constructor(
     private readonly meetings: MeetingBotsService,
     private readonly zoomAuth: ZoomAuthService,
@@ -93,26 +97,72 @@ export class ZoomMeetingsController {
     @Query('error') error?: string,
   ) {
     if (error) {
+      this.logger.warn(
+        `Zoom OAuth authorization was rejected before callback completion: providerError=${this.safeLogValue(error)}`,
+      );
       return {
         url: this.zoomAuth.callbackUrl(false, error),
         statusCode: 302,
       };
     }
     if (!code || !state) {
+      this.logger.warn(
+        `Zoom OAuth callback is missing required parameters: codePresent=${Boolean(code)} statePresent=${Boolean(state)}`,
+      );
       return {
         url: this.zoomAuth.callbackUrl(false, 'missing_code_or_state'),
         statusCode: 302,
       };
     }
     try {
-      await this.zoomAuth.completeAuthorization(code, state);
+      const connection = await this.zoomAuth.completeAuthorization(code, state);
+      this.logger.log(
+        `Zoom OAuth connection completed: organizationId=${connection.organizationId}`,
+      );
       return { url: this.zoomAuth.callbackUrl(true), statusCode: 302 };
-    } catch {
+    } catch (callbackError) {
+      this.logger.error(this.oauthErrorMessage(callbackError));
       return {
         url: this.zoomAuth.callbackUrl(false, 'oauth_failed'),
         statusCode: 302,
       };
     }
+  }
+
+  private oauthErrorMessage(error: unknown) {
+    if (error instanceof ZoomOAuthConnectionError) {
+      const cause = error.originalError;
+      if (cause instanceof RecallApiError) {
+        return (
+          `Zoom OAuth callback failed: stage=${error.stage} ` +
+          `provider=Recall.ai httpStatus=${cause.status} ` +
+          `providerMessage=${this.safeLogValue(cause.message)}`
+        );
+      }
+      return (
+        `Zoom OAuth callback failed: stage=${error.stage} ` +
+        `errorType=${this.safeLogValue(this.errorType(cause))} ` +
+        `message=${this.safeLogValue(this.errorMessage(cause))}`
+      );
+    }
+
+    return (
+      'Zoom OAuth callback failed: stage=UNEXPECTED ' +
+      `errorType=${this.safeLogValue(this.errorType(error))} ` +
+      `message=${this.safeLogValue(this.errorMessage(error))}`
+    );
+  }
+
+  private errorType(error: unknown) {
+    return error instanceof Error ? error.name : typeof error;
+  }
+
+  private errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown callback error';
+  }
+
+  private safeLogValue(value: string) {
+    return JSON.stringify(value.slice(0, 500));
   }
 
   @Get('oauth/connection')

@@ -139,4 +139,17 @@ describe('ExecutiveBriefingsService', () => {
       '507f1f77bcf86cd799439013',
     );
   });
+
+  it('returns null when no briefing exists for the selected period', async () => {
+    repository.findLatestForPeriod.mockResolvedValue(null);
+
+    await expect(
+      service.getLatest(
+        organizationId,
+        userId,
+        UserRole.OWNER,
+        ExecutiveBriefingType.TEAM_CHALLENGES,
+      ),
+    ).resolves.toBeNull();
+  });
 });

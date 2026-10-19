@@ -140,9 +140,7 @@ describe('OrganizerDashboardService', () => {
   });
 
   it('returns an unavailable widget when today briefing was not generated', async () => {
-    briefings.getLatest.mockRejectedValue(
-      new NotFoundException('Executive briefing not found'),
-    );
+    briefings.getLatest.mockResolvedValue(null);
 
     await expect(
       service.todayBriefing(

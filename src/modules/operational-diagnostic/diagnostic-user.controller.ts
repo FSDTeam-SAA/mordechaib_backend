@@ -71,4 +71,3 @@ export class DiagnosticUserController {
     return this.service.getAssessmentDetail(org.id, user.id, id);
   }
 }
-

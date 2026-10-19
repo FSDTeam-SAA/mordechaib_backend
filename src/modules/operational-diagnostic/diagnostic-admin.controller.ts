@@ -51,7 +51,9 @@ export class DiagnosticAdminController {
   }
 
   @Delete('categories/:id')
-  @ApiOperation({ summary: 'Delete a diagnostic category (must have no questions)' })
+  @ApiOperation({
+    summary: 'Delete a diagnostic category (must have no questions)',
+  })
   deleteCategory(@Param('id') id: string) {
     return this.service.deleteCategory(id);
   }
@@ -117,4 +119,3 @@ export class DiagnosticAdminController {
     return this.service.getAssessmentDetail(id);
   }
 }
-

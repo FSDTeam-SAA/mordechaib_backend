@@ -46,4 +46,3 @@ export class ListDiagnosticAssessmentsAdminQueryDto {
   @IsISO8601({ strict: true })
   dateTo?: string;
 }
-
