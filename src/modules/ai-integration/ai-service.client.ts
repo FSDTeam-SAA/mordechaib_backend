@@ -98,12 +98,13 @@ export class AiServiceClient {
     const jobId = typeof body.jobId === 'string' ? body.jobId : undefined;
     const requestId =
       typeof body.requestId === 'string' ? body.requestId : undefined;
+    const turnId = typeof body.turnId === 'string' ? body.turnId : undefined;
     const source = body.source as { type?: unknown; id?: unknown } | undefined;
     const sourceLabel =
       source && typeof source.type === 'string' && typeof source.id === 'string'
         ? `, source=${source.type}:${source.id}`
         : '';
-    const identifier = jobId || requestId;
+    const identifier = jobId || requestId || turnId;
     return `POST ${path}${identifier ? `, request=${identifier}` : ''}${sourceLabel}`;
   }
 }

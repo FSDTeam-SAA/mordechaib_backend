@@ -5,6 +5,7 @@ import type {
   CrmObjectSchema,
   CrmRecordPage,
   ListCrmRecordsInput,
+  NormalizedCrmRecord,
 } from './crm-object-sync.interface';
 
 export type CrmProviderType =
@@ -69,6 +70,14 @@ export type UpdateCrmDealInput = Partial<CreateCrmDealInput> & {
   archived?: boolean;
 };
 
+export type UpdateCrmRecordInput = {
+  objectType: string;
+  externalId: string;
+  properties: Record<string, unknown>;
+  fields: string[];
+  instanceUrl?: string;
+};
+
 export type CrmConnectionMetadata = {
   connectedByUserId?: string;
   providerAccountId?: string;
@@ -77,6 +86,8 @@ export type CrmConnectionMetadata = {
   providerOrganizationId?: string;
   instanceUrl?: string;
   scopes?: string[];
+  requestedScopes?: string[];
+  unavailableScopes?: string[];
   syncCursor?: string;
   syncSince?: string;
   syncStartedAt?: string;
@@ -99,6 +110,7 @@ export class CrmProviderHttpError extends Error {
 
 export interface CrmProvider {
   readonly provider: CrmProviderType;
+  oauthScopePlan?(): { required: string[]; optional: string[] };
   authorizationUrl(state: string, context?: { codeChallenge?: string }): string;
   exchangeCode(
     code: string,
@@ -126,6 +138,10 @@ export interface CrmProvider {
     accessToken: string,
     input: ListCrmRecordsInput,
   ): Promise<CrmRecordPage>;
+  updateRecord(
+    accessToken: string,
+    input: UpdateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord>;
   listDeals(
     accessToken: string,
     input: { cursor?: string; modifiedSince?: Date; instanceUrl?: string },

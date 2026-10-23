@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsMongoId,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateConversationDto {
   @ApiPropertyOptional({ default: 'New Chat', maxLength: 200 })
@@ -12,4 +18,11 @@ export class CreateConversationDto {
   @MinLength(1)
   @MaxLength(200)
   title?: string;
+
+  @ApiPropertyOptional({
+    description: 'Active platform agent to use for this conversation.',
+  })
+  @IsMongoId()
+  @IsOptional()
+  selectedAgentId?: string;
 }

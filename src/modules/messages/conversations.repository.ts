@@ -34,7 +34,12 @@ export class ConversationsRepository {
       .exec();
   }
 
-  async create(organizationId: string, createdBy: string, title: string) {
+  async create(
+    organizationId: string,
+    createdBy: string,
+    title: string,
+    selectedAgentId?: string,
+  ) {
     const conversation = await this.conversationModel.create({
       organizationId,
       createdBy,
@@ -42,6 +47,7 @@ export class ConversationsRepository {
       isDefault: false,
       status: ConversationStatus.ACTIVE,
       totalMessageCount: 0,
+      ...(selectedAgentId ? { selectedAgentId } : {}),
     });
     return conversation.toObject();
   }
@@ -71,34 +77,25 @@ export class ConversationsRepository {
     return { items, total };
   }
 
-  async findOrCreate(organizationId: string, createdBy: string) {
-    const current = await this.findLatest(organizationId, createdBy);
-    if (current) return current;
-    try {
-      return await this.conversationModel
-        .findOneAndUpdate(
-          { organizationId, createdBy, isDefault: true },
-          {
-            $setOnInsert: {
-              organizationId,
-              createdBy,
-              title: 'AI Assistant',
-              isDefault: true,
-              status: ConversationStatus.ACTIVE,
-              totalMessageCount: 0,
-            },
-          },
-          { new: true, upsert: true, runValidators: true },
-        )
-        .lean()
-        .exec();
-    } catch (error) {
-      if (this.isDuplicateKey(error)) {
-        const existing = await this.findLatest(organizationId, createdBy);
-        if (existing) return existing;
-      }
-      throw error;
-    }
+  updateSelectedAgent(
+    organizationId: string,
+    conversationId: string,
+    createdBy: string,
+    selectedAgentId: string,
+  ) {
+    return this.conversationModel
+      .findOneAndUpdate(
+        {
+          _id: conversationId,
+          organizationId,
+          createdBy,
+          status: ConversationStatus.ACTIVE,
+        },
+        { $set: { selectedAgentId } },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
   }
 
   recordMessage(organizationId: string, conversationId: string, sentAt: Date) {
@@ -110,14 +107,5 @@ export class ConversationsRepository {
       )
       .lean()
       .exec();
-  }
-
-  private isDuplicateKey(error: unknown) {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 11000
-    );
   }
 }

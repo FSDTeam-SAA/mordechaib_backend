@@ -15,6 +15,7 @@ MESSAGE
 CLARIFICATION
 TASK_PROPOSAL
 MEETING_PROPOSAL
+CRM_RECORD_UPDATE_PROPOSAL
 ```
 
 This endpoint is only for interactive chat. Do not reuse the call, transcript,
@@ -24,9 +25,9 @@ or meeting analysis endpoint:
 POST /api/v1/ai/jobs/analyze-source
 ```
 
-The AI Backend does not create Main Backend tasks or meetings. It prepares a
-proposal; Main Backend and the organizer handle validation, editing, approval,
-and execution.
+The AI Backend does not create Main Backend tasks, meetings, or CRM mutations.
+It prepares a proposal; Main Backend and the organizer handle authoritative
+validation, editing, approval, and execution.
 
 ## 2. Endpoint to implement
 
@@ -492,6 +493,70 @@ Meeting rules:
 - do not perform CRM lookup in this phase;
 - do not say the meeting was scheduled—say it is ready for review.
 
+## 8A. Result: `CRM_RECORD_UPDATE_PROPOSAL`
+
+Use this only after resolving an exact synchronized CRM record and reading its
+authoritative object schema from the Main Backend internal CRM routes.
+
+```ts
+type CrmRecordUpdateProposal = {
+  provider: "HUBSPOT" | "SALESFORCE";
+  objectType: string;
+  externalId: string;
+  properties: Record<string, unknown>; // changed fields only
+  expectedProviderUpdatedAt?: string; // ISO timestamp from the record
+};
+
+type CrmRecordUpdateProposalResult = {
+  type: "CRM_RECORD_UPDATE_PROPOSAL";
+  draftId: string;
+  proposal: CrmRecordUpdateProposal;
+};
+```
+
+Example result fragment:
+
+```json
+{
+  "type": "CRM_RECORD_UPDATE_PROPOSAL",
+  "draftId": "chat-draft-crm-product-001",
+  "proposal": {
+    "provider": "HUBSPOT",
+    "objectType": "products",
+    "externalId": "123456",
+    "properties": {
+      "price": 125
+    },
+    "expectedProviderUpdatedAt": "2026-10-23T06:00:00.000Z"
+  }
+}
+```
+
+CRM rules:
+
+- never call HubSpot or Salesforce directly;
+- never return a guessed `objectType`, `externalId`, field name, or enum value;
+- resolve ambiguous object/record matches with `CLARIFICATION` and use
+  `kind: "CRM_RECORD_UPDATE"`;
+- include only changed properties, using the types/options returned by schema;
+- never include Main Backend generated preview/fingerprint fields;
+- never claim the CRM record was updated; say the proposal is ready for review;
+- Main Backend may reject the proposal if permissions, schema, or record version
+  changed before approval.
+
+### Read-only CRM context routes
+
+Authenticate all calls with `x-ai-actions-secret`:
+
+```http
+GET /api/v1/ai-internal/organizations/{organizationId}/crm/{provider}/objects
+GET /api/v1/ai-internal/organizations/{organizationId}/crm/{provider}/objects/{objectType}/schema
+GET /api/v1/ai-internal/organizations/{organizationId}/crm/{provider}/objects/{objectType}/records?page=1&limit=20
+```
+
+Use the minimum calls needed. The records route is paginated. These routes are
+read-only; there is intentionally no AI-internal CRM write route.
+
 ## 9. Conversation history access
 
 Main Backend normally includes the most recent messages in every request.
@@ -660,6 +725,16 @@ They are result types returned by the same chat engine.
 - Email is never guessed.
 - Reply says ready for review, not scheduled.
 
+### CRM record update
+
+- Ambiguous object or record returns `CLARIFICATION`.
+- A complete request returns `CRM_RECORD_UPDATE_PROPOSAL`.
+- Object, record, and property names come from Main Backend context routes.
+- Read-only/calculated fields are never proposed.
+- Only changed fields are included.
+- Reply says ready for review, not updated.
+- The AI Backend never calls a provider or Main Backend write route.
+
 ### History and idempotency
 
 - USER and AI history is interpreted chronologically.
@@ -681,8 +756,10 @@ Main Backend will:
 - expose `olderMessagesPath` when older history is available;
 - persist `reply` as an AI message linked to `inReplyToMessageId`;
 - validate and persist clarification/task/meeting results;
+- validate CRM update proposals against the live authoritative schema and
+  synchronized record;
 - let the organizer edit and approve proposals;
-- execute approved tasks and meetings;
+- execute approved tasks, meetings, and CRM updates through provider adapters;
 - deliver results to Frontend through polling.
 
 The AI Backend only needs to implement the dedicated route, schemas, behavior,

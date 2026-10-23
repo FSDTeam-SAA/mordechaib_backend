@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import {
   AiActionProposalStatus,
   AiActionType,
@@ -16,6 +17,7 @@ import { SourceAnalysesRepository } from '../source-analyses/source-analyses.rep
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UpdateAiActionProposalDto } from './dto/update-ai-action-proposal.dto';
+import { CrmRecordMutationsService } from '../crm/crm-record-mutations.service';
 
 describe('AiActionsService analysis ingestion', () => {
   const organizationId = '66cc9bdfa847ea856c7b41d2';
@@ -37,6 +39,8 @@ describe('AiActionsService analysis ingestion', () => {
   };
   const repository = {
     findByProposalIdWithHash: jest.fn(),
+    findChatDraft: jest.fn(),
+    updateChatDraft: jest.fn(),
     findActiveAgent: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
@@ -66,6 +70,7 @@ describe('AiActionsService analysis ingestion', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     repository.findByProposalIdWithHash.mockResolvedValue(null);
+    repository.findChatDraft.mockResolvedValue(null);
     repository.findActiveAgent.mockImplementation(async (id: string) =>
       id === salesAgentId
         ? { _id: id, name: 'Sales Agent', type: AgentType.SALES }
@@ -92,6 +97,126 @@ describe('AiActionsService analysis ingestion', () => {
       organizations as unknown as OrganizationsService,
       auditLogs as unknown as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
+      {} as CrmRecordMutationsService,
+    );
+  });
+
+  it('creates a stable chat clarification draft without fabricated analysis', async () => {
+    const result = await service.ingestChatDraft(organizationId, {
+      conversationId: '66cc9bdfa847ea856c7b41d3',
+      draftId: 'meeting-001',
+      sourceMessageId: '66cc9bdfa847ea856c7b41d4',
+      actionType: AiActionType.SCHEDULE_MEETING,
+      proposedByAgent: {
+        id: operationsAgentId,
+        name: 'Operations Agent',
+        type: AgentType.OPERATIONS,
+      },
+      payload: { title: 'Customer meeting' },
+      clarificationQuestions: [
+        {
+          id: 'meeting-time',
+          field: 'startsAt',
+          question: 'What time should it start?',
+          inputType: 'datetime',
+          required: true,
+        },
+      ],
+      evidenceText: 'Schedule a customer meeting',
+      effectiveTimezone: 'Asia/Dhaka',
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proposalId: 'chat:66cc9bdfa847ea856c7b41d3:meeting-001',
+        chatDraftId: 'meeting-001',
+        status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+      }),
+    );
+    expect(repository.create.mock.calls[0][0]).not.toHaveProperty('analysis');
+    expect(result).toEqual(expect.objectContaining({ duplicate: false }));
+  });
+
+  it('rejects a ready chat meeting proposal without an invitee email', async () => {
+    await expect(
+      service.ingestChatDraft(organizationId, {
+        conversationId: '66cc9bdfa847ea856c7b41d3',
+        draftId: 'meeting-002',
+        sourceMessageId: '66cc9bdfa847ea856c7b41d4',
+        actionType: AiActionType.SCHEDULE_MEETING,
+        proposedByAgent: {
+          id: operationsAgentId,
+          name: 'Operations Agent',
+          type: AgentType.OPERATIONS,
+        },
+        payload: {
+          platform: 'GOOGLE_MEET',
+          title: 'Customer meeting',
+          startsAt: '2026-10-21T09:00:00.000Z',
+          timezone: 'Asia/Dhaka',
+        },
+        evidenceText: 'Schedule a customer meeting tomorrow',
+        effectiveTimezone: 'Asia/Dhaka',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('allows an active selected agent to continue an existing chat draft', async () => {
+    repository.findChatDraft.mockResolvedValue({
+      _id: '66cc9bdfa847ea856c7b41d5',
+      organizationId,
+      conversationId: '66cc9bdfa847ea856c7b41d3',
+      chatDraftId: 'task-001',
+      actionType: AiActionType.CREATE_TASK,
+      proposedByAgent: {
+        id: operationsAgentId,
+        name: 'Operations Agent',
+        type: AgentType.OPERATIONS,
+      },
+      source: {
+        type: AiProposalSourceType.USER_MESSAGE,
+        id: '66cc9bdfa847ea856c7b41d1',
+      },
+      payload: { title: 'Prepare proposal' },
+      status: AiActionProposalStatus.NEEDS_CLARIFICATION,
+      revision: 1,
+      proposalHash: 'old-hash',
+    });
+    repository.updateChatDraft.mockImplementation(
+      async (_org, _chat, _id, update) => ({
+        _id: '66cc9bdfa847ea856c7b41d5',
+        revision: 2,
+        ...update,
+      }),
+    );
+
+    await service.ingestChatDraft(organizationId, {
+      conversationId: '66cc9bdfa847ea856c7b41d3',
+      draftId: 'task-001',
+      sourceMessageId: '66cc9bdfa847ea856c7b41d4',
+      actionType: AiActionType.CREATE_TASK,
+      proposedByAgent: {
+        id: salesAgentId,
+        name: 'Sales Agent',
+        type: AgentType.SALES,
+      },
+      payload: { title: 'Prepare proposal', priority: 'HIGH' },
+      evidenceText: 'Make it high priority',
+      effectiveTimezone: 'Asia/Dhaka',
+    });
+
+    expect(repository.updateChatDraft).toHaveBeenCalledWith(
+      organizationId,
+      '66cc9bdfa847ea856c7b41d3',
+      'task-001',
+      expect.objectContaining({
+        proposedByAgent: {
+          id: salesAgentId,
+          name: 'Sales Agent',
+          type: AgentType.SALES,
+        },
+      }),
     );
   });
 
@@ -129,6 +254,7 @@ describe('AiActionsService analysis ingestion', () => {
       total: 3,
       tasks: 2,
       meetings: 1,
+      crmUpdates: 0,
       analyzing: 0,
       needsClarification: 1,
       pending: 2,

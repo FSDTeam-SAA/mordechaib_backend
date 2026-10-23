@@ -89,10 +89,17 @@ export class MessagesController {
   @ApiBody({
     schema: {
       type: 'object',
+      required: ['startNewConversation'],
       properties: {
+        startNewConversation: {
+          type: 'boolean',
+          description:
+            'True creates a new conversation for this first message; false requires conversationId.',
+        },
         clientMessageId: { type: 'string', format: 'uuid' },
         conversationId: { type: 'string' },
         content: { type: 'string', maxLength: 20_000 },
+        selectedAgentId: { type: 'string', format: 'object-id' },
         files: {
           type: 'array',
           maxItems: MAX_MESSAGE_ATTACHMENTS,

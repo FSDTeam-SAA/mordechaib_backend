@@ -22,6 +22,7 @@ export type AiClarificationQuestionInput = {
   question: string;
   inputType?: string;
   required?: boolean;
+  options?: Array<{ label: string; value: string }>;
 };
 
 export type AiAnalysisSummary = {

@@ -8,6 +8,9 @@ import path from 'path';
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
 
 export const MAX_MESSAGE_ATTACHMENTS = 10;
+// Five supported metadata fields plus limited headroom for multipart clients
+// (including Swagger UI) that submit an empty text part for the file control.
+export const MAX_MESSAGE_FORM_FIELDS = 10;
 const MB = 1024 * 1024;
 export const MESSAGE_ATTACHMENT_SIZE_LIMITS: Record<
   MessageAttachmentCategory,
@@ -122,7 +125,7 @@ export const MESSAGE_UPLOAD_OPTIONS: MulterOptions = {
   limits: {
     files: MAX_MESSAGE_ATTACHMENTS,
     fileSize: MESSAGE_ATTACHMENT_SIZE_LIMITS[MessageAttachmentCategory.VIDEO],
-    fields: 5,
+    fields: MAX_MESSAGE_FORM_FIELDS,
   },
   fileFilter: (_request, file, callback) => {
     if (!resolveAttachmentCategory(file.originalname, file.mimetype)) {

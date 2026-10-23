@@ -20,13 +20,17 @@ import { CrmController } from './crm.controller';
 import { CrmSchemaController } from './crm-schema.controller';
 import { CrmRecordsController } from './crm-records.controller';
 import { CrmRecordsService } from './crm-records.service';
+import { CrmRecordMutationsService } from './crm-record-mutations.service';
 import { CrmSchemaDiscoveryService } from './crm-schema-discovery.service';
+import { CrmSchemaPresentationService } from './crm-schema-presentation.service';
 import { CrmService } from './crm.service';
 import { CrmRepository } from './crm.repository';
 import { CrmRecordsRepository } from './crm-records.repository';
 import { CrmBriefingFactsService } from './crm-briefing-facts.service';
 import { HubSpotProvider } from './providers/hubspot.provider';
 import { SalesforceProvider } from './providers/salesforce.provider';
+import { CrmAiInternalController } from './crm-ai-internal.controller';
+import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
 
 @Module({
   imports: [
@@ -43,6 +47,7 @@ import { SalesforceProvider } from './providers/salesforce.provider';
     CrmConnectionsController,
     CrmSchemaController,
     CrmRecordsController,
+    CrmAiInternalController,
   ],
   providers: [
     CrmService,
@@ -50,6 +55,7 @@ import { SalesforceProvider } from './providers/salesforce.provider';
     CrmDealsRepository,
     CrmRecordsRepository,
     CrmRecordsService,
+    CrmRecordMutationsService,
     CrmConnectionsService,
     CrmSyncService,
     CrmSyncConfigurationService,
@@ -57,10 +63,12 @@ import { SalesforceProvider } from './providers/salesforce.provider';
     CrmProviderRegistry,
     CrmObjectSyncService,
     CrmSchemaDiscoveryService,
+    CrmSchemaPresentationService,
     CrmBriefingFactsService,
     HubSpotProvider,
     SalesforceProvider,
+    AiServiceSecretGuard,
   ],
-  exports: [CrmService, CrmBriefingFactsService],
+  exports: [CrmService, CrmBriefingFactsService, CrmRecordMutationsService],
 })
 export class CrmModule {}

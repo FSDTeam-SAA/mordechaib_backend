@@ -1,6 +1,8 @@
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
 import {
+  MAX_MESSAGE_FORM_FIELDS,
   MESSAGE_ATTACHMENT_SIZE_LIMITS,
+  MESSAGE_UPLOAD_OPTIONS,
   resolveAttachmentCategory,
 } from './message-upload.config';
 
@@ -41,5 +43,10 @@ describe('message upload configuration', () => {
     expect(
       MESSAGE_ATTACHMENT_SIZE_LIMITS[MessageAttachmentCategory.VIDEO],
     ).toBe(200 * 1024 * 1024);
+  });
+
+  it('allows the bounded multipart metadata fields used by Swagger clients', () => {
+    expect(MAX_MESSAGE_FORM_FIELDS).toBe(10);
+    expect(MESSAGE_UPLOAD_OPTIONS.limits?.fields).toBe(MAX_MESSAGE_FORM_FIELDS);
   });
 });
