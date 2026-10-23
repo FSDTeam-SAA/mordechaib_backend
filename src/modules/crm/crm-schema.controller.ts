@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -13,6 +13,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { RequestOrganization } from '../../common/types/request-context.type';
 import { CrmProviderRegistry } from './crm-provider.registry';
 import { CrmSchemaDiscoveryService } from './crm-schema-discovery.service';
+import { CrmSchemaPresentationService } from './crm-schema-presentation.service';
+import { GetCrmObjectSchemaQueryDto } from './dto/get-crm-object-schema-query.dto';
 
 @ApiTags('CRM Schema Discovery')
 @ApiBearerAuth()
@@ -22,6 +24,7 @@ import { CrmSchemaDiscoveryService } from './crm-schema-discovery.service';
 export class CrmSchemaController {
   constructor(
     private readonly discovery: CrmSchemaDiscoveryService,
+    private readonly presentation: CrmSchemaPresentationService,
     private readonly providers: CrmProviderRegistry,
   ) {}
 
@@ -54,15 +57,22 @@ export class CrmSchemaController {
     description:
       'Returns the connected account field metadata and read/write capabilities for sync configuration.',
   })
-  describeObject(
+  async describeObject(
     @CurrentOrg() organization: RequestOrganization,
     @Param('provider') provider: string,
     @Param('objectType') objectType: string,
+    @Query() query: GetCrmObjectSchemaQueryDto,
   ) {
-    return this.discovery.describeObject(
+    const crmProvider = this.providers.parse(provider);
+    const result = await this.discovery.describeObject(
       organization.id,
-      this.providers.parse(provider),
+      crmProvider,
       objectType,
     );
+    const { provider: resolvedProvider, ...schema } = result;
+    return {
+      provider: resolvedProvider,
+      ...this.presentation.present(crmProvider, schema, query),
+    };
   }
 }

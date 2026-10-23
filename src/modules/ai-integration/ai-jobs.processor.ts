@@ -5,6 +5,7 @@ import { Job, UnrecoverableError } from 'bullmq';
 import { AiServiceClient, AiServiceHttpError } from './ai-service.client';
 import {
   AI_ANALYZE_SOURCE_JOB,
+  AI_CHAT_TURN_JOB,
   AI_JOBS_QUEUE,
   AI_RECOVER_ACTION_REFINEMENT_JOB,
   AI_REFINE_ACTION_JOB,
@@ -20,23 +21,15 @@ import { AiSourceContextService } from '../ai-internal/ai-source-context.service
 import { AiProposalSourceType } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
 import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
-import { AiChatReplyService } from './ai-chat-reply.service';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { AgentOperationType } from '../../common/enums/agent-activity.enum';
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
+import { AiChatTurnService } from './ai-chat-turn.service';
 
 type MessageAnalysisContext = {
   organizationId: string;
   requesterUserId?: string;
   conversationId?: string;
-  latestMessageId?: string;
-  message?: { content?: string };
-  pendingProposals?: Array<{
-    _id: unknown;
-    status: string;
-    clarificationQuestions: Array<{ id: string }>;
-    clarificationAnswers?: Record<string, string>;
-  }>;
 };
 
 @Processor(AI_JOBS_QUEUE, { concurrency: 5 })
@@ -50,9 +43,9 @@ export class AiJobsProcessor extends WorkerHost {
     private readonly config: ConfigService,
     private readonly clarificationWorkflow: AiActionClarificationWorkflowService,
     private readonly responseValidator: AiAnalysisResponseValidator,
-    private readonly chatReplies: AiChatReplyService,
     private readonly activity: AgentActivityService,
     private readonly agentSettings: OrganizationAgentSettingsService,
+    private readonly chatTurns: AiChatTurnService,
   ) {
     super();
   }
@@ -61,6 +54,8 @@ export class AiJobsProcessor extends WorkerHost {
     try {
       switch (job.name) {
         case AI_ANALYZE_SOURCE_JOB:
+          return await this.analyzeSource(job as Job<AnalyzeSourceJob>);
+        case AI_CHAT_TURN_JOB:
           return await this.analyzeSource(job as Job<AnalyzeSourceJob>);
         case AI_REFINE_ACTION_JOB:
           return await this.refineAction(job as Job<RefineActionJob>);
@@ -110,6 +105,26 @@ export class AiJobsProcessor extends WorkerHost {
           sourceId,
           'PROCESSING',
         );
+        const chat = await this.chatTurns.process(organizationId, sourceId);
+        await this.sourceContext.markMessageProcessed(
+          organizationId,
+          sourceId,
+          'COMPLETED',
+        );
+        await this.activity.succeed(activityId, {
+          agent: chat.response.reply.agent,
+          metadata: {
+            resultType: chat.response.result.type,
+            proposalCreated: Boolean(chat.proposal),
+            assistantMessageCreated: chat.assistantMessageCreated,
+          },
+        });
+        return {
+          ...(chat.proposal ? { proposal: chat.proposal } : {}),
+          assistantMessageId: chat.assistantMessageId,
+          assistantMessageCreated: chat.assistantMessageCreated,
+          resultType: chat.response.result.type,
+        };
       }
       context = (await this.sourceContext.sourceContext(
         sourceType,
@@ -119,54 +134,6 @@ export class AiJobsProcessor extends WorkerHost {
       this.logger.log(
         `AI source context prepared: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
       );
-      if (
-        sourceType === 'USER_MESSAGE' &&
-        context.latestMessageId &&
-        context.latestMessageId !== sourceId
-      ) {
-        await this.sourceContext.markMessageProcessed(
-          organizationId,
-          sourceId,
-          'COMPLETED',
-        );
-        await this.activity.skip(activityId, {
-          metadata: { reason: 'superseded-by-newer-message' },
-        });
-        return {
-          skipped: true,
-          reason: 'superseded-by-newer-message',
-          latestMessageId: context.latestMessageId,
-        };
-      }
-      if (sourceType === 'USER_MESSAGE') {
-        const clarification = this.singleClarification(context);
-        if (clarification && context.message?.content?.trim()) {
-          const questions = Array.isArray(clarification.clarificationQuestions)
-            ? clarification.clarificationQuestions
-            : [];
-          const question = questions.find(
-            (item: { id: string }) =>
-              !clarification.clarificationAnswers?.[item.id],
-          );
-          if (question) {
-            const proposal = await this.clarificationWorkflow.submitAnswer({
-              organizationId,
-              proposalId: String(clarification._id),
-              questionId: question.id,
-              answer: context.message.content.trim(),
-            });
-            await this.sourceContext.markMessageProcessed(
-              organizationId,
-              sourceId,
-              'COMPLETED',
-            );
-            await this.activity.skip(activityId, {
-              metadata: { reason: 'clarification-answer-routed' },
-            });
-            return { clarificationSubmitted: proposal };
-          }
-        }
-      }
       if (context.organizationId !== organizationId) {
         throw new UnrecoverableError(
           'AI source organization does not match the queued job',
@@ -242,28 +209,6 @@ export class AiJobsProcessor extends WorkerHost {
           expectedRequestId: requestId,
         },
       );
-      let assistantReply:
-        Awaited<ReturnType<AiChatReplyService['persist']>> | undefined;
-      if (sourceType === 'USER_MESSAGE' && analysisResult.assistantMessage) {
-        if (!context.conversationId) {
-          throw new UnrecoverableError(
-            'User message context is missing conversationId',
-          );
-        }
-        assistantReply = await this.chatReplies.persist({
-          organizationId,
-          conversationId: context.conversationId,
-          sourceMessageId: sourceId,
-          assistantMessage: analysisResult.assistantMessage,
-        });
-      }
-      if (sourceType === 'USER_MESSAGE') {
-        await this.sourceContext.markMessageProcessed(
-          organizationId,
-          sourceId,
-          'COMPLETED',
-        );
-      }
       this.logger.log(
         `AI proposals persisted: jobId=${String(job.id)}, source=${sourceType}:${sourceId}`,
       );
@@ -277,21 +222,9 @@ export class AiJobsProcessor extends WorkerHost {
           : {}),
         metadata: {
           actionCount: analysisResult.actions.length,
-          assistantMessageCreated: Boolean(assistantReply?.created),
         },
       });
-      return {
-        proposals: ingested,
-        ...(assistantReply
-          ? {
-              assistantMessageId: String(assistantReply.message._id),
-              assistantMessageCreated: assistantReply.created,
-              ...(assistantReply.message.emailDraftId
-                ? { emailDraftId: assistantReply.message.emailDraftId }
-                : {}),
-            }
-          : {}),
-      };
+      return { proposals: ingested };
     } catch (error) {
       await this.activity.fail(activityId, {
         failureCode: this.analysisFailureCode(error),
@@ -321,16 +254,6 @@ export class AiJobsProcessor extends WorkerHost {
     }
     if (error instanceof UnrecoverableError) return 'UNRECOVERABLE_ERROR';
     return 'SOURCE_ANALYSIS_FAILED';
-  }
-
-  private singleClarification(context: MessageAnalysisContext) {
-    const candidates = Array.isArray(context.pendingProposals)
-      ? context.pendingProposals.filter(
-          (proposal: { status: string }) =>
-            proposal.status === 'NEEDS_CLARIFICATION',
-        )
-      : [];
-    return candidates.length === 1 ? candidates[0] : undefined;
   }
 
   private async refineAction(job: Job<RefineActionJob>) {

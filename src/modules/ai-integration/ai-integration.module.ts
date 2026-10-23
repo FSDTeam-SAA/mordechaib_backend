@@ -27,6 +27,10 @@ import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiTelemetryModule } from '../ai-telemetry/ai-telemetry.module';
 import { EmailModule } from '../email/email.module';
 import { OrganizationAgentSettingsModule } from '../organization-agent-settings/organization-agent-settings.module';
+import { AiChatAgentResolver } from './ai-chat-agent-resolver.service';
+import { AiChatContextService } from './ai-chat-context.service';
+import { AiChatResponseValidator } from './ai-chat-response.validator';
+import { AiChatTurnService } from './ai-chat-turn.service';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -75,12 +79,17 @@ function redisConnection(urlValue: string) {
     AiActionClarificationWorkflowService,
     AiAnalysisResponseValidator,
     AiChatReplyService,
+    AiChatAgentResolver,
+    AiChatContextService,
+    AiChatResponseValidator,
+    AiChatTurnService,
   ],
   exports: [
     AiServiceClient,
     AiJobsQueue,
     AiActionClarificationWorkflowService,
     AiSourceContextModule,
+    AiChatAgentResolver,
   ],
 })
 export class AiIntegrationModule {}

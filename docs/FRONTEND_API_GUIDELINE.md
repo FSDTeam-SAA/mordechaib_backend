@@ -123,58 +123,58 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 
 ## 3. Canonical route map
 
-| UI purpose                   | Method and path                                                       |
-| ---------------------------- | --------------------------------------------------------------------- |
-| Login                        | `POST /auth/login`                                                    |
-| Current profile              | `GET /auth/me`                                                        |
-| List recent chats            | `GET /messages/conversations`                                         |
-| Create New Chat              | `POST /messages/conversations`                                        |
-| Latest chat                  | `GET /messages/conversation`                                          |
-| Send user message            | `POST /messages`                                                      |
-| Read chat messages           | `GET /messages`                                                       |
-| Get one message              | `GET /messages/:messageId`                                            |
-| Attachment download          | `GET /messages/:messageId/attachments/:attachmentId/download`         |
-| Delete own message           | `DELETE /messages/:messageId`                                         |
-| List proposals               | `GET /call-intelligence/proposals`                                    |
-| Get one proposal             | `GET /call-intelligence/proposals/:id`                                |
-| Edit pending proposal        | `PATCH /call-intelligence/proposals/:id`                              |
-| Answer clarification         | `POST /call-intelligence/proposals/:id/clarifications`                |
-| Approve/reject/retry         | `POST /call-intelligence/proposals/:id/action`                        |
-| List meetings                | `GET /meetings`                                                       |
-| Get created meeting          | `GET /meetings/:id`                                                   |
-| Meeting provider connections | provider routes in section 7                                          |
-| Calendar dashboard           | `GET /calendar/dashboard`                                             |
-| Synchronize calendars        | `POST /calendar/sync`                                                 |
-| Calendar event CRUD          | `/calendar/events` routes in section 19.6                             |
-| List email connections       | `GET /email/connections`                                              |
-| Connect email provider       | `GET /email/connections/:provider/connect`                            |
-| Create/list/read/edit draft  | `/email/drafts` routes in section 8                                   |
-| Explicitly send draft        | `POST /email/drafts/:id/send`                                         |
-| Generate briefing            | `POST /chief-of-staff/briefings/:type/generate`                       |
-| Poll/read briefing           | `GET /chief-of-staff/briefings/id/:briefingId`                        |
-| Latest briefing for period   | `GET /chief-of-staff/briefings/:type`                                 |
-| Strategic notes              | `/chief-of-staff/strategic-notes` routes                              |
-| Runtime agent activity       | `GET /chief-of-staff/insights/agent-activity`                         |
-| AI runtime health            | `GET /chief-of-staff/insights/ai-health`                              |
-| Agent catalog                | `GET /agents`                                                         |
-| Integration cards            | `GET /integrations`                                                   |
-| Notification bell count      | `GET /notifications/unread-count`                                     |
-| Task dashboard analytics     | `GET /organizer-dashboard/task-overview`                              |
-| List/filter tasks            | `GET /tasks`                                                          |
-| Create a task                | `POST /tasks`                                                         |
-| Read/edit/delete a task      | `/tasks/:id` routes in section 19                                     |
-| Task-page upcoming meetings  | `GET /organizer-dashboard/upcoming-meetings`                          |
-| Submit support request       | `POST /support/requests`                                              |
-| Recent support requests      | `GET /support/requests`                                               |
-| Support request details      | `GET /support/requests/:requestId`                                    |
-| Support attachment           | `GET /support/requests/:requestId/attachments/:attachmentId/download` |
-| Delete support request       | `DELETE /support/requests/:requestId`                                 |
-| Discover CRM objects         | `GET /crm/:provider/objects`                                          |
-| Read CRM object schema       | `GET /crm/:provider/objects/:objectType/schema`                       |
-| Configure CRM synchronization | `PUT /crm/connections/:provider/sync-config`                         |
-| Synchronize configured CRM data | `POST /crm/connections/:provider/sync`                            |
-| List synchronized CRM records | `GET /crm/records`                                                    |
-| Read synchronized CRM record | `GET /crm/records/:id`                                                 |
+| UI purpose                      | Method and path                                                       |
+| ------------------------------- | --------------------------------------------------------------------- |
+| Login                           | `POST /auth/login`                                                    |
+| Current profile                 | `GET /auth/me`                                                        |
+| List recent chats               | `GET /messages/conversations`                                         |
+| Create New Chat                 | `POST /messages/conversations`                                        |
+| Latest chat                     | `GET /messages/conversation`                                          |
+| Send user message               | `POST /messages`                                                      |
+| Read chat messages              | `GET /messages`                                                       |
+| Get one message                 | `GET /messages/:messageId`                                            |
+| Attachment download             | `GET /messages/:messageId/attachments/:attachmentId/download`         |
+| Delete own message              | `DELETE /messages/:messageId`                                         |
+| List proposals                  | `GET /call-intelligence/proposals`                                    |
+| Get one proposal                | `GET /call-intelligence/proposals/:id`                                |
+| Edit pending proposal           | `PATCH /call-intelligence/proposals/:id`                              |
+| Answer clarification            | `POST /call-intelligence/proposals/:id/clarifications`                |
+| Approve/reject/retry            | `POST /call-intelligence/proposals/:id/action`                        |
+| List meetings                   | `GET /meetings`                                                       |
+| Get created meeting             | `GET /meetings/:id`                                                   |
+| Meeting provider connections    | provider routes in section 7                                          |
+| Calendar dashboard              | `GET /calendar/dashboard`                                             |
+| Synchronize calendars           | `POST /calendar/sync`                                                 |
+| Calendar event CRUD             | `/calendar/events` routes in section 19.6                             |
+| List email connections          | `GET /email/connections`                                              |
+| Connect email provider          | `GET /email/connections/:provider/connect`                            |
+| Create/list/read/edit draft     | `/email/drafts` routes in section 8                                   |
+| Explicitly send draft           | `POST /email/drafts/:id/send`                                         |
+| Generate briefing               | `POST /chief-of-staff/briefings/:type/generate`                       |
+| Poll/read briefing              | `GET /chief-of-staff/briefings/id/:briefingId`                        |
+| Latest briefing for period      | `GET /chief-of-staff/briefings/:type`                                 |
+| Strategic notes                 | `/chief-of-staff/strategic-notes` routes                              |
+| Runtime agent activity          | `GET /chief-of-staff/insights/agent-activity`                         |
+| AI runtime health               | `GET /chief-of-staff/insights/ai-health`                              |
+| Agent catalog                   | `GET /agents`                                                         |
+| Integration cards               | `GET /integrations`                                                   |
+| Notification bell count         | `GET /notifications/unread-count`                                     |
+| Task dashboard analytics        | `GET /organizer-dashboard/task-overview`                              |
+| List/filter tasks               | `GET /tasks`                                                          |
+| Create a task                   | `POST /tasks`                                                         |
+| Read/edit/delete a task         | `/tasks/:id` routes in section 19                                     |
+| Task-page upcoming meetings     | `GET /organizer-dashboard/upcoming-meetings`                          |
+| Submit support request          | `POST /support/requests`                                              |
+| Recent support requests         | `GET /support/requests`                                               |
+| Support request details         | `GET /support/requests/:requestId`                                    |
+| Support attachment              | `GET /support/requests/:requestId/attachments/:attachmentId/download` |
+| Delete support request          | `DELETE /support/requests/:requestId`                                 |
+| Discover CRM objects            | `GET /crm/:provider/objects`                                          |
+| Read CRM object schema          | `GET /crm/:provider/objects/:objectType/schema`                       |
+| Configure CRM synchronization   | `PUT /crm/connections/:provider/sync-config`                          |
+| Synchronize configured CRM data | `POST /crm/connections/:provider/sync`                                |
+| List synchronized CRM records   | `GET /crm/records`                                                    |
+| Read synchronized CRM record    | `GET /crm/records/:id`                                                |
 
 ## 4. Authentication bootstrap
 
@@ -262,7 +262,8 @@ Conversation records currently expose Mongo `_id`; use it as `conversationId`. V
 
 ### 5.3 Create New Chat
 
-Call only when the user intentionally presses New Chat:
+This endpoint remains available when the UI needs to create an empty titled
+conversation before the organizer sends anything:
 
 ```http
 POST /messages/conversations
@@ -271,13 +272,22 @@ Content-Type: application/json
 
 ```json
 {
-  "title": "Meeting with Tahid"
+  "title": "Meeting with Tahid",
+  "selectedAgentId": "AGENT_ID"
 }
 ```
 
-`title` is optional, `1..200` characters. It labels the conversation; it is not sent to AI and does not create a message.
+Both fields are optional. `title` is `1..200` characters and labels the
+conversation. `selectedAgentId` must be an active agent returned by
+`GET /agents`; when omitted, Main Backend selects the active Chief of Staff
+agent (or another active agent when no Chief of Staff is available).
 
 Response is the created conversation record. Store its `_id` as the active `conversationId`.
+
+For the normal New Chat experience, prefer sending the first message with
+`startNewConversation: true` as described below. Main Backend then creates the
+conversation and message in one flow, and the response supplies the generated
+`conversationId`.
 
 ### 5.4 Get the latest conversation
 
@@ -296,19 +306,45 @@ Content-Type: application/json
 
 ```json
 {
+  "startNewConversation": false,
   "conversationId": "6ab3739a1d7fb40b6d4834fc",
   "clientMessageId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "selectedAgentId": "AGENT_ID",
   "content": "Schedule a meeting with Tahid."
 }
 ```
 
 Rules:
 
-- `conversationId` is a Mongo ID; omit only when intentionally using the latest/default conversation;
+- `startNewConversation` is required on every send request;
+- use `startNewConversation: true` for the first message of a new chat and omit
+  `conversationId`;
+- use `startNewConversation: false` for every continuation and provide the
+  explicit `conversationId`;
+- `startNewConversation: true` together with `conversationId` returns `400`;
+- `startNewConversation: false` without `conversationId` returns `400`;
 - `clientMessageId` is an optional UUID but should always be generated by frontend;
+- `selectedAgentId` is optional; include it only when selecting or switching
+  agents. The selection remains active for later turns in that conversation;
 - `content` is optional only when at least one attachment is supplied;
 - maximum content length is 20,000 characters;
 - limit is 20 send requests per minute.
+
+First message of a new conversation:
+
+```json
+{
+  "startNewConversation": true,
+  "clientMessageId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "selectedAgentId": "AGENT_ID",
+  "content": "Create a high-priority task to prepare the client proposal."
+}
+```
+
+The returned user message contains the newly generated `conversationId`.
+Persist it immediately and use it with `startNewConversation: false` for every
+later turn. A retry with the same `clientMessageId` returns the original
+message and conversation instead of creating another conversation.
 
 Immediate response is the persisted user message, not the final AI answer:
 
@@ -338,6 +374,7 @@ Content-Type: multipart/form-data
 Form fields:
 
 ```text
+startNewConversation = true or false
 conversationId = CONVERSATION_ID
 clientMessageId = UUID
 content = Optional accompanying text
@@ -406,7 +443,8 @@ Recommended polling:
 2. Poll the message list every 2 seconds while the source message is `PENDING` or `PROCESSING`.
 3. Stop after a sensible UI timeout such as 60 seconds, while allowing manual refresh.
 4. On `COMPLETED`, refresh both messages and source-filtered proposals.
-5. A completed source may have proposals even when AI Backend did not supply an assistant chat message.
+5. A completed chat turn contains a persisted AI reply. It may also contain a
+   clarification, task proposal, or meeting proposal.
 
 ### 5.8 Get or delete one message
 
@@ -444,7 +482,8 @@ Response shape:
   "items": [
     {
       "id": "PROPOSAL_MONGO_ID",
-      "proposalId": "source-user_message-MESSAGE_ID:meeting-001",
+      "proposalId": "chat:CONVERSATION_ID:meeting-001",
+      "chatDraftId": "meeting-001",
       "conversationId": "CONVERSATION_ID",
       "actionType": "SCHEDULE_MEETING",
       "proposedByAgent": {
@@ -486,9 +525,8 @@ SCHEDULE_MEETING
 
 ```text
 NEEDS_CLARIFICATION
-  -> answer one question
-ANALYZING
-  -> NEEDS_CLARIFICATION (more/current revised questions)
+  -> send the organizer's answer as the next normal chat message
+  -> NEEDS_CLARIFICATION (more information required)
   -> PENDING (ready for review)
 
 PENDING
@@ -502,7 +540,8 @@ Always re-fetch the proposal after a state-changing request. Never update the st
 
 ### 6.3 Render clarification in chat
 
-When status is `NEEDS_CLARIFICATION`, render the current unanswered question as an agent bubble/card. Derive unanswered questions by comparing `clarificationQuestions[].id` with keys in `clarificationAnswers`.
+When status is `NEEDS_CLARIFICATION`, render the returned questions as an
+agent bubble/card. Choice questions may also contain `options`.
 
 Use `inputType` only as a presentation hint:
 
@@ -511,27 +550,29 @@ Use `inputType` only as a presentation hint:
 - `email`: email input containing only a plain email address;
 - other/missing: text input.
 
-Submit exactly one answer:
+Submit the organizer's answer as the next normal message in the same
+conversation. This preserves the complete USER/AI history and lets the AI
+continue the stable `chatDraftId`:
 
 ```http
-POST /call-intelligence/proposals/:id/clarifications
+POST /messages
 Content-Type: application/json
 ```
 
 ```json
 {
-  "questionId": "meeting-platform",
-  "answer": "Google Meet"
+  "startNewConversation": false,
+  "conversationId": "CONVERSATION_ID",
+  "clientMessageId": "NEW_UUID",
+  "content": "Use Google Meet tomorrow at 3 PM; invite tahid@example.com."
 }
 ```
 
-The response normally has `status: "ANALYZING"`. Disable the clarification input and poll:
-
-```http
-GET /call-intelligence/proposals/:id
-```
-
-Poll every 2 seconds until `NEEDS_CLARIFICATION`, `PENDING`, or a terminal failure is returned. Do not submit multiple clarification requests concurrently. Do not send clarification answers through `/messages` or `/action`.
+Poll `GET /messages?conversationId=...` until that new USER message becomes
+`COMPLETED`, then fetch proposals with its message ID. The same logical draft
+is updated rather than creating a second proposal. Do not use the legacy
+proposal clarification endpoint for interactive AI Chat; it remains available
+for call/meeting analysis proposals.
 
 ### 6.4 Review and approve/reject
 
@@ -1657,14 +1698,14 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 ### 15.1 Chat to approved meeting
 
 ```text
-1. POST /messages/conversations                         (only for New Chat)
-2. POST /messages                                       (save user message)
+1. POST /messages with startNewConversation=true         (create chat + first message)
+2. Save response.conversationId and response.id
 3. GET  /messages?conversationId=...                    (poll source status/reply)
 4. GET  /call-intelligence/proposals?sourceType=USER_MESSAGE&sourceId=...
 5. If NEEDS_CLARIFICATION:
-   POST /call-intelligence/proposals/:id/clarifications (one answer)
-   GET  /call-intelligence/proposals/:id                (poll refinement)
-   repeat step 5 as required
+   POST /messages with startNewConversation=false and the same conversationId
+   poll the new source message, then query proposals using its sourceId
+   repeat step 5 as required; do not use the legacy clarification endpoint
 6. When PENDING, render complete proposal preview
 7. PATCH /call-intelligence/proposals/:id                (optional manual edit)
 8. POST /call-intelligence/proposals/:id/action          ({"action":"APPROVE"})
@@ -1675,7 +1716,7 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 ### 15.2 Chat to AI email draft and owner Send
 
 ```text
-1. POST /messages
+1. POST /messages with explicit startNewConversation intent
 2. GET  /messages?conversationId=...                    (poll)
 3. Read AI message.emailDraftId
 4. GET  /email/drafts/:emailDraftId
@@ -1744,37 +1785,37 @@ When a briefing section is `UNAVAILABLE`, show an unavailable/not-connected stat
 
 This index is the resource-first map for the completed backend. A **collection** is the MongoDB collection that stores the authoritative record. A few endpoints are computed views or provider proxies and therefore have no new collection of their own. All paths are relative to `/api/v1`.
 
-| Collection / resource                                            | What it stores                                                   | Canonical frontend endpoints                                                    |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `users`                                                          | User profile, role, preferences, verification state              | `/auth/*`, `/users`, `/team`                                                    |
-| `auth_sessions`, `auth_tokens`                                   | Refresh sessions and reset/verification codes                    | `/auth/login`, `/auth/refresh`, password and verification routes                |
-| `organizations`                                                  | Company profile, onboarding and organization settings            | `/organizations/me`                                                             |
-| `notification_preferences`                                       | Per-user notification settings                                   | `/settings/notifications`                                                       |
-| `ai_settings`                                                    | Organization AI configuration                                    | `/settings/ai`                                                                  |
-| `tasks`                                                          | Organization tasks, subtasks, dependencies and task links        | `/tasks`                                                                        |
-| `approvals`                                                      | Generic organization approval queue                              | `/approvals`                                                                    |
-| `call_logs`, `call_recordings`                                   | Outbound call records and recording references                   | `/calls`                                                                        |
+| Collection / resource                                                  | What it stores                                                                              | Canonical frontend endpoints                                                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `users`                                                                | User profile, role, preferences, verification state                                         | `/auth/*`, `/users`, `/team`                                                                                                |
+| `auth_sessions`, `auth_tokens`                                         | Refresh sessions and reset/verification codes                                               | `/auth/login`, `/auth/refresh`, password and verification routes                                                            |
+| `organizations`                                                        | Company profile, onboarding and organization settings                                       | `/organizations/me`                                                                                                         |
+| `notification_preferences`                                             | Per-user notification settings                                                              | `/settings/notifications`                                                                                                   |
+| `ai_settings`                                                          | Organization AI configuration                                                               | `/settings/ai`                                                                                                              |
+| `tasks`                                                                | Organization tasks, subtasks, dependencies and task links                                   | `/tasks`                                                                                                                    |
+| `approvals`                                                            | Generic organization approval queue                                                         | `/approvals`                                                                                                                |
+| `call_logs`, `call_recordings`                                         | Outbound call records and recording references                                              | `/calls`                                                                                                                    |
 | `integrations`, `integration_oauth_states`, `crm_deals`, `crm_records` | CRM connections, OAuth state, deal analytics cache, and configured multi-object CRM records | `/integrations`, `/crm/connections/*`, `/crm/:provider/objects/*`, `/crm/records`, `/crm/analytics/revenue`, `/crm/*/deals` |
-| `managed_calendar_events`                                        | Platform-managed calendar events                                 | `/calendar/events`                                                              |
-| `platform_meetings`                                              | Provider-created Google Meet/Zoom meetings                       | `/meetings`                                                                     |
-| `meeting_bots`, `meeting_transcripts`                            | Recall bot jobs, transcript and temporary audio access           | `/meeting-bots`                                                                 |
-| `recall_zoom_connections`, `meeting_oauth_states`                | Organization calendar/provider connections and OAuth state       | connection routes in section 7 and `/calendar/connections`                      |
-| `conversations`, `messages`, `message_attachments`               | AI chat threads, messages and private attachments                | `/messages/*`                                                                   |
-| `ai_action_proposals`, `ai_source_analyses`                      | AI action proposals and source analysis                          | `/call-intelligence/proposals/*`                                                |
-| `agents`, `agent_activities`                                     | Agent catalog and runtime telemetry                              | `/agents`, Chief of Staff insight routes                                        |
-| `executive_briefings`, `strategic_notes`                         | Generated briefings and CEO direction                            | `/chief-of-staff/*`                                                             |
-| `email_connections`, `email_drafts`, `email_oauth_states`        | Owner mail connections, drafts and send audit state              | `/email/*`                                                                      |
-| `support_requests`                                               | User-submitted Help & Support tickets and private attachments    | `/support/requests/*`                                                           |
-| `subscription_plans`, `organization_subscriptions`               | Plan catalog and organization subscription state                 | `/subscription-plans`, `/subscriptions`, `/billing`                             |
-| `addon_products`                                                 | Public/commercial add-on catalog                                 | `/addon-products`, `/billing/addons`                                            |
-| `invoices`, `revenue_snapshots`                                  | Stripe invoice cache and platform revenue summaries              | `/invoices`, `/subscription-analytics`                                          |
-| `cancellation_requests`                                          | Subscription cancellation workflow                               | `/subscriptions/me/cancel`, `/subscriptions-admin/cancellation-requests`        |
-| `usage_records`, `call_usage_periods`                            | Product and Twilio metered usage                                 | `/usage`, `/twilio/usage`                                                       |
-| `setup_packages`, `onboarding_setups`, `onboarding_availability` | Paid setup catalog, customer onboarding and booking availability | `/setup-packages`, `/onboarding-setups`                                         |
-| `twilio_accounts`, `twilio_phone_numbers`, `twilio_settings`     | Managed Twilio connection, number and call configuration         | `/twilio/*`                                                                     |
-| `audit_logs`                                                     | Security and business audit events                               | `/audit-logs`                                                                   |
-| `package_inquiries`                                              | Public sales/package leads                                       | `/package-inquiries`                                                            |
-| computed resources                                               | Health, organizer dashboard, pricing estimate and provider data  | `/health`, `/organizer-dashboard/*`, `/subscription-plans/estimate`, `/meta/*`  |
+| `managed_calendar_events`                                              | Platform-managed calendar events                                                            | `/calendar/events`                                                                                                          |
+| `platform_meetings`                                                    | Provider-created Google Meet/Zoom meetings                                                  | `/meetings`                                                                                                                 |
+| `meeting_bots`, `meeting_transcripts`                                  | Recall bot jobs, transcript and temporary audio access                                      | `/meeting-bots`                                                                                                             |
+| `recall_zoom_connections`, `meeting_oauth_states`                      | Organization calendar/provider connections and OAuth state                                  | connection routes in section 7 and `/calendar/connections`                                                                  |
+| `conversations`, `messages`, `message_attachments`                     | AI chat threads, messages and private attachments                                           | `/messages/*`                                                                                                               |
+| `ai_action_proposals`, `ai_source_analyses`                            | AI action proposals and source analysis                                                     | `/call-intelligence/proposals/*`                                                                                            |
+| `agents`, `agent_activities`                                           | Agent catalog and runtime telemetry                                                         | `/agents`, Chief of Staff insight routes                                                                                    |
+| `executive_briefings`, `strategic_notes`                               | Generated briefings and CEO direction                                                       | `/chief-of-staff/*`                                                                                                         |
+| `email_connections`, `email_drafts`, `email_oauth_states`              | Owner mail connections, drafts and send audit state                                         | `/email/*`                                                                                                                  |
+| `support_requests`                                                     | User-submitted Help & Support tickets and private attachments                               | `/support/requests/*`                                                                                                       |
+| `subscription_plans`, `organization_subscriptions`                     | Plan catalog and organization subscription state                                            | `/subscription-plans`, `/subscriptions`, `/billing`                                                                         |
+| `addon_products`                                                       | Public/commercial add-on catalog                                                            | `/addon-products`, `/billing/addons`                                                                                        |
+| `invoices`, `revenue_snapshots`                                        | Stripe invoice cache and platform revenue summaries                                         | `/invoices`, `/subscription-analytics`                                                                                      |
+| `cancellation_requests`                                                | Subscription cancellation workflow                                                          | `/subscriptions/me/cancel`, `/subscriptions-admin/cancellation-requests`                                                    |
+| `usage_records`, `call_usage_periods`                                  | Product and Twilio metered usage                                                            | `/usage`, `/twilio/usage`                                                                                                   |
+| `setup_packages`, `onboarding_setups`, `onboarding_availability`       | Paid setup catalog, customer onboarding and booking availability                            | `/setup-packages`, `/onboarding-setups`                                                                                     |
+| `twilio_accounts`, `twilio_phone_numbers`, `twilio_settings`           | Managed Twilio connection, number and call configuration                                    | `/twilio/*`                                                                                                                 |
+| `audit_logs`                                                           | Security and business audit events                                                          | `/audit-logs`                                                                                                               |
+| `package_inquiries`                                                    | Public sales/package leads                                                                  | `/package-inquiries`                                                                                                        |
+| computed resources                                                     | Health, organizer dashboard, pricing estimate and provider data                             | `/health`, `/organizer-dashboard/*`, `/subscription-plans/estimate`, `/meta/*`                                              |
 
 ### 17.1 Universal response shapes
 
@@ -2101,50 +2142,80 @@ forwarding number when omitted. Only `OWNER` and `ADMIN` can start outbound call
 
 CRM connections and multi-object sync configuration belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; discovery, configuration, sync, record reads, and deal routes state or filter the provider explicitly.
 
-| Endpoint                                   | Request body / query                                                     | Response data                                                                                           |
-| ------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `GET /integrations`                        | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
-| `GET /crm/connections/HUBSPOT/connect`     | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
-| `GET /crm/connections/SALESFORCE/connect`  | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
-| `GET /crm/connections/:provider`           | none                                                                     | connection status, provider account identity, default selection, expiry, and sync health                |
-| `GET /crm/connections/:provider/callback`  | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
-| `DELETE /crm/connections/:provider`        | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
-| `PATCH /crm/connections/:provider/default` | none                                                                     | selected default CRM connection                                                                         |
-| `GET /crm/:provider/objects`               | none                                                                     | provider-normalized readable standard and custom objects                                                 |
-| `GET /crm/:provider/objects/:objectType/schema` | none                                                                | normalized field schema, capabilities, references, and enum options                                      |
-| `PUT /crm/connections/:provider/sync-config` | selected objects and fields                                            | validated saved configuration and object sync states                                                     |
-| `POST /crm/connections/:provider/sync`     | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
-| `GET /crm/records`                         | filters and pagination described below                                  | locally synchronized normalized CRM records                                                              |
-| `GET /crm/records/:id`                     | local Mongo record ID                                                    | one organization-scoped normalized CRM record                                                            |
-| `GET /crm/analytics/revenue`               | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
-| `POST /crm/:provider/deals`                | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
-| `PATCH /crm/:provider/deals/:externalId`   | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
-| `POST /crm/contacts`                       | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
+| Endpoint                                        | Request body / query                                                     | Response data                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `GET /integrations`                             | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
+| `GET /crm/connections/HUBSPOT/connect`          | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/SALESFORCE/connect`       | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/:provider`                | none                                                                     | connection status, provider account identity, default selection, expiry, and sync health                |
+| `GET /crm/connections/:provider/callback`       | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
+| `DELETE /crm/connections/:provider`             | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
+| `PATCH /crm/connections/:provider/default`      | none                                                                     | selected default CRM connection                                                                         |
+| `GET /crm/:provider/objects`                    | none                                                                     | provider-normalized readable standard and custom objects                                                |
+| `GET /crm/:provider/objects/:objectType/schema` | `view?`, `search?`, `page?`, `limit?`                                    | compact paginated field schema; use `view=FULL` only for advanced selection                             |
+| `PUT /crm/connections/:provider/sync-config`    | optional customized objects and fields                                   | validated user configuration and object sync states                                                     |
+| `POST /crm/connections/:provider/sync`          | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
+| `GET /crm/records`                              | filters and pagination described below                                   | locally synchronized normalized CRM records                                                             |
+| `GET /crm/records/:id`                          | local Mongo record ID                                                    | one organization-scoped normalized CRM record                                                           |
+| `GET /crm/analytics/revenue`                    | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
+| `POST /crm/:provider/deals`                     | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
+| `PATCH /crm/:provider/deals/:externalId`        | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
+| `POST /crm/contacts`                            | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
 
 `:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connection management, schema discovery, sync configuration, manual sync, local CRM record reads, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
 
 #### 19.5.1 Frontend multi-object synchronization sequence
 
 CRM sync configuration is organization-scoped and stored with the existing
-connection. Do not create a second connection model in the frontend. Use this
-order independently for HubSpot and Salesforce:
+connection. The backend discovers each connected organization's readable CRM
+schema, creates a default configuration for core business objects, and starts
+the initial synchronization after OAuth. No configuration request is required
+for the normal connection flow. Do not create a second connection model in the
+frontend. Use this order independently for HubSpot and Salesforce:
+
+HubSpot object selection is not configured through an environment variable.
+The backend requests its minimum application scopes plus provider-supported
+optional scopes, persists the scopes actually granted to each organization,
+and derives that organization's readable objects from those capabilities.
+Automatic configurations are reconciled after a scope change and periodically
+to detect schema changes. User-customized configurations remain authoritative.
 
 1. Read `GET /crm/connections/:provider`.
 2. If disconnected, call `GET /crm/connections/:provider/connect` and open the
    returned `authorizationUrl` unchanged.
 3. After the provider redirects back to the integrations screen, re-fetch the
    connection status.
-4. Call `GET /crm/:provider/objects` to populate the object selector.
-5. Call `GET /crm/:provider/objects/:objectType/schema` when an object is
-   selected, then populate its field selector.
-6. Save the complete selection using
-   `PUT /crm/connections/:provider/sync-config`.
-7. Trigger `POST /crm/connections/:provider/sync` with no request body.
-8. Render provider data from `GET /crm/records`; never call HubSpot or
+4. Poll the connection status until the initial sync is no longer active, then
+   render provider data from `GET /crm/records`.
+5. `POST /crm/connections/:provider/sync` remains available for an explicit
+   refresh; scheduled synchronization continues automatically.
+6. For an advanced customization screen only, call
+   `GET /crm/:provider/objects` and the object schema endpoint, then replace the
+   automatic configuration using `PUT /crm/connections/:provider/sync-config`.
+   The default `ESSENTIAL` schema view excludes unreadable and
+   provider-internal fields and returns 50 fields per page.
+7. Never call HubSpot or
    Salesforce directly from the browser.
 
 Provider access and refresh tokens remain encrypted in Main Backend. They are
 never frontend configuration values.
+
+`GET /crm/connections/:provider` exposes a non-secret capability summary:
+
+```json
+{
+  "capabilities": {
+    "automaticDiscovery": true,
+    "grantedScopes": ["crm.objects.contacts.read"],
+    "unavailableScopes": ["crm.objects.companies.read"]
+  }
+}
+```
+
+`unavailableScopes` means the connected organization did not grant or could
+not use that optional capability. It does not mean the corresponding object
+has zero records. Adding scopes to the HubSpot app requires existing
+organizations to reconnect once before new grants can be discovered.
 
 #### 19.5.2 Connection status and saved configuration
 
@@ -2230,7 +2301,7 @@ GET /crm/SALESFORCE/objects
 Load field metadata only when the object is needed:
 
 ```http
-GET /crm/SALESFORCE/objects/Account/schema
+GET /crm/SALESFORCE/objects/Account/schema?view=ESSENTIAL&page=1&limit=50
 ```
 
 ```json
@@ -2262,9 +2333,31 @@ GET /crm/SALESFORCE/objects/Account/schema
       "referenceTo": [],
       "options": []
     }
-  ]
+  ],
+  "fieldSummary": {
+    "total": 120,
+    "readable": 110,
+    "essential": 72,
+    "custom": 14,
+    "returned": 50
+  },
+  "pagination": {
+    "page": 1,
+    "limit": 50,
+    "total": 72,
+    "pages": 2
+  },
+  "view": "ESSENTIAL"
 }
 ```
+
+Schema query behavior:
+
+- `view=ESSENTIAL` is the default and is intended for the normal field picker.
+- `view=FULL` exposes the complete provider schema for an explicit advanced
+  view; it remains paginated.
+- `search=email` filters by field name or label before pagination.
+- `page` defaults to `1`; `limit` defaults to `50` and cannot exceed `200`.
 
 Send `objectType` and field `name` exactly as returned; never send display
 labels or change casing. HubSpot custom objects use their returned stable
@@ -2404,16 +2497,16 @@ must not implement provider pagination.
 GET /crm/records?provider=SALESFORCE&objectType=Account&page=1&limit=20&archived=false
 ```
 
-| Parameter     | Type     | Rule                                                   |
-| ------------- | -------- | ------------------------------------------------------ |
-| `page`        | integer  | default `1`, minimum `1`                                |
-| `limit`       | integer  | default `20`, range `1..100`                            |
-| `provider`    | string   | optional `HUBSPOT` or `SALESFORCE`                     |
-| `objectType`  | string   | optional exact provider object identifier              |
-| `externalId`  | string   | optional exact provider record ID                      |
-| `archived`    | boolean  | default `false`; `true` returns archived/deleted data   |
-| `updatedFrom` | ISO 8601 | optional inclusive provider-update lower bound         |
-| `updatedTo`   | ISO 8601 | optional inclusive provider-update upper bound         |
+| Parameter     | Type     | Rule                                                  |
+| ------------- | -------- | ----------------------------------------------------- |
+| `page`        | integer  | default `1`, minimum `1`                              |
+| `limit`       | integer  | default `20`, range `1..100`                          |
+| `provider`    | string   | optional `HUBSPOT` or `SALESFORCE`                    |
+| `objectType`  | string   | optional exact provider object identifier             |
+| `externalId`  | string   | optional exact provider record ID                     |
+| `archived`    | boolean  | default `false`; `true` returns archived/deleted data |
+| `updatedFrom` | ISO 8601 | optional inclusive provider-update lower bound        |
+| `updatedTo`   | ISO 8601 | optional inclusive provider-update upper bound        |
 
 `updatedFrom` must not be later than `updatedTo`.
 
@@ -2528,7 +2621,7 @@ This is the read model for completed Twilio calls and meeting-bot sources. It is
 | `GET /call-intelligence/:sourceId/details`    | required `sourceType`; optional `status`, `taskLimit`, `meetingLimit`, `includeTranscript` | source metadata, audio/transcript availability, stored analysis, and action proposals |
 | `DELETE /call-intelligence/:sourceId/details` | required `sourceType` query                                                                | deletion result; active/processing source deletion is rejected                        |
 | `GET /call-intelligence/:sourceId/report`     | details query plus `format` set to `html` or `json`; transcript defaults to included       | full source report attachment across all proposal statuses                            |
-| `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | authorized backend-streamed audio bytes, not a storage redirect or JSON envelope       |
+| `GET /call-intelligence/:sourceId/audio`      | required `sourceType` set to `CALL_AUDIO` or `CALL_TRANSCRIPT`                             | authorized backend-streamed audio bytes, not a storage redirect or JSON envelope      |
 
 The audio endpoint supports standard HTTP byte ranges. Browser audio players may
 send `Range: bytes=...`; the backend returns `206 Partial Content` with
@@ -3427,6 +3520,7 @@ If a future screen needs one of these capabilities, add it deliberately to this 
 - [ ] `409` causes a resource re-fetch; `429` preserves the form and applies retry guidance; `5xx` never causes fabricated success state.
 - [ ] Platform-admin endpoints are hidden from organization users and require a verified `isPlatformAdmin` user.
 - [ ] Deprecated and internal route families in section 23 are not used.
+
 ## AI Agent Workforce
 
 The workforce APIs separate platform agent catalog state, organization policy,
