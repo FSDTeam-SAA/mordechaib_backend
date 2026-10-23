@@ -11,6 +11,7 @@ import { CrmDealsRepository } from './crm-deals.repository';
 import { CrmObjectSyncService } from './crm-object-sync.service';
 import { CrmProviderRegistry } from './crm-provider.registry';
 import { CrmRepository } from './crm.repository';
+import { CrmSyncConfigurationService } from './crm-sync-configuration.service';
 
 const MAX_PAGES_PER_RUN = 20;
 
@@ -26,6 +27,7 @@ export class CrmSyncService {
     private readonly objectSync: CrmObjectSyncService,
     private readonly auditLogs: AuditLogsService,
     private readonly config: ConfigService,
+    private readonly syncConfiguration: CrmSyncConfigurationService,
   ) {}
 
   async sync(
@@ -116,6 +118,10 @@ export class CrmSyncService {
         lastSyncError: undefined,
         reconnectRequired: false,
       };
+      await this.syncConfiguration.ensureAutomatic(
+        organizationId,
+        resolvedProvider,
+      );
       const objectSync = await this.objectSync.syncConfigured(
         organizationId,
         resolvedProvider,

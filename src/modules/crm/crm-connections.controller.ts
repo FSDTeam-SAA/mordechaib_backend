@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Patch,
   Post,
@@ -38,6 +39,8 @@ import { UpdateCrmSyncConfigurationDto } from './dto/update-crm-sync-configurati
 @ApiBearerAuth()
 @Controller('crm/connections')
 export class CrmConnectionsController {
+  private readonly logger = new Logger(CrmConnectionsController.name);
+
   constructor(
     private readonly connections: CrmConnectionsService,
     private readonly sync: CrmSyncService,
@@ -99,7 +102,20 @@ export class CrmConnectionsController {
       };
     }
     try {
-      await this.connections.complete(crmProvider, code, state);
+      const completed = await this.connections.complete(
+        crmProvider,
+        code,
+        state,
+      );
+      void this.sync
+        .sync(completed.organizationId, crmProvider, completed.userId)
+        .catch((syncError: unknown) => {
+          const message =
+            syncError instanceof Error ? syncError.message : 'Unknown error';
+          this.logger.warn(
+            `Automatic CRM synchronization failed for ${completed.organizationId}:${crmProvider}: ${message}`,
+          );
+        });
       return {
         url: this.connections.callbackUrl(crmProvider, true),
         statusCode: 302,
@@ -164,7 +180,7 @@ export class CrmConnectionsController {
   @ApiOperation({
     summary: 'Configure CRM objects and fields for synchronization',
     description:
-      'Validates every selected object and field against the connected provider schema before saving the organization-scoped configuration.',
+      'Optional customization of the automatically generated organization-scoped configuration. Validates every selected object and field against the connected provider schema before saving it.',
   })
   configureSync(
     @CurrentOrg() organization: RequestOrganization,

@@ -75,6 +75,11 @@ export class CrmConnectionsService {
       identityUrl: tokens.identityUrl,
       providerAccountId: tokens.providerAccountId,
     });
+    const scopePlan = client.oauthScopePlan?.();
+    const grantedScopes = tokens.scopes || this.metadata(existing).scopes || [];
+    const requestedScopes = scopePlan
+      ? [...new Set([...scopePlan.required, ...scopePlan.optional])]
+      : undefined;
     const metadata: CrmConnectionMetadata = {
       ...this.metadata(existing),
       connectedByUserId: context.userId,
@@ -83,7 +88,15 @@ export class CrmConnectionsService {
       providerName: profile.name,
       providerOrganizationId: profile.organizationId,
       ...(tokens.instanceUrl ? { instanceUrl: tokens.instanceUrl } : {}),
-      scopes: tokens.scopes || this.metadata(existing).scopes || [],
+      scopes: grantedScopes,
+      ...(requestedScopes
+        ? {
+            requestedScopes,
+            unavailableScopes: requestedScopes.filter(
+              (scope) => !grantedScopes.includes(scope),
+            ),
+          }
+        : {}),
       reconnectRequired: false,
       syncStatus: 'IDLE',
       lastSyncError: undefined,
@@ -106,7 +119,12 @@ export class CrmConnectionsService {
       resourceId: provider,
       metadata: { provider, providerAccountId: profile.id },
     });
-    return { connected: true, provider };
+    return {
+      connected: true,
+      provider,
+      organizationId: context.organizationId,
+      userId: context.userId,
+    };
   }
 
   async disconnect(
@@ -367,6 +385,11 @@ export class CrmConnectionsService {
       syncStatus: metadata.syncStatus || 'IDLE',
       lastSyncError: metadata.lastSyncError,
       reconnectRequired: metadata.reconnectRequired === true,
+      capabilities: {
+        automaticDiscovery: true,
+        grantedScopes: metadata.scopes || [],
+        unavailableScopes: metadata.unavailableScopes || [],
+      },
       objectSync: this.objectSyncResponse(metadata),
     };
   }

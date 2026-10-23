@@ -6,7 +6,7 @@ import { AiSourceContextService } from '../ai-internal/ai-source-context.service
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { AiActionClarificationWorkflowService } from './ai-action-clarification-workflow.service';
 import { AiAnalysisResponseValidator } from './ai-analysis-response.validator';
-import { AiChatReplyService } from './ai-chat-reply.service';
+import { AiChatTurnService } from './ai-chat-turn.service';
 import { AiJobsProcessor } from './ai-jobs.processor';
 import {
   AI_ANALYZE_SOURCE_JOB,
@@ -39,7 +39,7 @@ describe('AiJobsProcessor user message analysis', () => {
   };
   let actions: { ingestAnalysis: jest.Mock };
   let validator: { validate: jest.Mock };
-  let chatReplies: { persist: jest.Mock };
+  let chatTurns: { process: jest.Mock };
   let activity: { start: jest.Mock; succeed: jest.Mock; fail: jest.Mock };
   let agentSettings: {
     policyContract: jest.Mock;
@@ -90,10 +90,22 @@ describe('AiJobsProcessor user message analysis', () => {
         },
       }),
     };
-    chatReplies = {
-      persist: jest.fn().mockResolvedValue({
-        created: true,
-        message: { _id: 'assistant-message-1' },
+    chatTurns = {
+      process: jest.fn().mockResolvedValue({
+        skipped: false,
+        response: {
+          reply: {
+            agent: {
+              id: 'agent-1',
+              name: 'Laura',
+              type: 'CHIEF_OF_STAFF',
+            },
+          },
+          result: { type: 'TASK_PROPOSAL' },
+        },
+        proposal: { id: 'proposal-1' },
+        assistantMessageId: 'assistant-message-1',
+        assistantMessageCreated: true,
       }),
     };
     activity = {
@@ -115,44 +127,24 @@ describe('AiJobsProcessor user message analysis', () => {
       { get: jest.fn().mockReturnValue(false) } as unknown as ConfigService,
       {} as AiActionClarificationWorkflowService,
       validator as unknown as AiAnalysisResponseValidator,
-      chatReplies as unknown as AiChatReplyService,
       activity as unknown as AgentActivityService,
       agentSettings as unknown as OrganizationAgentSettingsService,
+      chatTurns as unknown as AiChatTurnService,
     );
   });
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('persists the quotation proposal and assistant reply separately', async () => {
+  it('routes user messages through the dedicated AI chat pipeline', async () => {
     await expect(processor.process(job)).resolves.toEqual({
-      proposals: [{ id: 'proposal-1' }],
+      proposal: { id: 'proposal-1' },
       assistantMessageId: 'assistant-message-1',
       assistantMessageCreated: true,
+      resultType: 'TASK_PROPOSAL',
     });
-    expect(actions.ingestAnalysis).toHaveBeenCalledWith(
-      organizationId,
-      { type: 'USER_MESSAGE', id: sourceId },
-      expect.objectContaining({ actions: expect.any(Array) }),
-      expect.objectContaining({ conversationId }),
-    );
-    expect(aiService.request).toHaveBeenCalledWith(
-      '/api/v1/ai/jobs/analyze-source',
-      expect.objectContaining({
-        context: expect.objectContaining({
-          agentPolicy: expect.objectContaining({ overrides: [] }),
-        }),
-      }),
-    );
-    expect(chatReplies.persist).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId,
-        conversationId,
-        sourceMessageId: sourceId,
-        assistantMessage: expect.objectContaining({
-          responseId: 'quotation-job:reply:v1',
-        }),
-      }),
-    );
+    expect(chatTurns.process).toHaveBeenCalledWith(organizationId, sourceId);
+    expect(aiService.request).not.toHaveBeenCalled();
+    expect(actions.ingestAnalysis).not.toHaveBeenCalled();
     expect(sourceContext.markMessageProcessed).toHaveBeenNthCalledWith(
       1,
       organizationId,
@@ -166,13 +158,14 @@ describe('AiJobsProcessor user message analysis', () => {
     );
   });
 
-  it('rejects a response attributed to an organization-disabled agent', async () => {
-    agentSettings.disabledAgentIds.mockResolvedValue(['agent-1']);
+  it('records a terminal chat validation failure', async () => {
+    chatTurns.process.mockRejectedValue(
+      new UnrecoverableError('organization-disabled agent'),
+    );
 
     await expect(processor.process(job)).rejects.toBeInstanceOf(
       UnrecoverableError,
     );
-    expect(actions.ingestAnalysis).not.toHaveBeenCalled();
     expect(activity.fail).toHaveBeenCalledWith(
       'activity-1',
       expect.objectContaining({
@@ -182,7 +175,7 @@ describe('AiJobsProcessor user message analysis', () => {
   });
 
   it('keeps a user message processing while a retryable AI error will retry', async () => {
-    aiService.request.mockRejectedValue(
+    chatTurns.process.mockRejectedValue(
       new AiServiceHttpError('unavailable', true),
     );
 
@@ -198,7 +191,7 @@ describe('AiJobsProcessor user message analysis', () => {
   });
 
   it('marks a permanent AI error as failed without another queue attempt', async () => {
-    aiService.request.mockRejectedValue(
+    chatTurns.process.mockRejectedValue(
       new AiServiceHttpError('bad request', false),
     );
 
@@ -266,12 +259,12 @@ describe('AiJobsProcessor clarification refinement', () => {
       {} as ConfigService,
       clarificationWorkflow as unknown as AiActionClarificationWorkflowService,
       {} as AiAnalysisResponseValidator,
-      {} as AiChatReplyService,
       {} as AgentActivityService,
       {
         policyContract: jest.fn(),
         disabledAgentIds: jest.fn(),
       } as unknown as OrganizationAgentSettingsService,
+      {} as AiChatTurnService,
     );
   });
 

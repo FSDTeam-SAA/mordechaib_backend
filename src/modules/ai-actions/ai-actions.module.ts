@@ -11,6 +11,7 @@ import {
 import { AiActionsRepository } from './ai-actions.repository';
 import { AiActionsService } from './ai-actions.service';
 import { SourceAnalysesModule } from '../source-analyses/source-analyses.module';
+import { CrmModule } from '../crm/crm.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SourceAnalysesModule } from '../source-analyses/source-analyses.module'
     TasksModule,
     UsersModule,
     SourceAnalysesModule,
+    CrmModule,
   ],
   controllers: [AiActionsController, SourceActionCenterController],
   providers: [AiActionsService, AiActionsRepository],

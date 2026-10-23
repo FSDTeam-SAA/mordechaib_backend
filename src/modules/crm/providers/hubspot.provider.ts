@@ -14,6 +14,7 @@ import {
   CreateCrmDealInput,
   NormalizedCrmDeal,
   UpdateCrmDealInput,
+  UpdateCrmRecordInput,
 } from '../../../common/types/crm-provider.interface';
 import type {
   CrmFieldDataType,
@@ -96,7 +97,10 @@ const HUBSPOT_STANDARD_LABELS: Record<
   line_items: { singular: 'Line item', plural: 'Line items' },
   quotes: { singular: 'Quote', plural: 'Quotes' },
   calls: { singular: 'Call', plural: 'Calls' },
+  tasks: { singular: 'Task', plural: 'Tasks' },
 };
+
+const HUBSPOT_CONTACT_ACTIVITY_OBJECTS = ['tasks'] as const;
 
 @Injectable()
 export class HubSpotProvider implements CrmProvider {
@@ -104,16 +108,27 @@ export class HubSpotProvider implements CrmProvider {
 
   constructor(private readonly config: ConfigService) {}
 
+  oauthScopePlan() {
+    return {
+      required: [...this.requiredScopes],
+      optional: [...this.optionalScopes],
+    };
+  }
+
   authorizationUrl(state: string) {
     this.assertConfigured();
     const url = new URL('https://app.hubspot.com/oauth/authorize');
-    url.search = new URLSearchParams({
+    const parameters: Record<string, string> = {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
       state,
-      scope: this.scopes.join(' '),
-    }).toString();
+      scope: this.requiredScopes.join(' '),
+    };
+    if (this.optionalScopes.length > 0) {
+      parameters.optional_scope = this.optionalScopes.join(' ');
+    }
+    url.search = new URLSearchParams(parameters).toString();
     return url.toString();
   }
 
@@ -178,6 +193,22 @@ export class HubSpotProvider implements CrmProvider {
       });
     }
 
+    if (scopes.has('crm.objects.contacts.read')) {
+      for (const objectType of HUBSPOT_CONTACT_ACTIVITY_OBJECTS) {
+        const labels = this.standardLabels(objectType);
+        objects.set(objectType, {
+          objectType,
+          label: labels.singular,
+          pluralLabel: labels.plural,
+          custom: false,
+          readable: true,
+          createable: false,
+          updateable: false,
+          deletable: false,
+        });
+      }
+    }
+
     if (scopes.has('crm.schemas.custom.read')) {
       const response = await this.request<HubSpotSchemasResponse>(
         'https://api.hubapi.com/crm/v3/schemas',
@@ -227,9 +258,9 @@ export class HubSpotProvider implements CrmProvider {
       customSchema?.labels?.singular?.trim() || defaultLabels.singular;
     const pluralLabel =
       customSchema?.labels?.plural?.trim() || defaultLabels.plural;
-    const readableScope = custom
-      ? 'crm.objects.custom.read'
-      : `crm.objects.${objectType}.read`;
+    const readable = custom
+      ? scopes.has('crm.objects.custom.read')
+      : this.canReadObject(scopes, objectType);
     const writeScope = custom
       ? 'crm.objects.custom.write'
       : `crm.objects.${objectType}.write`;
@@ -239,7 +270,7 @@ export class HubSpotProvider implements CrmProvider {
       label,
       pluralLabel,
       custom,
-      readable: scopes.has(readableScope),
+      readable,
       createable: scopes.has(writeScope),
       updateable: scopes.has(writeScope),
       deletable: scopes.has(writeScope),
@@ -335,6 +366,25 @@ export class HubSpotProvider implements CrmProvider {
       cursor: page.paging?.next?.after,
       done: !page.paging?.next?.after,
     };
+  }
+
+  async updateRecord(
+    accessToken: string,
+    input: UpdateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord> {
+    const result = await this.request<HubSpotObject>(
+      `https://api.hubapi.com/crm/v3/objects/${encodeURIComponent(input.objectType)}/${encodeURIComponent(input.externalId)}`,
+      accessToken,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: input.properties }),
+      },
+    );
+    const normalized = this.normalizeRecord(input, result);
+    if (!normalized) {
+      throw new BadGatewayException('HubSpot returned an invalid CRM record');
+    }
+    return normalized;
   }
 
   async createDeal(
@@ -510,7 +560,17 @@ export class HubSpotProvider implements CrmProvider {
   }
 
   private effectiveScopes(scopes?: string[]) {
-    return new Set(scopes?.length ? scopes : this.scopes);
+    return new Set(scopes?.length ? scopes : this.requiredScopes);
+  }
+
+  private canReadObject(scopes: Set<string>, objectType: string) {
+    return (
+      scopes.has(`crm.objects.${objectType}.read`) ||
+      (HUBSPOT_CONTACT_ACTIVITY_OBJECTS.includes(
+        objectType as (typeof HUBSPOT_CONTACT_ACTIVITY_OBJECTS)[number],
+      ) &&
+        scopes.has('crm.objects.contacts.read'))
+    );
   }
 
   private standardLabels(objectType: string) {
@@ -685,8 +745,12 @@ export class HubSpotProvider implements CrmProvider {
     return this.config.get<string>('crm.hubspot.redirectUri') || '';
   }
 
-  private get scopes() {
-    return this.config.get<string[]>('crm.hubspot.scopes', []);
+  private get requiredScopes() {
+    return this.config.get<string[]>('crm.hubspot.requiredScopes', []);
+  }
+
+  private get optionalScopes() {
+    return this.config.get<string[]>('crm.hubspot.optionalScopes', []);
   }
 
   private get timeoutMs() {

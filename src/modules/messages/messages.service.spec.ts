@@ -32,9 +32,8 @@ describe('MessagesService', () => {
     conversations = {
       findLatest: jest.fn(),
       findById: jest.fn(),
-      create: jest.fn(),
+      create: jest.fn().mockResolvedValue({ _id: conversationId }),
       list: jest.fn(),
-      findOrCreate: jest.fn().mockResolvedValue({ _id: conversationId }),
       recordMessage: jest.fn().mockResolvedValue({ _id: conversationId }),
     };
     messages = {
@@ -82,14 +81,17 @@ describe('MessagesService', () => {
     );
   });
 
-  it('creates a text message in the organization singleton conversation', async () => {
+  it('creates a new conversation with its first text message', async () => {
     const result = await service.create(organizationId, userId, {
+      startNewConversation: true,
       content: '  hello AI  ',
     });
 
-    expect(conversations.findOrCreate).toHaveBeenCalledWith(
+    expect(conversations.create).toHaveBeenCalledWith(
       organizationId,
       userId,
+      'New Chat',
+      undefined,
     );
     expect(messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -123,11 +125,12 @@ describe('MessagesService', () => {
     });
 
     const result = await service.create(organizationId, userId, {
+      startNewConversation: true,
       clientMessageId: 'df7242be-a892-4f86-a54c-aa622328447a',
       content: 'already sent',
     });
 
-    expect(conversations.findOrCreate).not.toHaveBeenCalled();
+    expect(conversations.create).not.toHaveBeenCalled();
     expect(messages.create).not.toHaveBeenCalled();
     expect(storage.store).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({ id: messageId }));
@@ -167,7 +170,7 @@ describe('MessagesService', () => {
     const result = await service.create(
       organizationId,
       userId,
-      { content: 'analyze this' },
+      { startNewConversation: true, content: 'analyze this' },
       [file],
     );
 
@@ -219,7 +222,12 @@ describe('MessagesService', () => {
         ),
     );
 
-    await service.create(organizationId, userId, {}, [file]);
+    await service.create(
+      organizationId,
+      userId,
+      { startNewConversation: true },
+      [file],
+    );
 
     expect(attachments.createMany).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -234,9 +242,54 @@ describe('MessagesService', () => {
 
   it('rejects empty messages before creating a conversation', async () => {
     await expect(
-      service.create(organizationId, userId, { content: '   ' }),
+      service.create(organizationId, userId, {
+        startNewConversation: true,
+        content: '   ',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(conversations.findOrCreate).not.toHaveBeenCalled();
+    expect(conversations.create).not.toHaveBeenCalled();
+  });
+
+  it('appends to an explicit existing conversation', async () => {
+    conversations.findById.mockResolvedValue({ _id: conversationId });
+
+    await service.create(organizationId, userId, {
+      startNewConversation: false,
+      conversationId,
+      content: 'Continue this chat',
+    });
+
+    expect(conversations.findById).toHaveBeenCalledWith(
+      organizationId,
+      conversationId,
+      userId,
+    );
+    expect(conversations.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicting new-conversation input', async () => {
+    await expect(
+      service.create(organizationId, userId, {
+        startNewConversation: true,
+        conversationId,
+        content: 'Start over',
+      }),
+    ).rejects.toThrow(
+      'conversationId must be omitted when startNewConversation is true',
+    );
+    expect(conversations.create).not.toHaveBeenCalled();
+  });
+
+  it('requires an existing conversation id when not starting a new chat', async () => {
+    await expect(
+      service.create(organizationId, userId, {
+        startNewConversation: false,
+        content: 'Continue',
+      }),
+    ).rejects.toThrow(
+      'conversationId is required when startNewConversation is false',
+    );
+    expect(conversations.findById).not.toHaveBeenCalled();
   });
 
   it('keeps list attachments grouped under their messages', async () => {

@@ -3,7 +3,7 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AgentsService } from './agents.service';
 import { ListAgentCatalogQueryDto } from './dto/list-agent-catalog-query.dto';
-import { AiServiceSecretGuard } from './guards/ai-service-secret.guard';
+import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
 
 @ApiTags('AI Internal')
 @Controller('ai-internal/agents')

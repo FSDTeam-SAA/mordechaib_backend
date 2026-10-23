@@ -1,7 +1,8 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   Allow,
+  IsBoolean,
   IsMongoId,
   IsOptional,
   IsString,
@@ -9,10 +10,28 @@ import {
   MaxLength,
 } from 'class-validator';
 
+const blankToUndefined = ({ value }: { value: unknown }) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value;
+
 export class CreateMessageDto {
-  @ApiPropertyOptional({
-    description: 'Conversation to append to. Omit to use the latest chat.',
+  @ApiProperty({
+    description:
+      'Set true for the first message of a new chat; set false when conversationId identifies an existing chat.',
+    example: true,
   })
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
+  @IsBoolean()
+  startNewConversation!: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Existing conversation to append to. Required when startNewConversation=false and forbidden when it is true.',
+  })
+  @Transform(blankToUndefined)
   @IsMongoId()
   @IsOptional()
   conversationId?: string;
@@ -21,9 +40,7 @@ export class CreateMessageDto {
     description:
       'Client-generated UUID used to safely retry the same HTTP message.',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' && value.trim() === '' ? undefined : value,
-  )
+  @Transform(blankToUndefined)
   @IsUUID()
   @IsOptional()
   clientMessageId?: string;
@@ -36,6 +53,15 @@ export class CreateMessageDto {
   @MaxLength(20_000)
   @IsOptional()
   content?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Switch the conversation to this active platform agent for this and later turns.',
+  })
+  @Transform(blankToUndefined)
+  @IsMongoId()
+  @IsOptional()
+  selectedAgentId?: string;
 
   // Swagger and some multipart clients submit an empty `files` text field
   // when no file was selected. Real files are handled by Multer and exposed

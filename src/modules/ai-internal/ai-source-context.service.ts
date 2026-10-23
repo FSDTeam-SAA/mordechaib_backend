@@ -296,17 +296,25 @@ export class AiSourceContextService {
       .exec();
     if (!conversation) throw new NotFoundException('Conversation not found');
 
-    const history = await this.messages
-      .find({
-        organizationId: message.organizationId,
-        conversationId: message.conversationId,
-        deletedAt: { $exists: false },
-      })
-      .select('+extractedText +transcription')
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(20)
-      .lean()
-      .exec();
+    const historyFilter = {
+      organizationId: message.organizationId,
+      conversationId: message.conversationId,
+      deletedAt: { $exists: false },
+      // A queued turn must see the conversation as it existed when that user
+      // message was accepted. Otherwise a later message can leak into an
+      // earlier turn while workers process the queue concurrently.
+      _id: { $lte: message._id },
+    };
+    const [history, boundedMessageCount] = await Promise.all([
+      this.messages
+        .find(historyFilter)
+        .select('+extractedText +transcription')
+        .sort({ _id: -1 })
+        .limit(20)
+        .lean()
+        .exec(),
+      this.messages.countDocuments(historyFilter).exec(),
+    ]);
     const messageIds = history.map((item) => String(item._id));
     const attachmentDownloadsEnabled = this.config.get<boolean>(
       'aiService.attachmentDownloadUrlEnabled',
@@ -349,6 +357,7 @@ export class AiSourceContextService {
           .find({
             organizationId: message.organizationId,
             conversationId: message.conversationId,
+            'source.id': { $lte: sourceId },
             status: {
               $in: [
                 AiActionProposalStatus.NEEDS_CLARIFICATION,
@@ -358,7 +367,7 @@ export class AiSourceContextService {
             },
           })
           .select(
-            'proposalId actionType status payload clarificationQuestions clarificationAnswers requestId proposedByAgent revision createdAt updatedAt',
+            'proposalId chatDraftId actionType status payload clarificationQuestions clarificationAnswers requestId proposedByAgent revision createdAt updatedAt',
           )
           .sort({ createdAt: -1 })
           .limit(20)
@@ -379,12 +388,12 @@ export class AiSourceContextService {
       source: { type: 'USER_MESSAGE', id: sourceId },
       occurredAt: (message as unknown as MessageContextRecord).createdAt,
       conversationId: message.conversationId,
-      latestMessageId: history.length ? String(history[0]._id) : sourceId,
       message: this.messageData(message as unknown as MessageContextRecord),
       conversation: {
         id: String(conversation._id),
         title: conversation.title,
-        totalMessageCount: conversation.totalMessageCount,
+        selectedAgentId: conversation.selectedAgentId,
+        totalMessageCount: boundedMessageCount,
         history: history
           .reverse()
           .map((item) =>
@@ -616,6 +625,11 @@ export class AiSourceContextService {
       type: message.type,
       content: message.content,
       processingStatus: message.processingStatus,
+      sourceMessageId: message.sourceMessageId,
+      agentId: message.agentId,
+      agentName: message.agentName,
+      agentType: message.agentType,
+      agentImageUrl: message.agentImageUrl,
       extractedText: message.extractedText,
       transcription: message.transcription,
       createdAt: message.createdAt,

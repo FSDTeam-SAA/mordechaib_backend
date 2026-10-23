@@ -7,6 +7,7 @@ export type AiActionProposalDocument = HydratedDocument<AiActionProposal>;
 export enum AiActionType {
   CREATE_TASK = 'CREATE_TASK',
   SCHEDULE_MEETING = 'SCHEDULE_MEETING',
+  UPDATE_CRM_RECORD = 'UPDATE_CRM_RECORD',
 }
 
 export enum AiActionProposalStatus {
@@ -32,6 +33,7 @@ export enum AiActionTargetType {
   TASK = 'TASK',
   PLATFORM_MEETING = 'PLATFORM_MEETING',
   CALENDAR_EVENT = 'CALENDAR_EVENT',
+  CRM_RECORD = 'CRM_RECORD',
 }
 
 @Schema({ _id: false })
@@ -50,10 +52,17 @@ export class AiClarificationQuestion {
 
   @Prop({ default: true })
   required!: boolean;
+
+  @Prop({
+    type: [{ label: String, value: String, _id: false }],
+    default: undefined,
+  })
+  options?: Array<{ label: string; value: string }>;
 }
 
-export const AiClarificationQuestionSchema =
-  SchemaFactory.createForClass(AiClarificationQuestion);
+export const AiClarificationQuestionSchema = SchemaFactory.createForClass(
+  AiClarificationQuestion,
+);
 
 @Schema({ _id: false })
 export class AiProposalAgent {
@@ -143,8 +152,9 @@ export class AiCustomerIntelligence {
   riskLevel!: string;
 }
 
-export const AiCustomerIntelligenceSchema =
-  SchemaFactory.createForClass(AiCustomerIntelligence);
+export const AiCustomerIntelligenceSchema = SchemaFactory.createForClass(
+  AiCustomerIntelligence,
+);
 
 @Schema({ _id: false })
 export class AiPatternDetection {
@@ -200,6 +210,10 @@ export class AiActionProposal {
   @Prop({ trim: true, maxlength: 100, index: true })
   conversationId?: string;
 
+  /** Stable AI Chat draft identity across multiple clarification turns. */
+  @Prop({ trim: true, maxlength: 200 })
+  chatDraftId?: string;
+
   @Prop({ required: true, select: false })
   proposalHash!: string;
 
@@ -226,8 +240,8 @@ export class AiActionProposal {
   evidence!: AiProposalEvidence[];
 
   /** Source-level AI analysis snapshot used by frontend and reporting. */
-  @Prop({ type: AiAnalysisSummarySchema, required: true })
-  analysis!: AiAnalysisSummary;
+  @Prop({ type: AiAnalysisSummarySchema })
+  analysis?: AiAnalysisSummary;
 
   @Prop({ type: [AiClarificationQuestionSchema], default: [] })
   clarificationQuestions!: AiClarificationQuestion[];
@@ -310,6 +324,13 @@ AiActionProposalSchema.index({
   status: 1,
   createdAt: -1,
 });
+AiActionProposalSchema.index(
+  { organizationId: 1, conversationId: 1, chatDraftId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { chatDraftId: { $type: 'string' } },
+  },
+);
 AiActionProposalSchema.index({
   organizationId: 1,
   actionType: 1,
