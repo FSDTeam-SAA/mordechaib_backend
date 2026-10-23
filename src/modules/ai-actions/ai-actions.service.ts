@@ -22,6 +22,7 @@ import {
   AiActionTargetType,
   AiActionType,
   AiProposalSource,
+  AiProposalSourceType,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -44,6 +45,8 @@ import {
   AiAnalysisResult,
 } from './dto/ai-analysis-result.dto';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
+import { CrmRecordMutationsService } from '../crm/crm-record-mutations.service';
+import { UpdateCrmRecordActionDto } from '../crm/dto/update-crm-record-action.dto';
 
 type StoredProposal = AiActionProposal & {
   _id: unknown;
@@ -56,6 +59,18 @@ type IngestAnalysisOptions = {
   conversationId?: string;
   effectiveTimezone?: string;
   expectedRequestId?: string;
+};
+
+type IngestChatDraftInput = {
+  conversationId: string;
+  draftId: string;
+  sourceMessageId: string;
+  actionType: AiActionType;
+  proposedByAgent: { id: string; name: string; type: AgentType };
+  payload: Record<string, unknown>;
+  clarificationQuestions?: AiClarificationQuestionInput[];
+  evidenceText: string;
+  effectiveTimezone: string;
 };
 
 type AiActionSummaryCountKey = Exclude<
@@ -73,6 +88,7 @@ export class AiActionsService {
     private readonly organizations: OrganizationsService,
     private readonly auditLogs: AuditLogsService,
     private readonly sourceAnalyses: SourceAnalysesRepository,
+    private readonly crmMutations: CrmRecordMutationsService,
   ) {}
 
   /**
@@ -115,6 +131,117 @@ export class AiActionsService {
       analysis as unknown as Record<string, unknown>,
     );
     return items;
+  }
+
+  /**
+   * Upserts one stable interactive-chat draft while preserving the existing
+   * proposal approval and execution lifecycle.
+   */
+  async ingestChatDraft(organizationId: string, input: IngestChatDraftInput) {
+    const draftId = this.boundedIdentifier(input.draftId, 'chat draft id', 200);
+    const conversationId = this.boundedIdentifier(
+      input.conversationId,
+      'conversation id',
+      100,
+    );
+    const existing = await this.repository.findChatDraft(
+      organizationId,
+      conversationId,
+      draftId,
+    );
+    const returnedAgent = this.normalizeAgent(input.proposedByAgent);
+    // The organizer may switch the selected chat agent between turns. The
+    // response validator has already tied this identity to that selection;
+    // resolve it again against the active catalog before persisting it.
+    const proposedByAgent = await this.resolveActiveAgent(returnedAgent.id);
+    if (existing && existing.actionType !== input.actionType) {
+      throw new BadRequestException(
+        'AI cannot change a chat draft action type',
+      );
+    }
+    const questions = this.normalizedQuestions(input.clarificationQuestions);
+    const timezoneAwarePayload = this.withEffectiveTimezone(
+      input.actionType,
+      input.payload,
+      input.effectiveTimezone,
+    );
+    const payload = questions.length
+      ? timezoneAwarePayload
+      : await this.validateChatPayload(
+          input.actionType,
+          timezoneAwarePayload,
+          input.effectiveTimezone,
+          organizationId,
+        );
+    const status = questions.length
+      ? AiActionProposalStatus.NEEDS_CLARIFICATION
+      : AiActionProposalStatus.PENDING;
+    const requestId = `chat-${conversationId}`;
+    const proposalId = `chat:${conversationId}:${draftId}`;
+    const normalized = {
+      organizationId,
+      schemaVersion: '1.0',
+      proposalId,
+      requestId,
+      conversationId,
+      chatDraftId: draftId,
+      actionType: input.actionType,
+      proposedByAgent,
+      source: {
+        type: AiProposalSourceType.USER_MESSAGE,
+        id: input.sourceMessageId,
+      },
+      payload,
+      confidence: 1,
+      evidence: [{ text: input.evidenceText.slice(0, 5_000) }],
+      clarificationQuestions: questions,
+      clarificationAnswers: {},
+      status,
+    };
+    const proposalHash = this.hash(this.stableStringify(normalized));
+    if (existing?.proposalHash === proposalHash) {
+      return {
+        ...this.toResponse(existing as StoredProposal),
+        duplicate: true,
+      };
+    }
+    if (existing) {
+      const updated = await this.repository.updateChatDraft(
+        organizationId,
+        conversationId,
+        draftId,
+        { ...normalized, proposalHash },
+      );
+      if (!updated) {
+        throw new ConflictException(
+          'The chat draft can no longer be updated in its current state',
+        );
+      }
+      return {
+        ...this.toResponse(updated as StoredProposal),
+        duplicate: false,
+      };
+    }
+    try {
+      const created = await this.repository.create({
+        ...normalized,
+        proposalHash,
+        revision: 1,
+      });
+      return {
+        ...this.toResponse(created as StoredProposal),
+        duplicate: false,
+      };
+    } catch (error) {
+      if (!this.isDuplicateKey(error)) throw error;
+      const raced = await this.repository.findChatDraft(
+        organizationId,
+        conversationId,
+        draftId,
+      );
+      if (!raced || raced.proposalHash !== proposalHash) throw error;
+      return { ...this.toResponse(raced as StoredProposal), duplicate: true };
+    }
   }
 
   async answerClarification(
@@ -276,6 +403,8 @@ export class AiActionsService {
         summary.tasks += row.count;
       } else if (row._id.actionType === AiActionType.SCHEDULE_MEETING) {
         summary.meetings += row.count;
+      } else if (row._id.actionType === AiActionType.UPDATE_CRM_RECORD) {
+        summary.crmUpdates += row.count;
       }
       const statusKey = this.actionSummaryStatusKey(row._id.status);
       summary[statusKey] += row.count;
@@ -330,6 +459,7 @@ export class AiActionsService {
       proposal.actionType,
       mergedPayload,
       organization.timezone,
+      organizationId,
     );
     if (proposal.actionType === AiActionType.CREATE_TASK) {
       await this.assertValidAssignee(
@@ -504,6 +634,8 @@ export class AiActionsService {
       const payload = await this.validatePayload(
         proposal.actionType,
         proposal.payload,
+        undefined,
+        proposal.organizationId,
       );
       let target: { type: AiActionTargetType; id: string };
       if (proposal.actionType === AiActionType.CREATE_TASK) {
@@ -522,7 +654,7 @@ export class AiActionsService {
           },
         );
         target = { type: AiActionTargetType.TASK, id: task.id };
-      } else {
+      } else if (proposal.actionType === AiActionType.SCHEDULE_MEETING) {
         const meetingPayload = payload as AiMeetingActionPayloadDto;
         const meeting = await this.meetings.createFromAiProposal(
           proposal.organizationId,
@@ -538,6 +670,12 @@ export class AiActionsService {
           type: AiActionTargetType.PLATFORM_MEETING,
           id: meeting.id,
         };
+      } else {
+        const record = await this.crmMutations.executeUpdate(
+          proposal.organizationId,
+          payload as UpdateCrmRecordActionDto,
+        );
+        target = { type: AiActionTargetType.CRM_RECORD, id: record.id };
       }
 
       const executed = await this.repository.markExecuted(
@@ -633,6 +771,7 @@ export class AiActionsService {
           action.actionType,
           timezoneAwarePayload,
           effectiveTimezone,
+          organizationId,
         );
     const normalized = {
       organizationId,
@@ -707,6 +846,7 @@ export class AiActionsService {
           action.actionType,
           timezoneAwarePayload,
           effectiveTimezone,
+          proposal.organizationId,
         );
     const next = await this.repository.applyClarificationResult(
       proposal.organizationId,
@@ -763,8 +903,32 @@ export class AiActionsService {
           ? { inputType: question.inputType.trim() }
           : {}),
         required: question.required !== false,
+        ...(question.options?.length
+          ? {
+              options: question.options.map((option) => ({
+                label: this.boundedIdentifier(
+                  option.label,
+                  'clarification option label',
+                  200,
+                ),
+                value: this.boundedIdentifier(
+                  option.value,
+                  'clarification option value',
+                  200,
+                ),
+              })),
+            }
+          : {}),
       };
     });
+  }
+
+  private boundedIdentifier(value: string, name: string, maxLength: number) {
+    const normalized = value?.trim();
+    if (!normalized || normalized.length > maxLength) {
+      throw new BadRequestException(`AI returned an invalid ${name}`);
+    }
+    return normalized;
   }
 
   /**
@@ -1075,7 +1239,12 @@ export class AiActionsService {
     actionType: AiActionType,
     payload: Record<string, unknown>,
     effectiveTimezone?: string,
-  ): Promise<AiTaskActionPayloadDto | AiMeetingActionPayloadDto> {
+    organizationId?: string,
+  ): Promise<
+    | AiTaskActionPayloadDto
+    | AiMeetingActionPayloadDto
+    | UpdateCrmRecordActionDto
+  > {
     const normalizedPayload = this.withEffectiveTimezone(
       actionType,
       payload,
@@ -1084,8 +1253,16 @@ export class AiActionsService {
     const type =
       actionType === AiActionType.CREATE_TASK
         ? AiTaskActionPayloadDto
-        : AiMeetingActionPayloadDto;
-    const instance = plainToInstance(type, normalizedPayload);
+        : actionType === AiActionType.SCHEDULE_MEETING
+          ? AiMeetingActionPayloadDto
+          : UpdateCrmRecordActionDto;
+    const instance = plainToInstance(
+      type as new () =>
+        | AiTaskActionPayloadDto
+        | AiMeetingActionPayloadDto
+        | UpdateCrmRecordActionDto,
+      normalizedPayload,
+    );
     const errors = await validate(instance, {
       whitelist: true,
       forbidNonWhitelisted: true,
@@ -1116,7 +1293,41 @@ export class AiActionsService {
       }
       meeting.startsAt = new Date(meeting.startsAt).toISOString();
     }
+    if (actionType === AiActionType.UPDATE_CRM_RECORD) {
+      if (!organizationId) {
+        throw new BadRequestException(
+          'UPDATE_CRM_RECORD validation requires organization context',
+        );
+      }
+      return this.crmMutations.prepareUpdate(
+        organizationId,
+        instance as UpdateCrmRecordActionDto,
+      );
+    }
     return instance;
+  }
+
+  private async validateChatPayload(
+    actionType: AiActionType,
+    payload: Record<string, unknown>,
+    effectiveTimezone?: string,
+    organizationId?: string,
+  ) {
+    const validated = await this.validatePayload(
+      actionType,
+      payload,
+      effectiveTimezone,
+      organizationId,
+    );
+    if (
+      actionType === AiActionType.SCHEDULE_MEETING &&
+      !(validated as AiMeetingActionPayloadDto).invitees?.length
+    ) {
+      throw new BadRequestException(
+        'SCHEDULE_MEETING chat payload requires at least one invitee email',
+      );
+    }
+    return validated;
   }
 
   private withEffectiveTimezone(

@@ -9,6 +9,7 @@ import { AgentType } from '../../common/enums/agent-type.enum';
 
 export const AI_JOBS_QUEUE = 'ai-jobs';
 export const AI_ANALYZE_SOURCE_JOB = 'analyze-source';
+export const AI_CHAT_TURN_JOB = 'chat-turn';
 export const AI_SYNC_AGENT_JOB = 'sync-agent';
 
 export type AgentSyncEventType =
@@ -87,12 +88,20 @@ export class AiJobsQueue {
     organizationId: string;
     messageId: string;
   }) {
-    return this.enqueueSourceAnalysis(
+    if (!this.aiService.enabled) {
+      this.logger.warn(
+        `AI chat turn was not queued: automation is disabled, message=${input.messageId}`,
+      );
+      return { queued: false };
+    }
+    return this.enqueue(
+      AI_CHAT_TURN_JOB,
       {
         organizationId: input.organizationId,
-        sourceType: 'USER_MESSAGE',
+        sourceType: 'USER_MESSAGE' as const,
         sourceId: input.messageId,
       },
+      `chat:${input.organizationId}:${input.messageId}`,
       this.config.get<number>('aiService.messageAnalysisDelayMs', 1_500),
     );
   }

@@ -4,6 +4,7 @@ export type AiActionSourceSummary = {
   total: number;
   tasks: number;
   meetings: number;
+  crmUpdates: number;
   analyzing: number;
   needsClarification: number;
   pending: number;
@@ -24,6 +25,7 @@ export function createEmptyAiActionSourceSummary(): AiActionSourceSummary {
     total: 0,
     tasks: 0,
     meetings: 0,
+    crmUpdates: 0,
     analyzing: 0,
     needsClarification: 0,
     pending: 0,

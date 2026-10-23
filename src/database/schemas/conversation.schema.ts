@@ -15,6 +15,10 @@ export class Conversation {
   @Prop({ required: true, trim: true, default: 'AI Assistant' })
   title!: string;
 
+  /** Agent selected for subsequent turns in this conversation. */
+  @Prop({ trim: true, maxlength: 128, index: true })
+  selectedAgentId?: string;
+
   @Prop({ default: false })
   isDefault!: boolean;
 

@@ -69,7 +69,7 @@ describe('ExecutiveBriefingResponseValidator', () => {
       label: 'Approve proposal',
       severity: 'HIGH',
       sourceRefs: ['proposal-1'],
-      proposalId: 'proposal-db-1',
+      proposalId: 'proposal-business-1',
       proposalAction: 'APPROVE',
       recommendationOnly: false,
     });
@@ -85,7 +85,7 @@ describe('ExecutiveBriefingResponseValidator', () => {
       label: 'Approve proposal',
       severity: 'HIGH',
       sourceRefs: ['task-1'],
-      proposalId: 'proposal-db-1',
+      proposalId: 'proposal-business-1',
       proposalAction: 'APPROVE',
       recommendationOnly: false,
     });
@@ -107,7 +107,7 @@ describe('ExecutiveBriefingResponseValidator', () => {
       severity: 'INFO',
       sourceRefs: ['proposal-clarification'],
       recommendationOnly: true,
-      proposalId: 'proposal-db-clarification',
+      proposalId: 'proposal-business-clarification',
     });
 
     expect(() => validator.validate(value, input)).not.toThrow();
@@ -152,6 +152,14 @@ describe('ExecutiveBriefingResponseValidator', () => {
       },
       organization: { name: 'Example Ltd.' },
       agents: [],
+      agentPolicy: {
+        defaults: {
+          enabled: true,
+          approvalRequired: true,
+          concurrencyLimit: null,
+        },
+        overrides: [],
+      },
       facts: {
         tasks: {
           availability: BriefingFactAvailability.AVAILABLE,
@@ -177,14 +185,20 @@ describe('ExecutiveBriefingResponseValidator', () => {
               sourceType: 'AI_ACTION_PROPOSAL',
               sourceId: 'proposal-db-1',
               capturedAt,
-              data: { status: 'PENDING' },
+              data: {
+                proposalId: 'proposal-business-1',
+                status: 'PENDING',
+              },
             },
             {
               id: 'proposal-clarification',
               sourceType: 'AI_ACTION_PROPOSAL',
               sourceId: 'proposal-db-clarification',
               capturedAt,
-              data: { status: 'NEEDS_CLARIFICATION' },
+              data: {
+                proposalId: 'proposal-business-clarification',
+                status: 'NEEDS_CLARIFICATION',
+              },
             },
           ],
         },

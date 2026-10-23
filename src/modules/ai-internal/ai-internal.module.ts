@@ -57,6 +57,9 @@ import {
   AiSourceAnalysis,
   AiSourceAnalysisSchema,
 } from '../../database/schemas/ai-source-analysis.schema';
+import { AiChatHistoryController } from './ai-chat-history.controller';
+import { AiChatHistoryService } from './ai-chat-history.service';
+import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
 
 @Module({
   imports: [
@@ -82,7 +85,13 @@ import {
       { name: AiSourceAnalysis.name, schema: AiSourceAnalysisSchema },
     ]),
   ],
-  providers: [AiSourceContextService, CloudinaryMessageAttachmentStorage],
+  controllers: [AiChatHistoryController],
+  providers: [
+    AiSourceContextService,
+    AiChatHistoryService,
+    AiServiceSecretGuard,
+    CloudinaryMessageAttachmentStorage,
+  ],
   exports: [AiSourceContextService, CloudinaryMessageAttachmentStorage],
 })
 export class AiSourceContextModule {}

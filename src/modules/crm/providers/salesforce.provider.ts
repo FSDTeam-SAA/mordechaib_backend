@@ -15,6 +15,7 @@ import {
   CreateCrmDealInput,
   NormalizedCrmDeal,
   UpdateCrmDealInput,
+  UpdateCrmRecordInput,
 } from '../../../common/types/crm-provider.interface';
 import type {
   CrmFieldDataType,
@@ -305,6 +306,32 @@ export class SalesforceProvider implements CrmProvider {
       cursor: page.nextRecordsUrl,
       done: page.done !== false,
     };
+  }
+
+  async updateRecord(
+    accessToken: string,
+    input: UpdateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord> {
+    const instanceUrl = this.instanceUrl(input.instanceUrl);
+    const resource = `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/${encodeURIComponent(input.objectType)}/${encodeURIComponent(input.externalId)}`;
+    await this.request<void>(
+      resource,
+      accessToken,
+      { method: 'PATCH', body: JSON.stringify(input.properties) },
+      [204],
+    );
+    const selectedFields = [...new Set(['Id', ...input.fields])];
+    const result = await this.request<Record<string, unknown>>(
+      `${resource}?fields=${encodeURIComponent(selectedFields.join(','))}`,
+      accessToken,
+    );
+    const normalized = this.normalizeRecord(input, result);
+    if (!normalized) {
+      throw new BadGatewayException(
+        'Salesforce returned an invalid CRM record',
+      );
+    }
+    return normalized;
   }
 
   async createDeal(

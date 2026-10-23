@@ -68,6 +68,47 @@ export class AiActionsRepository {
       .exec();
   }
 
+  findChatDraft(
+    organizationId: string,
+    conversationId: string,
+    chatDraftId: string,
+  ) {
+    return this.model
+      .findOne({ organizationId, conversationId, chatDraftId })
+      .select('+proposalHash')
+      .lean()
+      .exec();
+  }
+
+  updateChatDraft(
+    organizationId: string,
+    conversationId: string,
+    chatDraftId: string,
+    update: Record<string, unknown>,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          organizationId,
+          conversationId,
+          chatDraftId,
+          status: {
+            $in: [
+              AiActionProposalStatus.NEEDS_CLARIFICATION,
+              AiActionProposalStatus.PENDING,
+            ],
+          },
+        },
+        {
+          $set: update,
+          $inc: { revision: 1 },
+        },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
+
   findById(organizationId: string, id: string) {
     return this.model.findOne({ _id: id, organizationId }).lean().exec();
   }

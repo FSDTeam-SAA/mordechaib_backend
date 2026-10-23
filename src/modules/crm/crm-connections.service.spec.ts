@@ -25,6 +25,7 @@ describe('CrmConnectionsService', () => {
     exchangeCode: jest.fn(),
     getProfile: jest.fn(),
     authorizationUrl: jest.fn(),
+    oauthScopePlan: jest.fn(),
   };
   const providers = { get: jest.fn(() => provider) };
   const oauthStates = { create: jest.fn(), consume: jest.fn() };
@@ -52,8 +53,49 @@ describe('CrmConnectionsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    provider.oauthScopePlan.mockReturnValue(undefined);
     repository.findDefaultConnected.mockResolvedValue(defaultConnection);
     repository.update.mockResolvedValue(defaultConnection);
+  });
+
+  it('persists granted and unavailable organization capabilities', async () => {
+    oauthStates.consume.mockResolvedValue({
+      organizationId: 'org-1',
+      userId: 'user-1',
+    });
+    repository.find.mockResolvedValue(null);
+    provider.oauthScopePlan.mockReturnValue({
+      required: ['oauth', 'crm.objects.contacts.read'],
+      optional: ['crm.objects.companies.read'],
+    });
+    provider.exchangeCode.mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      scopes: ['oauth', 'crm.objects.contacts.read'],
+    });
+    provider.getProfile.mockResolvedValue({ id: 'hub-1' });
+
+    await service.complete(
+      IntegrationProvider.HUBSPOT,
+      'authorization-code',
+      'oauth-state',
+    );
+
+    expect(repository.upsert).toHaveBeenCalledWith(
+      'org-1',
+      IntegrationProvider.HUBSPOT,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          scopes: ['oauth', 'crm.objects.contacts.read'],
+          requestedScopes: [
+            'oauth',
+            'crm.objects.contacts.read',
+            'crm.objects.companies.read',
+          ],
+          unavailableScopes: ['crm.objects.companies.read'],
+        }),
+      }),
+    );
   });
 
   it('enables PKCE when building a Salesforce connection URL', async () => {
@@ -102,6 +144,8 @@ describe('CrmConnectionsService', () => {
     ).resolves.toEqual({
       connected: true,
       provider: IntegrationProvider.SALESFORCE,
+      organizationId: 'org-1',
+      userId: 'user-1',
     });
 
     expect(provider.exchangeCode).toHaveBeenCalledWith('authorization-code', {
@@ -139,6 +183,8 @@ describe('CrmConnectionsService', () => {
         lastSyncedAt: '2026-10-03T10:00:00.000Z',
         syncStatus: 'IDLE',
         reconnectRequired: false,
+        scopes: ['crm.objects.contacts.read'],
+        unavailableScopes: ['crm.objects.companies.read'],
       },
     });
 
@@ -167,6 +213,11 @@ describe('CrmConnectionsService', () => {
       syncStatus: 'IDLE',
       lastSyncError: undefined,
       reconnectRequired: false,
+      capabilities: {
+        automaticDiscovery: true,
+        grantedScopes: ['crm.objects.contacts.read'],
+        unavailableScopes: ['crm.objects.companies.read'],
+      },
       objectSync: {
         configuration: { schemaVersion: '1.0', objects: [] },
         objects: [],

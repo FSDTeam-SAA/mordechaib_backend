@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { AiServiceClient } from './ai-service.client';
 import {
+  AI_CHAT_TURN_JOB,
   AI_RECOVER_ACTION_REFINEMENT_JOB,
   AI_REFINE_ACTION_JOB,
   AiJobsQueue,
@@ -23,7 +24,26 @@ describe('AiJobsQueue clarification durability', () => {
     jobs = new AiJobsQueue(
       queue as unknown as Queue,
       aiService as AiServiceClient,
-      {} as ConfigService,
+      { get: jest.fn().mockReturnValue(1_500) } as unknown as ConfigService,
+    );
+  });
+
+  it('queues each user message as a dedicated chat turn', async () => {
+    const input = {
+      organizationId: 'org-1',
+      messageId: 'message-1',
+    };
+
+    await jobs.enqueueMessageAnalysis(input);
+
+    expect(queue.add).toHaveBeenCalledWith(
+      AI_CHAT_TURN_JOB,
+      {
+        organizationId: input.organizationId,
+        sourceType: 'USER_MESSAGE',
+        sourceId: input.messageId,
+      },
+      expect.objectContaining({ delay: 1_500, attempts: 6 }),
     );
   });
 

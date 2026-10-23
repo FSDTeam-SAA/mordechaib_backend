@@ -60,6 +60,9 @@ export type CrmObjectSyncSelection = {
 export type CrmObjectSyncConfiguration = {
   schemaVersion: '1.0';
   objects: CrmObjectSyncSelection[];
+  configuredBy?: 'AUTOMATIC' | 'USER';
+  capabilityFingerprint?: string;
+  lastDiscoveredAt?: string;
   updatedAt?: string;
   updatedByUserId?: string;
 };

@@ -116,15 +116,23 @@ export class ExecutiveBriefingResponseValidator {
         });
       }
     }
-    const proposalStatuses = new Map(
-      input.facts.actionProposals.items.map((fact) => [
-        fact.sourceId,
+    const proposalStatuses = new Map<string, string | undefined>();
+    const proposalFactIds = new Map<string, string>();
+    for (const fact of input.facts.actionProposals.items) {
+      const proposalId = this.string(
+        fact.data.proposalId,
+        'submitted proposalId',
+        100,
+      )!;
+      if (proposalStatuses.has(proposalId)) {
+        this.invalid(`Duplicate submitted proposalId ${proposalId}`);
+      }
+      proposalStatuses.set(
+        proposalId,
         typeof fact.data.status === 'string' ? fact.data.status : undefined,
-      ]),
-    );
-    const proposalFactIds = new Map(
-      input.facts.actionProposals.items.map((fact) => [fact.sourceId, fact.id]),
-    );
+      );
+      proposalFactIds.set(proposalId, fact.id);
+    }
     const returnedRefs = this.validateReturnedRefs(
       value.sourceRefs,
       submittedFacts,

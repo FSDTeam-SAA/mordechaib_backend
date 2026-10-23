@@ -153,6 +153,11 @@ export default () => {
     60_000,
     'AI_BRIEFING_TIMEOUT_MS',
   );
+  const aiChatTimeoutMs = positiveInteger(
+    process.env.AI_CHAT_TIMEOUT_MS,
+    45_000,
+    'AI_CHAT_TIMEOUT_MS',
+  );
   const aiBriefingPollAfterMs = positiveInteger(
     process.env.AI_BRIEFING_POLL_AFTER_MS,
     2_000,
@@ -520,6 +525,7 @@ export default () => {
       timeoutMs: aiServiceTimeoutMs,
       messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
       briefingTimeoutMs: aiBriefingTimeoutMs,
+      chatTimeoutMs: aiChatTimeoutMs,
       briefingPollAfterMs: aiBriefingPollAfterMs,
     },
 
@@ -563,13 +569,30 @@ export default () => {
         redirectUri:
           process.env.HUBSPOT_OAUTH_REDIRECT_URI ||
           `${appBaseUrl}/api/v1/crm/connections/HUBSPOT/callback`,
-        scopes: (
-          process.env.HUBSPOT_OAUTH_SCOPES ||
-          'oauth crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write'
-        )
-          .split(/[ ,]+/)
-          .map((scope) => scope.trim())
-          .filter(Boolean),
+        requiredScopes: [
+          'oauth',
+          'crm.objects.contacts.read',
+          'crm.objects.contacts.write',
+          'crm.objects.deals.read',
+          'crm.objects.deals.write',
+        ],
+        optionalScopes: [
+          'crm.objects.companies.read',
+          'crm.objects.companies.write',
+          'crm.objects.tickets.read',
+          'crm.objects.tickets.write',
+          'crm.objects.leads.read',
+          'crm.objects.leads.write',
+          'crm.objects.products.read',
+          'crm.objects.products.write',
+          'crm.objects.line_items.read',
+          'crm.objects.line_items.write',
+          'crm.objects.quotes.read',
+          'crm.objects.quotes.write',
+          'crm.objects.custom.read',
+          'crm.objects.custom.write',
+          'crm.schemas.custom.read',
+        ],
       },
       salesforce: {
         clientId: process.env.SALESFORCE_CLIENT_ID?.trim(),

@@ -31,6 +31,7 @@ import {
 } from './message-upload.config';
 import { MessagesRepository } from './messages.repository';
 import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
+import { AiChatAgentResolver } from '../ai-integration/ai-chat-agent-resolver.service';
 import {
   MESSAGE_ATTACHMENT_STORAGE,
   MessageAttachmentStorage,
@@ -64,21 +65,28 @@ export class MessagesService {
     @Optional()
     @Inject(forwardRef(() => AiJobsQueue))
     private readonly aiJobs?: AiJobsQueue,
+    @Optional()
+    @Inject(forwardRef(() => AiChatAgentResolver))
+    private readonly chatAgents?: AiChatAgentResolver,
   ) {}
 
   getConversation(organizationId: string, userId: string) {
     return this.conversations.findLatest(organizationId, userId);
   }
 
-  createConversation(
+  async createConversation(
     organizationId: string,
     userId: string,
     input: CreateConversationDto,
   ) {
+    const selectedAgent = input.selectedAgentId
+      ? await this.resolveSelectedAgent(organizationId, input.selectedAgentId)
+      : undefined;
     return this.conversations.create(
       organizationId,
       userId,
       input.title || 'New Chat',
+      selectedAgent?.id,
     );
   }
 
@@ -117,7 +125,6 @@ export class MessagesService {
         'A message must contain text or at least one attachment',
       );
     }
-
     try {
       if (input.clientMessageId) {
         const existing = await this.messages.findByClientMessageId(
@@ -127,15 +134,35 @@ export class MessagesService {
         if (existing) return this.withAttachments(organizationId, existing);
       }
 
+      this.validateConversationIntent(input);
+      const selectedAgent = input.selectedAgentId
+        ? await this.resolveSelectedAgent(organizationId, input.selectedAgentId)
+        : undefined;
+
       const validatedFiles = files.map((file) => this.validateFile(file));
-      const conversation = input.conversationId
-        ? await this.conversations.findById(
+      let conversation = input.startNewConversation
+        ? await this.conversations.create(
             organizationId,
-            input.conversationId,
             userId,
+            'New Chat',
+            selectedAgent?.id,
           )
-        : await this.conversations.findOrCreate(organizationId, userId);
+        : await this.conversations.findById(
+            organizationId,
+            input.conversationId!,
+            userId,
+          );
       if (!conversation) throw new NotFoundException('Conversation not found');
+      if (selectedAgent && conversation.selectedAgentId !== selectedAgent.id) {
+        conversation = await this.conversations.updateSelectedAgent(
+          organizationId,
+          String(conversation._id),
+          userId,
+          selectedAgent.id,
+        );
+        if (!conversation)
+          throw new NotFoundException('Conversation not found');
+      }
       const conversationId = String(conversation._id);
       const uploaded: UploadedAttachment[] = [];
       let messageId: string | undefined;
@@ -622,5 +649,28 @@ export class MessagesService {
       'code' in error &&
       error.code === 11000
     );
+  }
+
+  private async resolveSelectedAgent(
+    organizationId: string,
+    selectedAgentId: string,
+  ) {
+    if (!this.chatAgents) {
+      throw new BadRequestException('AI chat agent selection is unavailable');
+    }
+    return this.chatAgents.resolve(organizationId, selectedAgentId);
+  }
+
+  private validateConversationIntent(input: CreateMessageDto) {
+    if (input.startNewConversation && input.conversationId) {
+      throw new BadRequestException(
+        'conversationId must be omitted when startNewConversation is true',
+      );
+    }
+    if (!input.startNewConversation && !input.conversationId) {
+      throw new BadRequestException(
+        'conversationId is required when startNewConversation is false',
+      );
+    }
   }
 }

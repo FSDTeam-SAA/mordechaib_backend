@@ -5,7 +5,7 @@ import { AiAgentCatalogController } from './ai-agent-catalog.controller';
 import { AgentsController } from './agents.controller';
 import { AgentsRepository } from './agents.repository';
 import { AgentsService } from './agents.service';
-import { AiServiceSecretGuard } from './guards/ai-service-secret.guard';
+import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
 import { AgentImageStorageService } from './agent-image-storage.service';
 
 @Module({
