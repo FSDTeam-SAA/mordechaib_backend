@@ -171,6 +171,8 @@ Do not generate a new idempotency value after an ambiguous network error; doing 
 | Delete support request          | `DELETE /support/requests/:requestId`                                 |
 | Discover CRM objects            | `GET /crm/:provider/objects`                                          |
 | Read CRM object schema          | `GET /crm/:provider/objects/:objectType/schema`                       |
+| Create any writable CRM record  | `POST /crm/:provider/objects/:objectType/records`                     |
+| Update any writable CRM record  | `PATCH /crm/:provider/objects/:objectType/records/:externalId`        |
 | Configure CRM synchronization   | `PUT /crm/connections/:provider/sync-config`                          |
 | Synchronize configured CRM data | `POST /crm/connections/:provider/sync`                                |
 | List synchronized CRM records   | `GET /crm/records`                                                    |
@@ -2142,25 +2144,27 @@ forwarding number when omitted. Only `OWNER` and `ADMIN` can start outbound call
 
 CRM connections and multi-object sync configuration belong to the organization, not an individual user. The first connected CRM becomes the organization default. If both providers are connected, the frontend can change that default. Normal contact creation uses the default; discovery, configuration, sync, record reads, and deal routes state or filter the provider explicitly.
 
-| Endpoint                                        | Request body / query                                                     | Response data                                                                                           |
-| ----------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `GET /integrations`                             | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
-| `GET /crm/connections/HUBSPOT/connect`          | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
-| `GET /crm/connections/SALESFORCE/connect`       | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
-| `GET /crm/connections/:provider`                | none                                                                     | connection status, provider account identity, default selection, expiry, and sync health                |
-| `GET /crm/connections/:provider/callback`       | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
-| `DELETE /crm/connections/:provider`             | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
-| `PATCH /crm/connections/:provider/default`      | none                                                                     | selected default CRM connection                                                                         |
-| `GET /crm/:provider/objects`                    | none                                                                     | provider-normalized readable standard and custom objects                                                |
-| `GET /crm/:provider/objects/:objectType/schema` | `view?`, `search?`, `page?`, `limit?`                                    | compact paginated field schema; use `view=FULL` only for advanced selection                             |
-| `PUT /crm/connections/:provider/sync-config`    | optional customized objects and fields                                   | validated user configuration and object sync states                                                     |
-| `POST /crm/connections/:provider/sync`          | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
-| `GET /crm/records`                              | filters and pagination described below                                   | locally synchronized normalized CRM records                                                             |
-| `GET /crm/records/:id`                          | local Mongo record ID                                                    | one organization-scoped normalized CRM record                                                           |
-| `GET /crm/analytics/revenue`                    | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
-| `POST /crm/:provider/deals`                     | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
-| `PATCH /crm/:provider/deals/:externalId`        | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
-| `POST /crm/contacts`                            | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
+| Endpoint                                                       | Request body / query                                                     | Response data                                                                                           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `GET /integrations`                                            | none                                                                     | CRM card status, `isDefaultCrm`, `lastSyncedAt`, `syncStatus`, `lastSyncError`, and `reconnectRequired` |
+| `GET /crm/connections/HUBSPOT/connect`                         | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/SALESFORCE/connect`                      | none                                                                     | `{ "authorizationUrl": "https://..." }`                                                                 |
+| `GET /crm/connections/:provider`                               | none                                                                     | connection status, provider account identity, default selection, expiry, and sync health                |
+| `GET /crm/connections/:provider/callback`                      | OAuth provider redirect                                                  | Redirects to the integrations UI; frontend never calls this route directly                              |
+| `DELETE /crm/connections/:provider`                            | none                                                                     | disconnection confirmation; a remaining connected CRM becomes default automatically                     |
+| `PATCH /crm/connections/:provider/default`                     | none                                                                     | selected default CRM connection                                                                         |
+| `GET /crm/:provider/objects`                                   | none                                                                     | provider-normalized readable standard and custom objects                                                |
+| `GET /crm/:provider/objects/:objectType/schema`                | `view?`, `search?`, `page?`, `limit?`                                    | compact paginated field schema; use `view=FULL` only for advanced selection                             |
+| `POST /crm/:provider/objects/:objectType/records`              | `{ "properties": { ... } }`                                              | schema-validated, provider-confirmed, locally synchronized record                                       |
+| `PATCH /crm/:provider/objects/:objectType/records/:externalId` | `{ "properties": { ... }, "expectedProviderUpdatedAt"?: "ISO-8601" }`    | schema-validated update and refreshed local record                                                      |
+| `PUT /crm/connections/:provider/sync-config`                   | optional customized objects and fields                                   | validated user configuration and object sync states                                                     |
+| `POST /crm/connections/:provider/sync`                         | none                                                                     | `SYNCHRONIZED`, `PARTIAL`, or `IN_PROGRESS` result                                                      |
+| `GET /crm/records`                                             | filters and pagination described below                                   | locally synchronized normalized CRM records                                                             |
+| `GET /crm/records/:id`                                         | local Mongo record ID                                                    | one organization-scoped normalized CRM record                                                           |
+| `GET /crm/analytics/revenue`                                   | `provider?`, `groupBy=stage \| month`, `from?`, `to?`                    | currency-separated deterministic totals from local deal data                                            |
+| `POST /crm/:provider/deals`                                    | deal creation body below                                                 | provider-confirmed, locally cached deal                                                                 |
+| `PATCH /crm/:provider/deals/:externalId`                       | any non-empty subset of the deal body                                    | provider-confirmed, locally cached deal                                                                 |
+| `POST /crm/contacts`                                           | `{ "name": "Tahid", "email": "tahid@example.com", "phone"?: "+880..." }` | contact created through the current default CRM                                                         |
 
 `:provider` is exactly `HUBSPOT` or `SALESFORCE`. Connection management, schema discovery, sync configuration, manual sync, local CRM record reads, contact creation, and deal writes require `OWNER` or `ADMIN`. Revenue analytics is available to authenticated organization users.
 
@@ -2199,6 +2203,37 @@ to detect schema changes. User-customized configurations remain authoritative.
 
 Provider access and refresh tokens remain encrypted in Main Backend. They are
 never frontend configuration values.
+
+For a generic create or update form, first read the object schema and render
+only fields whose `createable` or `updateable` capability matches the intended
+operation. Send provider field names inside `properties`; do not flatten them
+and do not send the complete schema back. For updates, pass the record's latest
+`providerUpdatedAt` as `expectedProviderUpdatedAt` to prevent silently
+overwriting a newer provider change.
+
+```http
+POST /crm/HUBSPOT/objects/contacts/records
+Content-Type: application/json
+
+{
+  "properties": {
+    "firstname": "Amit",
+    "email": "amit@example.com"
+  }
+}
+```
+
+```http
+PATCH /crm/HUBSPOT/objects/contacts/records/559751211724
+Content-Type: application/json
+
+{
+  "properties": {
+    "jobtitle": "Chief Executive Officer"
+  },
+  "expectedProviderUpdatedAt": "2026-10-27T09:59:20.479Z"
+}
+```
 
 `GET /crm/connections/:provider` exposes a non-secret capability summary:
 

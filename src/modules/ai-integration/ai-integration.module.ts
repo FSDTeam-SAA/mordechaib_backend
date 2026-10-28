@@ -31,6 +31,7 @@ import { AiChatAgentResolver } from './ai-chat-agent-resolver.service';
 import { AiChatContextService } from './ai-chat-context.service';
 import { AiChatResponseValidator } from './ai-chat-response.validator';
 import { AiChatTurnService } from './ai-chat-turn.service';
+import { SystemServicesModule } from '../system-services/system-services.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -54,6 +55,7 @@ function redisConnection(urlValue: string) {
     AiTelemetryModule,
     EmailModule,
     OrganizationAgentSettingsModule,
+    SystemServicesModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: CallRecording.name, schema: CallRecordingSchema },
