@@ -21,7 +21,9 @@ export type SubmitAiClarificationAnswer = {
  */
 @Injectable()
 export class AiActionClarificationWorkflowService implements OnModuleInit {
-  private readonly logger = new Logger(AiActionClarificationWorkflowService.name);
+  private readonly logger = new Logger(
+    AiActionClarificationWorkflowService.name,
+  );
 
   constructor(
     private readonly actions: AiActionsService,
@@ -60,7 +62,7 @@ export class AiActionClarificationWorkflowService implements OnModuleInit {
   }
 
   async submitAnswer(input: SubmitAiClarificationAnswer) {
-    if (!this.aiService.enabled) {
+    if (!(await this.aiService.isEnabled())) {
       throw new ServiceUnavailableException(
         'AI action refinement is currently disabled',
       );
