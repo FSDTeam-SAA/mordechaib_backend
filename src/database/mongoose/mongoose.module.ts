@@ -133,6 +133,10 @@ import {
   OrganizationAgentSetting,
   OrganizationAgentSettingSchema,
 } from '../schemas/organization-agent-setting.schema';
+import {
+  PlatformServiceControl,
+  PlatformServiceControlSchema,
+} from '../schemas/platform-service-control.schema';
 
 @Global()
 @Module({
@@ -213,6 +217,10 @@ import {
       {
         name: OrganizationAgentSetting.name,
         schema: OrganizationAgentSettingSchema,
+      },
+      {
+        name: PlatformServiceControl.name,
+        schema: PlatformServiceControlSchema,
       },
     ]),
   ],

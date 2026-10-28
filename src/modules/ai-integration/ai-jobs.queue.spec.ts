@@ -12,18 +12,19 @@ describe('AiJobsQueue clarification durability', () => {
   const queue = {
     add: jest.fn(),
   };
-  const aiService = { enabled: true };
+  const aiService = { isEnabled: jest.fn() };
   let jobs: AiJobsQueue;
 
   beforeEach(() => {
     jest.resetAllMocks();
+    aiService.isEnabled.mockResolvedValue(true);
     queue.add.mockImplementation(async (_name, _data, options) => ({
       id: options.jobId,
       getState: jest.fn().mockResolvedValue('delayed'),
     }));
     jobs = new AiJobsQueue(
       queue as unknown as Queue,
-      aiService as AiServiceClient,
+      aiService as unknown as AiServiceClient,
       { get: jest.fn().mockReturnValue(1_500) } as unknown as ConfigService,
     );
   });
@@ -45,6 +46,18 @@ describe('AiJobsQueue clarification durability', () => {
       },
       expect.objectContaining({ delay: 1_500, attempts: 6 }),
     );
+  });
+
+  it('does not queue a chat turn while the runtime AI switch is disabled', async () => {
+    aiService.isEnabled.mockResolvedValue(false);
+
+    await expect(
+      jobs.enqueueMessageAnalysis({
+        organizationId: 'org-1',
+        messageId: 'message-1',
+      }),
+    ).resolves.toEqual({ queued: false });
+    expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('keys a delayed refinement job by proposal revision', async () => {
