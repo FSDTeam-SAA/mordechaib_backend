@@ -78,6 +78,13 @@ export type UpdateCrmRecordInput = {
   instanceUrl?: string;
 };
 
+export type CreateCrmRecordInput = {
+  objectType: string;
+  properties: Record<string, unknown>;
+  fields: string[];
+  instanceUrl?: string;
+};
+
 export type CrmConnectionMetadata = {
   connectedByUserId?: string;
   providerAccountId?: string;
@@ -141,6 +148,10 @@ export interface CrmProvider {
   updateRecord(
     accessToken: string,
     input: UpdateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord>;
+  createRecord(
+    accessToken: string,
+    input: CreateCrmRecordInput,
   ): Promise<NormalizedCrmRecord>;
   listDeals(
     accessToken: string,
