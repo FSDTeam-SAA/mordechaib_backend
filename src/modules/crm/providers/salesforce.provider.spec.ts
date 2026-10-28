@@ -117,4 +117,50 @@ describe('SalesforceProvider PKCE', () => {
       expect.objectContaining({ currency: 'BDT', amount: 1200 }),
     );
   });
+
+  it('creates, reloads and normalizes a dynamic CRM record', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: '001-record', success: true }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Id: '001-record',
+            Name: 'Acme Ltd',
+            AnnualRevenue: 500000,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const result = await provider.createRecord('access-token', {
+      objectType: 'Account',
+      properties: { Name: 'Acme Ltd', AnnualRevenue: 500000 },
+      fields: ['Name', 'AnnualRevenue'],
+      instanceUrl: 'https://example.my.salesforce.com',
+    });
+
+    const [createUrl, createInit] = (global.fetch as jest.Mock).mock
+      .calls[0] as [string, RequestInit];
+    expect(createUrl).toBe(
+      'https://example.my.salesforce.com/services/data/v60.0/sobjects/Account',
+    );
+    expect(createInit.method).toBe('POST');
+    expect(JSON.parse(String(createInit.body))).toEqual({
+      Name: 'Acme Ltd',
+      AnnualRevenue: 500000,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        objectType: 'Account',
+        externalId: '001-record',
+        properties: { Name: 'Acme Ltd', AnnualRevenue: 500000 },
+      }),
+    );
+  });
 });

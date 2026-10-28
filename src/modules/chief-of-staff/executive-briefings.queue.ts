@@ -23,7 +23,7 @@ export class ExecutiveBriefingsQueue {
   ) {}
 
   async enqueue(input: GenerateExecutiveBriefingJob, idempotencyKey: string) {
-    if (!this.aiService.enabled) {
+    if (!(await this.aiService.isEnabled())) {
       return { queued: false, reason: 'AI_AUTOMATION_DISABLED' };
     }
     const jobId = crypto

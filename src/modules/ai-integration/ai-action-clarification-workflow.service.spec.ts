@@ -24,12 +24,12 @@ describe('AiActionClarificationWorkflowService', () => {
     enqueueActionRefinement: jest.fn(),
     enqueueActionRefinementRecovery: jest.fn(),
   };
-  const aiService = { enabled: true };
+  const aiService = { isEnabled: jest.fn() };
   let service: AiActionClarificationWorkflowService;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    aiService.enabled = true;
+    aiService.isEnabled.mockResolvedValue(true);
     actions.validateClarificationAnswer.mockResolvedValue({ revision: 3 });
     actions.findStaleClarificationRefinements.mockResolvedValue([]);
     actions.answerClarification.mockResolvedValue({
@@ -42,7 +42,7 @@ describe('AiActionClarificationWorkflowService', () => {
     service = new AiActionClarificationWorkflowService(
       actions as unknown as AiActionsService,
       jobs as unknown as AiJobsQueue,
-      aiService as AiServiceClient,
+      aiService as unknown as AiServiceClient,
     );
   });
 
@@ -71,13 +71,13 @@ describe('AiActionClarificationWorkflowService', () => {
       proposalId: input.proposalId,
       proposalUpdatedAt: '2026-09-16T09:00:00.000Z',
     });
-    expect(jobs.enqueueActionRefinement.mock.invocationCallOrder[0]).toBeLessThan(
-      actions.answerClarification.mock.invocationCallOrder[0],
-    );
+    expect(
+      jobs.enqueueActionRefinement.mock.invocationCallOrder[0],
+    ).toBeLessThan(actions.answerClarification.mock.invocationCallOrder[0]);
   });
 
   it('does not move a proposal to ANALYZING while AI refinement is disabled', async () => {
-    aiService.enabled = false;
+    aiService.isEnabled.mockResolvedValue(false);
 
     await expect(service.submitAnswer(input)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
@@ -91,18 +91,22 @@ describe('AiActionClarificationWorkflowService', () => {
       new Error('Redis unavailable'),
     );
 
-    await expect(service.submitAnswer(input)).rejects.toThrow('Redis unavailable');
-    expect(actions.restoreClarificationAfterRefinementFailure).toHaveBeenCalledWith(
-      input.organizationId,
-      input.proposalId,
-      undefined,
+    await expect(service.submitAnswer(input)).rejects.toThrow(
+      'Redis unavailable',
     );
+    expect(
+      actions.restoreClarificationAfterRefinementFailure,
+    ).toHaveBeenCalledWith(input.organizationId, input.proposalId, undefined);
   });
 
   it('keeps the proposal answerable when refinement cannot be queued', async () => {
-    jobs.enqueueActionRefinement.mockRejectedValue(new Error('Redis unavailable'));
+    jobs.enqueueActionRefinement.mockRejectedValue(
+      new Error('Redis unavailable'),
+    );
 
-    await expect(service.submitAnswer(input)).rejects.toThrow('Redis unavailable');
+    await expect(service.submitAnswer(input)).rejects.toThrow(
+      'Redis unavailable',
+    );
 
     expect(actions.answerClarification).not.toHaveBeenCalled();
   });
@@ -116,7 +120,9 @@ describe('AiActionClarificationWorkflowService', () => {
       updatedAt,
     );
 
-    expect(actions.restoreClarificationAfterRefinementFailure).toHaveBeenCalledWith(
+    expect(
+      actions.restoreClarificationAfterRefinementFailure,
+    ).toHaveBeenCalledWith(
       input.organizationId,
       input.proposalId,
       new Date(updatedAt),
