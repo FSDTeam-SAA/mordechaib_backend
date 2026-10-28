@@ -31,6 +31,7 @@ import { HubSpotProvider } from './providers/hubspot.provider';
 import { SalesforceProvider } from './providers/salesforce.provider';
 import { CrmAiInternalController } from './crm-ai-internal.controller';
 import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
+import { CrmObjectRecordsController } from './crm-object-records.controller';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guar
     CrmConnectionsController,
     CrmSchemaController,
     CrmRecordsController,
+    CrmObjectRecordsController,
     CrmAiInternalController,
   ],
   providers: [
