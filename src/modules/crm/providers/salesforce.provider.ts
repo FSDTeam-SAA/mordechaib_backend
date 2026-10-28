@@ -13,6 +13,7 @@ import {
   CrmProviderHttpError,
   CreateCrmContactInput,
   CreateCrmDealInput,
+  CreateCrmRecordInput,
   NormalizedCrmDeal,
   UpdateCrmDealInput,
   UpdateCrmRecordInput,
@@ -334,6 +335,36 @@ export class SalesforceProvider implements CrmProvider {
     return normalized;
   }
 
+  async createRecord(
+    accessToken: string,
+    input: CreateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord> {
+    const instanceUrl = this.instanceUrl(input.instanceUrl);
+    const collection = `${instanceUrl}/services/data/${SALESFORCE_API_VERSION}/sobjects/${encodeURIComponent(input.objectType)}`;
+    const created = await this.request<{ id?: string; success?: boolean }>(
+      collection,
+      accessToken,
+      { method: 'POST', body: JSON.stringify(input.properties) },
+    );
+    if (!created.id || created.success === false) {
+      throw new BadGatewayException(
+        'Salesforce returned an invalid CRM record creation response',
+      );
+    }
+    const selectedFields = [...new Set(['Id', ...input.fields])];
+    const result = await this.request<Record<string, unknown>>(
+      `${collection}/${encodeURIComponent(created.id)}?fields=${encodeURIComponent(selectedFields.join(','))}`,
+      accessToken,
+    );
+    const normalized = this.normalizeRecord(input, result);
+    if (!normalized) {
+      throw new BadGatewayException(
+        'Salesforce returned an invalid CRM record',
+      );
+    }
+    return normalized;
+  }
+
   async createDeal(
     accessToken: string,
     input: CreateCrmDealInput & { instanceUrl?: string },
@@ -480,7 +511,7 @@ export class SalesforceProvider implements CrmProvider {
   }
 
   private normalizeRecord(
-    input: ListCrmRecordsInput,
+    input: Pick<ListCrmRecordsInput, 'objectType' | 'fields'>,
     value: Record<string, unknown>,
   ): NormalizedCrmRecord | undefined {
     if (typeof value.Id !== 'string' || !value.Id) return undefined;

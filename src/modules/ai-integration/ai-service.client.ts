@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SystemServicesService } from '../system-services/system-services.service';
 
 export class AiServiceHttpError extends Error {
   constructor(
@@ -18,10 +19,17 @@ export class AiServiceHttpError extends Error {
 export class AiServiceClient {
   private readonly logger = new Logger(AiServiceClient.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly systemServices: SystemServicesService,
+  ) {}
 
   get enabled() {
     return this.config.get<boolean>('aiService.automationEnabled', false);
+  }
+
+  isEnabled() {
+    return this.systemServices.isAiServiceEnabled();
   }
 
   async request<T>(
@@ -29,6 +37,7 @@ export class AiServiceClient {
     body: Record<string, unknown>,
     options: { timeoutMs?: number } = {},
   ): Promise<T> {
+    await this.systemServices.assertAiServiceEnabled();
     const baseUrl = this.config.get<string>('aiService.baseUrl');
     const secret = this.config.get<string>('aiService.sharedSecret');
     if (!this.enabled || !baseUrl || !secret) {

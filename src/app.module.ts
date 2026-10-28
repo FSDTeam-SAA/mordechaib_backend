@@ -42,6 +42,7 @@ import { OrganizationsAdminModule } from './modules/organizations-admin/organiza
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { AgentWorkforceModule } from './modules/agent-workforce/agent-workforce.module';
 import { OperationalDiagnosticModule } from './modules/operational-diagnostic/operational-diagnostic.module';
+import { SystemServicesModule } from './modules/system-services/system-services.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { OperationalDiagnosticModule } from './modules/operational-diagnostic/op
     ContactsModule,
     AgentWorkforceModule,
     OperationalDiagnosticModule,
+    SystemServicesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

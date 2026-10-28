@@ -12,6 +12,7 @@ import {
   CrmProviderHttpError,
   CreateCrmContactInput,
   CreateCrmDealInput,
+  CreateCrmRecordInput,
   NormalizedCrmDeal,
   UpdateCrmDealInput,
   UpdateCrmRecordInput,
@@ -372,11 +373,32 @@ export class HubSpotProvider implements CrmProvider {
     accessToken: string,
     input: UpdateCrmRecordInput,
   ): Promise<NormalizedCrmRecord> {
+    const resource = `https://api.hubapi.com/crm/v3/objects/${encodeURIComponent(input.objectType)}/${encodeURIComponent(input.externalId)}`;
+    await this.request<HubSpotObject>(resource, accessToken, {
+      method: 'PATCH',
+      body: JSON.stringify({ properties: input.properties }),
+    });
+    const query = new URLSearchParams({ properties: input.fields.join(',') });
     const result = await this.request<HubSpotObject>(
-      `https://api.hubapi.com/crm/v3/objects/${encodeURIComponent(input.objectType)}/${encodeURIComponent(input.externalId)}`,
+      `${resource}?${query.toString()}`,
+      accessToken,
+    );
+    const normalized = this.normalizeRecord(input, result);
+    if (!normalized) {
+      throw new BadGatewayException('HubSpot returned an invalid CRM record');
+    }
+    return normalized;
+  }
+
+  async createRecord(
+    accessToken: string,
+    input: CreateCrmRecordInput,
+  ): Promise<NormalizedCrmRecord> {
+    const result = await this.request<HubSpotObject>(
+      `https://api.hubapi.com/crm/v3/objects/${encodeURIComponent(input.objectType)}`,
       accessToken,
       {
-        method: 'PATCH',
+        method: 'POST',
         body: JSON.stringify({ properties: input.properties }),
       },
     );
@@ -488,7 +510,7 @@ export class HubSpotProvider implements CrmProvider {
   }
 
   private normalizeRecord(
-    input: ListCrmRecordsInput,
+    input: Pick<ListCrmRecordsInput, 'objectType' | 'fields'>,
     value: HubSpotObject,
   ): NormalizedCrmRecord | undefined {
     if (!value.id) return undefined;
