@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   Logger,
   Param,
   Patch,
@@ -29,6 +30,7 @@ import {
   RequestOrganization,
   RequestUser,
 } from '../../common/types/request-context.type';
+import { CrmProviderHttpError } from '../../common/types/crm-provider.interface';
 import { CrmConnectionsService } from './crm-connections.service';
 import { CrmProviderRegistry } from './crm-provider.registry';
 import { CrmSyncService } from './crm-sync.service';
@@ -89,14 +91,32 @@ export class CrmConnectionsController {
     @Query('code') code?: string,
     @Query('state') state?: string,
     @Query('error') error?: string,
+    @Query('error_description') errorDescription?: string,
   ) {
     const crmProvider = this.providers.parse(provider);
-    if (error || !code || !state) {
+    if (error) {
+      this.logger.error(
+        'CRM OAuth authorization was rejected: ' +
+          `stage=PROVIDER_AUTHORIZATION provider=${crmProvider} ` +
+          `providerError=${this.safeLogValue(error)} ` +
+          `providerDescription=${this.safeLogValue(errorDescription || 'Not provided')}`,
+      );
+      return {
+        url: this.connections.callbackUrl(crmProvider, false, error),
+        statusCode: 302,
+      };
+    }
+    if (!code || !state) {
+      this.logger.warn(
+        'CRM OAuth callback is missing required parameters: ' +
+          `stage=CALLBACK_VALIDATION provider=${crmProvider} ` +
+          `codePresent=${Boolean(code)} statePresent=${Boolean(state)}`,
+      );
       return {
         url: this.connections.callbackUrl(
           crmProvider,
           false,
-          error || 'missing_code_or_state',
+          'missing_code_or_state',
         ),
         statusCode: 302,
       };
@@ -107,25 +127,63 @@ export class CrmConnectionsController {
         code,
         state,
       );
+      this.logger.log(
+        `CRM OAuth connection completed: provider=${crmProvider} organizationId=${completed.organizationId}`,
+      );
       void this.sync
         .sync(completed.organizationId, crmProvider, completed.userId)
         .catch((syncError: unknown) => {
           const message =
             syncError instanceof Error ? syncError.message : 'Unknown error';
           this.logger.warn(
-            `Automatic CRM synchronization failed for ${completed.organizationId}:${crmProvider}: ${message}`,
+            'Automatic CRM synchronization failed: ' +
+              `provider=${crmProvider} organizationId=${completed.organizationId} ` +
+              `message=${this.safeLogValue(message)}`,
           );
         });
       return {
         url: this.connections.callbackUrl(crmProvider, true),
         statusCode: 302,
       };
-    } catch {
+    } catch (callbackError) {
+      this.logger.error(this.oauthErrorMessage(crmProvider, callbackError));
       return {
         url: this.connections.callbackUrl(crmProvider, false, 'oauth_failed'),
         statusCode: 302,
       };
     }
+  }
+
+  private oauthErrorMessage(provider: string, error: unknown) {
+    return (
+      'CRM OAuth callback failed: stage=CALLBACK_COMPLETION ' +
+      `provider=${provider} ` +
+      `errorType=${this.safeLogValue(this.errorType(error))} ` +
+      `httpStatus=${this.httpStatus(error) ?? 'unknown'} ` +
+      `message=${this.safeLogValue(this.errorMessage(error))}`
+    );
+  }
+
+  private errorType(error: unknown) {
+    return error instanceof Error ? error.name : typeof error;
+  }
+
+  private errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown callback error';
+  }
+
+  private httpStatus(error: unknown) {
+    if (error instanceof CrmProviderHttpError) return error.statusCode;
+    if (error instanceof HttpException) return error.getStatus();
+    return undefined;
+  }
+
+  private safeLogValue(value: string) {
+    const redacted = value.replace(
+      /\b(access_token|refresh_token|client_secret|code|state)\s*[:=]\s*[^\s&,]+/gi,
+      '$1=[REDACTED]',
+    );
+    return JSON.stringify(redacted.slice(0, 1000));
   }
 
   @Delete(':provider')
