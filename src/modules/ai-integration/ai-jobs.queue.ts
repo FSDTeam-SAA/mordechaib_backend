@@ -70,7 +70,7 @@ export class AiJobsQueue {
   ) {}
 
   async enqueueSourceAnalysis(input: AnalyzeSourceJob, delay = 0) {
-    if (!this.aiService.enabled) {
+    if (!(await this.aiService.isEnabled())) {
       this.logger.warn(
         `AI source analysis was not queued: automation is disabled, source=${input.sourceType}:${input.sourceId}`,
       );
@@ -88,7 +88,7 @@ export class AiJobsQueue {
     organizationId: string;
     messageId: string;
   }) {
-    if (!this.aiService.enabled) {
+    if (!(await this.aiService.isEnabled())) {
       this.logger.warn(
         `AI chat turn was not queued: automation is disabled, message=${input.messageId}`,
       );
@@ -107,7 +107,7 @@ export class AiJobsQueue {
   }
 
   async enqueueActionRefinement(input: RefineActionJob) {
-    if (!this.aiService.enabled) return { queued: false };
+    if (!(await this.aiService.isEnabled())) return { queued: false };
     return this.enqueue(
       AI_REFINE_ACTION_JOB,
       input,
@@ -129,7 +129,7 @@ export class AiJobsQueue {
   }
 
   async enqueueAgentSync(event: AgentSyncEvent) {
-    if (!this.aiService.enabled) return { queued: false };
+    if (!(await this.aiService.isEnabled())) return { queued: false };
     return this.enqueue(AI_SYNC_AGENT_JOB, event, event.eventId);
   }
 
