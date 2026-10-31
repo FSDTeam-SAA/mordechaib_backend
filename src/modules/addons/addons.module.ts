@@ -12,3 +12,4 @@ import { AddonProductsService } from './addon-products.service';
   exports: [AddonProductsService],
 })
 export class AddonsModule {}
+
