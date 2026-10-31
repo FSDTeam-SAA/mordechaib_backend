@@ -43,6 +43,7 @@ import { ContactsModule } from './modules/contacts/contacts.module';
 import { AgentWorkforceModule } from './modules/agent-workforce/agent-workforce.module';
 import { OperationalDiagnosticModule } from './modules/operational-diagnostic/operational-diagnostic.module';
 import { SystemServicesModule } from './modules/system-services/system-services.module';
+import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { SystemServicesModule } from './modules/system-services/system-services.
     AgentWorkforceModule,
     OperationalDiagnosticModule,
     SystemServicesModule,
+    RoiDashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

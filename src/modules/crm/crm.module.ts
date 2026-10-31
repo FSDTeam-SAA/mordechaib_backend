@@ -71,6 +71,11 @@ import { CrmObjectRecordsController } from './crm-object-records.controller';
     SalesforceProvider,
     AiServiceSecretGuard,
   ],
-  exports: [CrmService, CrmBriefingFactsService, CrmRecordMutationsService],
+  exports: [
+    CrmService,
+    CrmAnalyticsService,
+    CrmBriefingFactsService,
+    CrmRecordMutationsService,
+  ],
 })
 export class CrmModule {}

@@ -9,6 +9,9 @@ import { AiChatContextService } from './ai-chat-context.service';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiChatResponseValidator } from './ai-chat-response.validator';
 import { AiServiceClient } from './ai-service.client';
+import { AiChatTurnRequest } from './ai-chat.types';
+
+export type PreparedAiChatTurn = { request: AiChatTurnRequest };
 
 @Injectable()
 export class AiChatTurnService {
@@ -22,7 +25,7 @@ export class AiChatTurnService {
   ) {}
 
   async process(organizationId: string, sourceMessageId: string) {
-    const prepared = await this.context.build(organizationId, sourceMessageId);
+    const prepared = await this.prepare(organizationId, sourceMessageId);
     const raw = await this.aiService.request<unknown>(
       '/api/v1/ai/chat',
       prepared.request as unknown as Record<string, unknown>,
@@ -30,6 +33,22 @@ export class AiChatTurnService {
         timeoutMs: this.config.get<number>('aiService.chatTimeoutMs', 45_000),
       },
     );
+    return this.complete(organizationId, sourceMessageId, prepared, raw);
+  }
+
+  prepare(
+    organizationId: string,
+    sourceMessageId: string,
+  ): Promise<PreparedAiChatTurn> {
+    return this.context.build(organizationId, sourceMessageId);
+  }
+
+  async complete(
+    organizationId: string,
+    sourceMessageId: string,
+    prepared: PreparedAiChatTurn,
+    raw: unknown,
+  ) {
     const response = this.validator.validate(raw, prepared.request);
     const result = response.result;
     let proposal: Record<string, unknown> | undefined;

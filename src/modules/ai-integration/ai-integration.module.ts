@@ -32,6 +32,8 @@ import { AiChatContextService } from './ai-chat-context.service';
 import { AiChatResponseValidator } from './ai-chat-response.validator';
 import { AiChatTurnService } from './ai-chat-turn.service';
 import { SystemServicesModule } from '../system-services/system-services.module';
+import { AiStreamingClient } from './ai-streaming.client';
+import { AiChatStreamingService } from './ai-chat-streaming.service';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -76,6 +78,8 @@ function redisConnection(urlValue: string) {
   ],
   providers: [
     AiServiceClient,
+    AiStreamingClient,
+    AiChatStreamingService,
     AiJobsQueue,
     AiJobsProcessor,
     AiActionClarificationWorkflowService,
@@ -92,6 +96,7 @@ function redisConnection(urlValue: string) {
     AiActionClarificationWorkflowService,
     AiSourceContextModule,
     AiChatAgentResolver,
+    AiChatStreamingService,
   ],
 })
 export class AiIntegrationModule {}
