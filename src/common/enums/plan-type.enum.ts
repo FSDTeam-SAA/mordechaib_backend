@@ -1,4 +1,5 @@
 export enum PlanType {
+  PAY_AS_YOU_GO = 'PAY_AS_YOU_GO',
   STARTER = 'STARTER',
   GROWTH = 'GROWTH',
   ENTERPRISE = 'ENTERPRISE',
