@@ -142,7 +142,7 @@ export class DiagnosticAdminService {
     if (!assessment) throw new NotFoundException('Assessment not found');
 
     // Enrich answers with question and category text
-    const questionIds = assessment.answers.map((a) => a.questionId);
+    const questionIds = assessment.answers.map((a: any) => a.questionId);
     const questions =
       questionIds.length > 0
         ? await this.questionsRepo.findByIds(questionIds)
@@ -153,7 +153,7 @@ export class DiagnosticAdminService {
     );
 
     const categoryIds = [
-      ...new Set(assessment.answers.map((a) => a.categoryId)),
+      ...new Set(assessment.answers.map((a: any) => a.categoryId)),
     ];
     const categories =
       categoryIds.length > 0 ? await this.categoriesRepo.findAll(true) : [];
@@ -165,11 +165,11 @@ export class DiagnosticAdminService {
       ]),
     );
 
-    const enrichedAnswers = assessment.answers.map((answer) => {
+    const enrichedAnswers = assessment.answers.map((answer: any) => {
       const question = questionMap.get(answer.questionId);
       const category = categoryMap.get(answer.categoryId);
       const selectedChoice = question?.choices?.find(
-        (c) => c.label === answer.selectedChoiceLabel,
+        (c: any) => c.label === answer.selectedChoiceLabel,
       );
       return {
         questionId: answer.questionId,

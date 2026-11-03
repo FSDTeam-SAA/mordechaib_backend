@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { AddonCategory } from '../../common/enums/addon-category.enum';
+import { PlanType } from '../../common/enums/plan-type.enum';
 import { SubscriptionStatus } from '../../common/enums/subscription-status.enum';
 import { AddonProductsService } from '../addons/addon-products.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -366,55 +367,98 @@ export class SubscriptionPlansService implements OnModuleInit {
     };
   }
 
-  // Usage estimator — called by the public pricing page sliders.
-  // Returns the cheapest plan that covers the input + any add-on tiers
-  // needed to cover the remaining gap.
+  // Smart Upgrade Calculator — called by the public pricing page sliders.
+  // Computes Pay as you go costs ($0.04/action, $0.20/call min, $1.00/meeting)
+  // vs fixed plans (Growth $149/mo, Enterprise $349/mo) and recommends whether
+  // to stay on Pay as you go or upgrade to a subscription plan.
   async estimateUsage(query: EstimateUsageQueryDto) {
-    const monthlyCalls = query.monthlyCalls ?? 0;
-    const monthlyActions = query.monthlyActions ?? 0;
-    const meetingHours = query.meetingHours ?? 0;
+    const monthlyCalls = query.callMinutes ?? query.monthlyCalls ?? 0;
+    const monthlyActions = query.aiActions ?? query.monthlyActions ?? 0;
+    const monthlyMeetings =
+      query.aiMeetings ?? query.monthlyMeetings ?? query.meetingHours ?? 0;
+    const meetingRate = query.meetingRateUsd ?? 1.0;
 
-    // Load active, purchasable plans cheapest-first
+    // Load active plans
     const allPlans = await this.repository.findAll(false);
-    const purchasablePlans = allPlans.filter((p) => !p.isInquiryOnly);
-    purchasablePlans.sort((a, b) => (a.priceUsd ?? 0) - (b.priceUsd ?? 0));
 
-    // Find the cheapest plan whose base limits cover ALL input values
-    let recommendedPlan = purchasablePlans.find(
+    // 1. Pay as you go calculation
+    const payAsYouGoPlan = allPlans.find(
+      (p) => p.planType === PlanType.PAY_AS_YOU_GO,
+    );
+    const actionRate = payAsYouGoPlan?.extraAiActionPriceUsd ?? 0.04;
+    const callRate = payAsYouGoPlan?.extraCallMinutePriceUsd ?? 0.2;
+
+    const aiActionsCost = Number((monthlyActions * actionRate).toFixed(2));
+    const callMinutesCost = Number((monthlyCalls * callRate).toFixed(2));
+    const aiMeetingsCost = Number((monthlyMeetings * meetingRate).toFixed(2));
+    const payAsYouGoTotalUsd = Number(
+      (aiActionsCost + callMinutesCost + aiMeetingsCost).toFixed(2),
+    );
+
+    // 2. Fixed subscription plans (Growth, Enterprise)
+    const fixedPlans = allPlans
+      .filter((p) => !p.isInquiryOnly && (p.priceUsd ?? 0) > 0)
+      .sort((a, b) => (a.priceUsd ?? 0) - (b.priceUsd ?? 0));
+
+    // Find the ideal fixed plan based on capacity
+    let targetSubscriptionPlan = fixedPlans.find(
       (p) =>
-        (p.callMinutesPerMonth ?? 0) >= monthlyCalls &&
         (p.aiActionsPerMonth ?? 0) >= monthlyActions &&
-        (p.meetingHoursPerMonth ?? 0) >= meetingHours,
+        (p.callMinutesPerMonth ?? 0) >= monthlyCalls,
     );
 
-    // If no single plan covers everything, use the most expensive purchasable plan
-    if (!recommendedPlan) {
-      recommendedPlan = purchasablePlans[purchasablePlans.length - 1];
+    // If usage exceeds the lowest plan, select the best fitting or largest tier
+    if (!targetSubscriptionPlan && fixedPlans.length > 0) {
+      targetSubscriptionPlan = fixedPlans[fixedPlans.length - 1];
     }
 
-    if (!recommendedPlan) {
-      return {
-        recommendedPlan: null,
-        estimatedAddons: [],
-        totalEstimatedMonthlyUsd: 0,
-      };
-    }
+    const subPrice = targetSubscriptionPlan?.priceUsd ?? 149;
+    const isWithinIncludedUsage =
+      Boolean(targetSubscriptionPlan) &&
+      (targetSubscriptionPlan?.aiActionsPerMonth ?? 0) >= monthlyActions &&
+      (targetSubscriptionPlan?.callMinutesPerMonth ?? 0) >= monthlyCalls;
 
-    // Compute what's still not covered after the plan
-    const callsGap = Math.max(
+    // Calculate overages if exceeding target plan
+    const excessActions = Math.max(
       0,
-      monthlyCalls - (recommendedPlan.callMinutesPerMonth ?? 0),
+      monthlyActions - (targetSubscriptionPlan?.aiActionsPerMonth ?? 0),
     );
-    const actionsGap = Math.max(
+    const excessCalls = Math.max(
       0,
-      monthlyActions - (recommendedPlan.aiActionsPerMonth ?? 0),
+      monthlyCalls - (targetSubscriptionPlan?.callMinutesPerMonth ?? 0),
     );
-    const meetingGap = Math.max(
-      0,
-      meetingHours - (recommendedPlan.meetingHoursPerMonth ?? 0),
+    const overageActionsCost = Number(
+      (
+        excessActions *
+        (targetSubscriptionPlan?.extraAiActionPriceUsd ?? actionRate)
+      ).toFixed(2),
+    );
+    const overageCallsCost = Number(
+      (
+        excessCalls * (targetSubscriptionPlan?.extraCallMinutePriceUsd ?? callRate)
+      ).toFixed(2),
+    );
+    const subscriptionTotalCostUsd = Number(
+      (subPrice + overageActionsCost + overageCallsCost).toFixed(2),
     );
 
-    // Load all active add-on products and find the smallest tier that covers each gap
+    // 3. Comparison & Recommendation
+    const isUpgradeRecommended =
+      payAsYouGoTotalUsd > subPrice && Boolean(targetSubscriptionPlan);
+
+    const monthlySavingsUsd = isUpgradeRecommended
+      ? Number(Math.max(0, payAsYouGoTotalUsd - subscriptionTotalCostUsd).toFixed(2))
+      : 0;
+
+    const recommendationBadge = isUpgradeRecommended
+      ? 'Consider upgrading'
+      : 'Pay as you go';
+
+    const recommendationMessage = isUpgradeRecommended
+      ? `${targetSubscriptionPlan?.name ?? 'Growth'} may be more economical, subject to included usage and overage rates.`
+      : 'Pay as you go is currently the most economical choice for your expected volume.';
+
+    // 4. Add-on estimation (for legacy clients / add-on recommendations)
     const addons = await this.addonProductsService.findAll(false);
     const estimatedAddons: {
       category: AddonCategory;
@@ -422,60 +466,151 @@ export class SubscriptionPlansService implements OnModuleInit {
       tier: { label: string; quantity: number; priceUsd: number };
     }[] = [];
 
-    const pickSmallestTier = (
-      category: AddonCategory,
-      gap: number,
-    ) => {
-      if (gap <= 0) return;
-      const addonProduct = addons.find(
-        (a) => a.category === category && !a.isInquiryOnly,
-      );
-      if (!addonProduct || addonProduct.tiers.length === 0) return;
-      // Tiers sorted ascending by quantity — pick the first that covers the gap
-      const sorted = [...addonProduct.tiers].sort(
-        (a, b) => a.quantity - b.quantity,
-      );
-      const tier =
-        sorted.find((t) => t.quantity >= gap) ??
-        sorted[sorted.length - 1]; // fallback to largest if gap > max tier
-      estimatedAddons.push({
-        category,
-        addonProductId: String((addonProduct as unknown as { _id: unknown })._id),
-        tier: {
-          label: tier.label,
-          quantity: tier.quantity,
-          priceUsd: tier.priceUsd,
-        },
-      });
-    };
+    if (targetSubscriptionPlan) {
+      const pickSmallestTier = (category: AddonCategory, gap: number) => {
+        if (gap <= 0) return;
+        const addonProduct = addons.find(
+          (a) => a.category === category && !a.isInquiryOnly,
+        );
+        if (!addonProduct || addonProduct.tiers.length === 0) return;
+        const sorted = [...addonProduct.tiers].sort(
+          (a, b) => a.quantity - b.quantity,
+        );
+        const tier =
+          sorted.find((t) => t.quantity >= gap) ?? sorted[sorted.length - 1];
+        estimatedAddons.push({
+          category,
+          addonProductId: String(
+            (addonProduct as unknown as { _id: unknown })._id,
+          ),
+          tier: {
+            label: tier.label,
+            quantity: tier.quantity,
+            priceUsd: tier.priceUsd,
+          },
+        });
+      };
 
-    pickSmallestTier(AddonCategory.VOICE_MINUTES, callsGap);
-    pickSmallestTier(AddonCategory.AI_ACTIONS, actionsGap);
-    pickSmallestTier(AddonCategory.AI_MEETING_CAPTURE, meetingGap);
+      pickSmallestTier(AddonCategory.VOICE_MINUTES, excessCalls);
+      pickSmallestTier(AddonCategory.AI_ACTIONS, excessActions);
+    }
 
-    const addonTotal = estimatedAddons.reduce(
-      (sum, a) => sum + a.tier.priceUsd,
-      0,
-    );
-    const totalEstimatedMonthlyUsd =
-      (recommendedPlan.priceUsd ?? 0) + addonTotal;
+    const recommendedPlanSummary = isUpgradeRecommended
+      ? `${targetSubscriptionPlan?.name} subscription (${targetSubscriptionPlan?.priceUsd ? '$' + targetSubscriptionPlan.priceUsd + '/month' : ''})`
+      : 'Pay as you go';
 
     return {
-      recommendedPlan: {
-        id: String((recommendedPlan as unknown as { _id: unknown })._id),
-        planType: recommendedPlan.planType,
-        name: recommendedPlan.name,
-        priceUsd: recommendedPlan.priceUsd,
-        limits: {
-          callMinutesPerMonth: recommendedPlan.callMinutesPerMonth,
-          aiActionsPerMonth: recommendedPlan.aiActionsPerMonth,
-          meetingHoursPerMonth: recommendedPlan.meetingHoursPerMonth,
-          crmContactsLimit: recommendedPlan.crmContactsLimit,
-          usersIncluded: recommendedPlan.usersIncluded,
+      // Smart Upgrade Calculator Primary Output
+      estimatedMonthlyCost: payAsYouGoTotalUsd,
+      formattedEstimatedMonthlyCost: `$${payAsYouGoTotalUsd.toFixed(2)}`,
+
+      payAsYouGo: {
+        name: payAsYouGoPlan?.name ?? 'Pay as you go',
+        planType: PlanType.PAY_AS_YOU_GO,
+        totalCostUsd: payAsYouGoTotalUsd,
+        formattedTotal: `$${payAsYouGoTotalUsd.toFixed(2)}`,
+        rates: {
+          aiActionRateUsd: actionRate,
+          callMinuteRateUsd: callRate,
+          aiMeetingRateUsd: meetingRate,
+        },
+        breakdown: {
+          aiActions: {
+            quantity: monthlyActions,
+            rateUsd: actionRate,
+            costUsd: aiActionsCost,
+            formattedCost: `$${aiActionsCost.toFixed(2)}`,
+          },
+          callMinutes: {
+            quantity: monthlyCalls,
+            rateUsd: callRate,
+            costUsd: callMinutesCost,
+            formattedCost: `$${callMinutesCost.toFixed(2)}`,
+          },
+          aiMeetings: {
+            quantity: monthlyMeetings,
+            rateUsd: meetingRate,
+            costUsd: aiMeetingsCost,
+            formattedCost: `$${aiMeetingsCost.toFixed(2)}`,
+          },
         },
       },
+
+      subscription: targetSubscriptionPlan
+        ? {
+            id: String(
+              (targetSubscriptionPlan as unknown as { _id: unknown })._id,
+            ),
+            planType: targetSubscriptionPlan.planType,
+            name: targetSubscriptionPlan.name,
+            displayName: `${targetSubscriptionPlan.name} subscription`,
+            priceUsd: targetSubscriptionPlan.priceUsd ?? 0,
+            formattedPrice: `$${targetSubscriptionPlan.priceUsd ?? 0}/month`,
+            billingCycle: 'month',
+            limits: {
+              callMinutesPerMonth: targetSubscriptionPlan.callMinutesPerMonth,
+              aiActionsPerMonth: targetSubscriptionPlan.aiActionsPerMonth,
+              meetingHoursPerMonth: targetSubscriptionPlan.meetingHoursPerMonth,
+              crmContactsLimit: targetSubscriptionPlan.crmContactsLimit,
+              usersIncluded: targetSubscriptionPlan.usersIncluded,
+            },
+            isWithinIncludedUsage,
+            estimatedTotalCostUsd: subscriptionTotalCostUsd,
+            formattedEstimatedTotalCost: `$${subscriptionTotalCostUsd.toFixed(2)}`,
+          }
+        : null,
+
+      comparison: {
+        isUpgradeRecommended,
+        recommendation: isUpgradeRecommended
+          ? 'CONSIDER_UPGRADING'
+          : 'STAY_ON_PAY_AS_YOU_GO',
+        badge: recommendationBadge,
+        message: recommendationMessage,
+        monthlySavingsUsd,
+        formattedSavings:
+          monthlySavingsUsd > 0 ? `$${monthlySavingsUsd.toFixed(2)}/month` : null,
+        footnote:
+          'Illustrative pricing only. Meeting rate is an example, not a confirmed Noltra price.',
+      },
+
+      // Legacy / compatibility fields
+      recommendedPlan: isUpgradeRecommended && targetSubscriptionPlan
+        ? {
+            id: String(
+              (targetSubscriptionPlan as unknown as { _id: unknown })._id,
+            ),
+            planType: targetSubscriptionPlan.planType,
+            name: targetSubscriptionPlan.name,
+            priceUsd: targetSubscriptionPlan.priceUsd,
+            limits: {
+              callMinutesPerMonth: targetSubscriptionPlan.callMinutesPerMonth,
+              aiActionsPerMonth: targetSubscriptionPlan.aiActionsPerMonth,
+              meetingHoursPerMonth: targetSubscriptionPlan.meetingHoursPerMonth,
+              crmContactsLimit: targetSubscriptionPlan.crmContactsLimit,
+              usersIncluded: targetSubscriptionPlan.usersIncluded,
+            },
+          }
+        : payAsYouGoPlan
+          ? {
+              id: String(
+                (payAsYouGoPlan as unknown as { _id: unknown })._id,
+              ),
+              planType: payAsYouGoPlan.planType,
+              name: payAsYouGoPlan.name,
+              priceUsd: payAsYouGoPlan.priceUsd,
+              limits: {
+                callMinutesPerMonth: payAsYouGoPlan.callMinutesPerMonth,
+                aiActionsPerMonth: payAsYouGoPlan.aiActionsPerMonth,
+                meetingHoursPerMonth: payAsYouGoPlan.meetingHoursPerMonth,
+                crmContactsLimit: payAsYouGoPlan.crmContactsLimit,
+                usersIncluded: payAsYouGoPlan.usersIncluded,
+              },
+            }
+          : null,
+      recommendedPlanSummary,
       estimatedAddons,
-      totalEstimatedMonthlyUsd,
+      totalEstimatedMonthlyUsd: payAsYouGoTotalUsd,
     };
   }
 }
