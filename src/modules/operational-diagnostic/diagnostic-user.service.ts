@@ -89,11 +89,11 @@ export class DiagnosticUserService {
       }
 
       const choice = question.choices.find(
-        (c) => c.label === answer.selectedChoiceLabel,
+        (c: any) => c.label === answer.selectedChoiceLabel,
       );
       const pointsAwarded = choice?.points ?? 0;
       const maxPoints = question.choices.length
-        ? Math.max(...question.choices.map((c) => c.points))
+        ? Math.max(...question.choices.map((c: any) => c.points))
         : 0;
 
       totalScore += pointsAwarded;
@@ -202,7 +202,7 @@ export class DiagnosticUserService {
       const question = questionMap.get(answer.questionId);
       const category = categoryMap.get(answer.categoryId);
       const selectedChoice = question?.choices?.find(
-        (c) => c.label === answer.selectedChoiceLabel,
+        (c: any) => c.label === answer.selectedChoiceLabel,
       );
       return {
         questionId: answer.questionId,
