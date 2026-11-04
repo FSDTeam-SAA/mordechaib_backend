@@ -44,6 +44,7 @@ import { AgentWorkforceModule } from './modules/agent-workforce/agent-workforce.
 import { OperationalDiagnosticModule } from './modules/operational-diagnostic/operational-diagnostic.module';
 import { SystemServicesModule } from './modules/system-services/system-services.module';
 import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module';
+import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module
     OperationalDiagnosticModule,
     SystemServicesModule,
     RoiDashboardModule,
+    CrmDashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
