@@ -158,6 +158,16 @@ export default () => {
     45_000,
     'AI_CHAT_TIMEOUT_MS',
   );
+  const aiChatStreamTimeoutMs = positiveInteger(
+    process.env.AI_CHAT_STREAM_TIMEOUT_MS,
+    300_000,
+    'AI_CHAT_STREAM_TIMEOUT_MS',
+  );
+  const aiChatStreamPath =
+    process.env.AI_CHAT_STREAM_PATH?.trim() || '/api/v1/ai/chat';
+  if (!aiChatStreamPath.startsWith('/')) {
+    throw new Error('AI_CHAT_STREAM_PATH must start with /');
+  }
   const aiBriefingPollAfterMs = positiveInteger(
     process.env.AI_BRIEFING_POLL_AFTER_MS,
     2_000,
@@ -526,6 +536,8 @@ export default () => {
       messageAnalysisDelayMs: aiMessageAnalysisDelayMs,
       briefingTimeoutMs: aiBriefingTimeoutMs,
       chatTimeoutMs: aiChatTimeoutMs,
+      chatStreamTimeoutMs: aiChatStreamTimeoutMs,
+      chatStreamPath: aiChatStreamPath,
       briefingPollAfterMs: aiBriefingPollAfterMs,
     },
 
