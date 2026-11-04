@@ -50,6 +50,10 @@ type UploadedAttachment = {
   stored: StoredMessageAttachment;
 };
 
+type CreateMessageOptions = {
+  enqueueAi?: boolean;
+};
+
 const MAX_EXTRACTED_TEXT_CHARACTERS = 100_000;
 
 @Injectable()
@@ -118,6 +122,7 @@ export class MessagesService {
     userId: string,
     input: CreateMessageDto,
     files: Express.Multer.File[] = [],
+    options: CreateMessageOptions = {},
   ) {
     const content = input.content?.trim();
     if (!content && files.length === 0) {
@@ -222,7 +227,7 @@ export class MessagesService {
           new Date(),
         );
         const response = this.publicMessage(message, messageAttachments);
-        if (this.aiJobs) {
+        if (options.enqueueAi !== false && this.aiJobs) {
           try {
             const queued = await this.aiJobs.enqueueMessageAnalysis({
               organizationId,

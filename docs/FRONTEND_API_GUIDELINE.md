@@ -3623,3 +3623,33 @@ to the signed-in organization and never disables the global catalog record.
 
 The full AI Backend integration contract is documented in
 `docs/AI_AGENT_WORKFORCE_AI_BACKEND_CONTRACT.md`.
+
+## ROI Dashboard
+
+The organization ROI dashboard is available through:
+
+```http
+GET /api/v1/roi-dashboard?range=30_DAYS
+GET /api/v1/roi-dashboard/settings
+PATCH /api/v1/roi-dashboard/settings
+GET /api/v1/roi-dashboard/report?range=30_DAYS
+```
+
+Supported ranges are `7_DAYS`, `30_DAYS`, and `90_DAYS`. Task/meeting counts are measured;
+time and money saved are estimates based on organization settings. Follow-up
+activity remains explicitly `UNAVAILABLE`. CRM revenue is returned separately
+and is never included in money saved.
+
+See `docs/ROI_DASHBOARD_API_GUIDE.md` for the response semantics, settings
+contract, PDF handling, and frontend rendering rules.
+
+## Chief of Staff Message Streaming and Files
+
+Use one request to `POST /api/v1/messages` with
+`Accept: text/event-stream`. Send JSON for text-only turns and browser-generated
+`multipart/form-data` when PDF, DOCX, or image files are attached. Do not call a
+second AI endpoint.
+
+The complete frontend implementation contract, SSE parser, upload limits,
+retry behavior, and UI state guidance are documented in
+`docs/FRONTEND_MESSAGES_SSE_MULTIPART_GUIDE.md`.

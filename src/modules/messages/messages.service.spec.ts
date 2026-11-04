@@ -14,6 +14,7 @@ import { MessageAttachmentsRepository } from './message-attachments.repository';
 import { MessagesRepository } from './messages.repository';
 import { MessagesService } from './messages.service';
 import { MessageAttachmentStorage } from './storage/message-attachment-storage.interface';
+import { AiJobsQueue } from '../ai-integration/ai-jobs.queue';
 
 describe('MessagesService', () => {
   const organizationId = 'org-1';
@@ -26,6 +27,7 @@ describe('MessagesService', () => {
   let messages: Record<string, jest.Mock>;
   let attachments: Record<string, jest.Mock>;
   let storage: Record<string, jest.Mock>;
+  let aiJobs: Record<string, jest.Mock>;
   let service: MessagesService;
 
   beforeEach(() => {
@@ -73,11 +75,17 @@ describe('MessagesService', () => {
       getDownload: jest.fn(),
       delete: jest.fn(),
     };
+    aiJobs = {
+      enqueueMessageAnalysis: jest
+        .fn()
+        .mockResolvedValue({ queued: true, jobId: 'job-1' }),
+    };
     service = new MessagesService(
       conversations as unknown as ConversationsRepository,
       messages as unknown as MessagesRepository,
       attachments as unknown as MessageAttachmentsRepository,
       storage as unknown as MessageAttachmentStorage,
+      aiJobs as unknown as AiJobsQueue,
     );
   });
 
@@ -112,6 +120,22 @@ describe('MessagesService', () => {
     expect(result).toEqual(
       expect.objectContaining({ id: messageId, content: 'hello AI' }),
     );
+    expect(aiJobs.enqueueMessageAnalysis).toHaveBeenCalledWith({
+      organizationId,
+      messageId,
+    });
+  });
+
+  it('does not queue a second AI turn when the HTTP response will stream it', async () => {
+    await service.create(
+      organizationId,
+      userId,
+      { startNewConversation: true, content: 'stream this turn' },
+      [],
+      { enqueueAi: false },
+    );
+
+    expect(aiJobs.enqueueMessageAnalysis).not.toHaveBeenCalled();
   });
 
   it('returns an existing client message without uploading again', async () => {
