@@ -43,5 +43,6 @@ import { OrganizerDashboardService } from './organizer-dashboard.service';
   ],
   controllers: [OrganizerDashboardController],
   providers: [OrganizerDashboardService, OrganizerDashboardRepository],
+  exports: [OrganizerDashboardService],
 })
 export class OrganizerDashboardModule {}
