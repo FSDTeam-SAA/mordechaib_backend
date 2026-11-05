@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional } from 'class-validator';
-import { RoiDashboardRange } from '../../roi-dashboard/dto/get-roi-dashboard-query.dto';
 
 export enum CrmDashboardPeriod {
   DAYS_7 = '7_DAYS',
@@ -20,8 +19,8 @@ export class GetCrmDashboardSummaryQueryDto {
 
 export function crmDashboardPeriodConfiguration(period: CrmDashboardPeriod) {
   if (period === CrmDashboardPeriod.DAYS_30) {
-    return { days: 30, roiRange: RoiDashboardRange.DAYS_30 } as const;
+    return { days: 30 } as const;
   }
 
-  return { days: 7, roiRange: RoiDashboardRange.DAYS_7 } as const;
+  return { days: 7 } as const;
 }

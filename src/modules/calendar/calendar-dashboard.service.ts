@@ -9,9 +9,19 @@ import { CalendarProviderType } from '../../common/enums/calendar-provider.enum'
 import { decryptText } from '../../common/helpers/crypto.helper';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
+import { MeetingPrioritySource } from '../../common/enums/meeting-priority-source.enum';
+import { localDayRange } from '../../common/helpers/local-date-range.helper';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
 import { CalendarService } from './calendar.service';
+import {
+  CalendarPriorityAssessment,
+  CalendarPriorityService,
+} from './calendar-priority.service';
+import { CalendarSchedulingService } from './calendar-scheduling.service';
 import { CalendarDashboardQueryDto } from './dto/calendar-dashboard-query.dto';
+import { CalendarTravelTimeService } from './calendar-travel-time.service';
+import { MEETING_FOLLOW_UP_DETECTION_THRESHOLD } from '../../common/enums/meeting-follow-up-status.enum';
 
 type DashboardStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
 
@@ -35,7 +45,16 @@ type DashboardMeeting = {
   joinUrl?: string;
   meetingType?: string;
   urgency?: MeetingUrgency;
+  prioritySource?: MeetingPrioritySource;
+  priority: CalendarPriorityAssessment;
   importedFromProvider?: boolean;
+  location?: {
+    label?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+  };
+  aiConfidence?: number;
 };
 
 @Injectable()
@@ -44,6 +63,10 @@ export class CalendarDashboardService {
     private readonly repository: CalendarDashboardRepository,
     private readonly config: ConfigService,
     private readonly calendars: CalendarService,
+    private readonly organizations: OrganizationsService,
+    private readonly priorities: CalendarPriorityService,
+    private readonly scheduling: CalendarSchedulingService,
+    private readonly travelTime: CalendarTravelTimeService,
   ) {}
 
   async get(
@@ -61,20 +84,42 @@ export class CalendarDashboardService {
     }
     this.assertTimezone(query.timezone);
 
-    const calendarProvider =
-      await this.calendars.getDefaultProvider(organizationId);
+    const [calendarProvider, organization] = await Promise.all([
+      this.calendars.getDefaultProvider(organizationId),
+      this.organizations.findCurrent(organizationId),
+    ]);
+    const today = localDayRange(now, query.timezone);
     const [records, operations] = await Promise.all([
       this.repository.meetings(organizationId, calendarProvider, from, to),
-      this.repository.operationalMetrics(organizationId, from, to, now),
+      this.repository.operationalMetrics(
+        organizationId,
+        from,
+        to,
+        now,
+        today,
+      ),
     ]);
-    const items = this.mergeMeetings(records);
+    const items = this.mergeMeetings(records, now);
     const reportable = items.filter((item) => item.status !== 'FAILED');
     const series = this.series(reportable, query.timezone);
     const active = reportable.filter((item) => item.status === 'SCHEDULED');
     const upcoming = active
       .filter((item) => item.startsAt >= now)
       .slice(0, query.upcomingLimit);
-    const priorityItems = reportable.filter((item) => !!item.urgency);
+    const priorityItems = reportable.filter(
+      (item) => item.priority.availability === 'AVAILABLE',
+    );
+    const averagePriorityScore = priorityItems.length
+      ? Math.round(
+          priorityItems.reduce(
+            (total, item) => total + Number(item.priority.score),
+            0,
+          ) / priorityItems.length,
+        )
+      : null;
+    const confidenceItems = reportable.filter(
+      (item) => typeof item.aiConfidence === 'number',
+    );
 
     return {
       asOf: now.toISOString(),
@@ -102,51 +147,80 @@ export class CalendarDashboardService {
       upcoming,
       conflicts: {
         items: this.conflicts(active, query.bufferMinutes, query.conflictLimit),
-        travelTime: {
-          availability: 'UNAVAILABLE',
-          reason: 'MEETING_LOCATIONS_NOT_CAPTURED',
-        },
+        travelTime: this.travelTime.assess(
+          active,
+          query.bufferMinutes,
+          query.conflictLimit,
+        ),
       },
       taskAndCalls: {
         tasksCreatedFromCalls: operations.tasksFromCalls,
         upcomingDeadlines: operations.upcomingDeadlines,
         aiReminders: operations.aiReminders,
         followUpsPending: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'FOLLOW_UP_WORKFLOW_NOT_CONFIGURED',
+          availability: 'AVAILABLE',
+          value: operations.followUpsPending,
+          source: 'PERSISTED_MEETING_FOLLOW_UP_SIGNALS',
+          detectionThreshold: MEETING_FOLLOW_UP_DETECTION_THRESHOLD,
+          isEstimated: false,
         },
         crmUpdatesToday: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'CRM_FOUNDATION_NOT_IMPLEMENTED',
+          availability: 'AVAILABLE',
+          value: operations.crmUpdatesToday,
+          source: 'CRM_MUTATION_AUDIT_LOG',
+          isEstimated: false,
         },
       },
       priority: {
-        availability:
-          priorityItems.length === reportable.length ? 'AVAILABLE' : 'PARTIAL',
+        availability: this.coverageAvailability(
+          reportable.length,
+          priorityItems.length,
+          true,
+        ),
         classified: priorityItems.length,
         unclassified: reportable.length - priorityItems.length,
         counts: {
           high: priorityItems.filter(
-            (item) => item.urgency === MeetingUrgency.HIGH,
+            (item) => item.priority.urgency === MeetingUrgency.HIGH,
           ).length,
           medium: priorityItems.filter(
-            (item) => item.urgency === MeetingUrgency.MEDIUM,
+            (item) => item.priority.urgency === MeetingUrgency.MEDIUM,
           ).length,
           low: priorityItems.filter(
-            (item) => item.urgency === MeetingUrgency.LOW,
+            (item) => item.priority.urgency === MeetingUrgency.LOW,
           ).length,
         },
         averageScore: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'MEETING_PRIORITY_SCORE_METHODOLOGY_NOT_CONFIGURED',
+          availability: this.coverageAvailability(
+            reportable.length,
+            priorityItems.length,
+            false,
+          ),
+          value: averagePriorityScore,
+          methodologyVersion: 'URGENCY_WEIGHTED_V1',
+          scoreMapping: { HIGH: 90, MEDIUM: 60, LOW: 30 },
+          isEstimated: false,
+          ...(priorityItems.length
+            ? {}
+            : { reason: 'NO_EXPLICITLY_CLASSIFIED_MEETINGS' }),
         },
         confidenceScores: {
-          availability: 'UNAVAILABLE',
-          items: [],
-          reason: 'AI_MEETING_SCORING_NOT_IMPLEMENTED',
+          availability: this.coverageAvailability(
+            reportable.filter((item) => item.sourceType === 'PLATFORM_MEETING')
+              .length,
+            confidenceItems.length,
+            false,
+          ),
+          items: confidenceItems.map((item) => ({
+            meetingId: item.id,
+            value: item.aiConfidence,
+            scale: '0_TO_1',
+          })),
+          source: 'AI_SOURCE_ANALYSIS_OVERALL_CONFIDENCE',
+          isEstimated: false,
+          ...(confidenceItems.length
+            ? {}
+            : { reason: 'NO_ANALYZED_MEETING_CONFIDENCE_AVAILABLE' }),
         },
       },
       automation: {
@@ -154,38 +228,55 @@ export class CalendarDashboardService {
         actionItemsCreated: operations.actionItemsCreated,
         tasksAssigned: operations.tasksAssigned,
         followUpEmailsSent: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'EMAILS_NOT_LINKED_TO_MEETINGS',
+          availability: 'AVAILABLE',
+          value: operations.followUpEmailsSent,
+          source: 'SENT_EMAIL_DRAFTS_WITH_MEETING_SOURCE',
+          isEstimated: false,
         },
         crmRecordsUpdated: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'CRM_FOUNDATION_NOT_IMPLEMENTED',
+          availability: 'AVAILABLE',
+          value: operations.meetingCrmRecordsUpdated,
+          source: 'EXECUTED_MEETING_CRM_PROPOSALS',
+          isEstimated: false,
         },
         customerHealthUpdated: {
-          availability: 'UNAVAILABLE',
-          value: null,
-          reason: 'CUSTOMER_FOUNDATION_NOT_IMPLEMENTED',
+          availability: 'AVAILABLE',
+          value: operations.customerHealthUpdated,
+          source: 'DISTINCT_CONTACT_HEALTH_SNAPSHOTS',
+          isEstimated: false,
         },
       },
       aiScheduling: {
-        availability: 'UNAVAILABLE',
-        suggestions: [],
-        reason: 'AI_SCHEDULING_CONTRACT_NOT_IMPLEMENTED',
+        ...this.scheduling.suggest({
+          from,
+          to,
+          now,
+          timezone: query.timezone,
+          businessHours: organization.businessHours,
+          busy: active,
+          durationMinutes: query.suggestionDurationMinutes,
+          bufferMinutes: query.bufferMinutes,
+          limit: query.suggestionLimit,
+        }),
       },
     };
   }
 
   private mergeMeetings(
     records: Awaited<ReturnType<CalendarDashboardRepository['meetings']>>,
+    now: Date,
   ) {
     const unique = new Map<string, DashboardMeeting>();
     for (const meeting of records.platform) {
       const botCompleted =
         !!meeting.meetingBotId &&
         records.completedBotIds.has(String(meeting.meetingBotId));
-      const status = this.platformStatus(String(meeting.status), botCompleted);
+      const status = this.platformStatus(
+        String(meeting.status),
+        botCompleted,
+        meeting.endsAt,
+        now,
+      );
       const key = meeting.calendarEventId
         ? `calendar:${String(meeting.calendarProvider)}:${String(meeting.calendarEventId)}`
         : `platform:${String(meeting._id)}`;
@@ -208,13 +299,27 @@ export class CalendarDashboardService {
         joinUrl: meeting.joinUrlEncrypted
           ? decryptText(meeting.joinUrlEncrypted, this.encryptionKey)
           : undefined,
+        priority: this.priorities.assess({}),
+        aiConfidence: records.confidenceByMeetingId.get(String(meeting._id)),
       });
     }
     for (const event of records.calendar) {
       const key = event.providerEventId
         ? `calendar:${String(event.provider)}:${String(event.providerEventId)}`
         : `event:${String(event._id)}`;
-      if (unique.has(key)) continue;
+      const prioritySource = this.prioritySource(event);
+      const priority = this.priorities.assess({
+        urgency: event.urgency,
+        source: prioritySource,
+      });
+      const existing = unique.get(key);
+      if (existing) {
+        existing.urgency = event.urgency;
+        existing.prioritySource = prioritySource;
+        existing.priority = priority;
+        existing.importedFromProvider = event.importedFromProvider === true;
+        continue;
+      }
       unique.set(key, {
         id: String(event._id),
         sourceType: 'CALENDAR_EVENT',
@@ -230,13 +335,16 @@ export class CalendarDashboardService {
         ),
         timezone: event.timezone,
         participantEmails: event.attendees || [],
-        status: this.calendarStatus(String(event.status)),
+        location: event.location,
+        status: this.calendarStatus(String(event.status), event.endsAt, now),
         provider: event.provider as CalendarProviderType,
         calendarProvider: event.provider as CalendarProviderType,
         calendarEventId: event.providerEventId,
         eventUrl: event.providerEventUrl,
         meetingType: String(event.meetingType),
         urgency: event.urgency,
+        prioritySource,
+        priority,
         importedFromProvider: event.importedFromProvider === true,
       });
     }
@@ -248,19 +356,49 @@ export class CalendarDashboardService {
   private platformStatus(
     status: string,
     botCompleted: boolean,
+    endsAt: Date,
+    now: Date,
   ): DashboardStatus {
     if (status === PlatformMeetingStatus.CANCELLED) return 'CANCELLED';
     if (status === PlatformMeetingStatus.FAILED) return 'FAILED';
-    if (status === PlatformMeetingStatus.COMPLETED || botCompleted) {
+    if (
+      status === PlatformMeetingStatus.COMPLETED ||
+      botCompleted ||
+      endsAt <= now
+    ) {
       return 'COMPLETED';
     }
     return 'SCHEDULED';
   }
 
-  private calendarStatus(status: string): DashboardStatus {
+  private calendarStatus(
+    status: string,
+    endsAt: Date,
+    now: Date,
+  ): DashboardStatus {
     if (status === CalendarEventStatus.CANCELLED) return 'CANCELLED';
     if (status === CalendarEventStatus.FAILED) return 'FAILED';
+    if (endsAt <= now) return 'COMPLETED';
     return 'SCHEDULED';
+  }
+
+  private prioritySource(event: {
+    prioritySource?: MeetingPrioritySource;
+    importedFromProvider?: boolean;
+  }) {
+    if (event.prioritySource) return event.prioritySource;
+    if (event.importedFromProvider) return MeetingPrioritySource.IMPORTED;
+    return MeetingPrioritySource.DEFAULT;
+  }
+
+  private coverageAvailability(
+    total: number,
+    classified: number,
+    emptyIsAvailable: boolean,
+  ): 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE' {
+    if (total === 0) return emptyIsAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+    if (classified === 0) return 'UNAVAILABLE';
+    return classified === total ? 'AVAILABLE' : 'PARTIAL';
   }
 
   private series(items: DashboardMeeting[], timezone: string) {

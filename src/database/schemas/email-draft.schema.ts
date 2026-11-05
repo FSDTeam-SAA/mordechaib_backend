@@ -4,8 +4,21 @@ import {
   EmailDraftStatus,
   EmailProvider,
 } from '../../common/enums/email-provider.enum';
+import { EmailDraftSourceType } from '../../common/enums/email-draft-source-type.enum';
 
 export type EmailDraftDocument = HydratedDocument<EmailDraft>;
+
+@Schema({ _id: false })
+export class EmailDraftSource {
+  @Prop({ required: true, enum: Object.values(EmailDraftSourceType) })
+  type!: EmailDraftSourceType;
+
+  @Prop({ required: true, trim: true, maxlength: 200 })
+  id!: string;
+}
+
+export const EmailDraftSourceSchema =
+  SchemaFactory.createForClass(EmailDraftSource);
 
 @Schema({ timestamps: true, collection: 'email_drafts' })
 export class EmailDraft {
@@ -42,6 +55,9 @@ export class EmailDraft {
   @Prop()
   sourceAiResponseId?: string;
 
+  @Prop({ type: EmailDraftSourceSchema })
+  source?: EmailDraftSource;
+
   @Prop()
   clientDraftId?: string;
 
@@ -66,6 +82,13 @@ export class EmailDraft {
 
 export const EmailDraftSchema = SchemaFactory.createForClass(EmailDraft);
 EmailDraftSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
+EmailDraftSchema.index({
+  organizationId: 1,
+  'source.type': 1,
+  'source.id': 1,
+  status: 1,
+  sentAt: -1,
+});
 EmailDraftSchema.index(
   { organizationId: 1, sourceAiResponseId: 1 },
   {

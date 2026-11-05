@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -10,8 +11,21 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { EmailProvider } from '../../../common/enums/email-provider.enum';
+import { EmailDraftSourceType } from '../../../common/enums/email-draft-source-type.enum';
+
+export class EmailDraftSourceDto {
+  @ApiPropertyOptional({ enum: EmailDraftSourceType })
+  @IsEnum(EmailDraftSourceType)
+  type!: EmailDraftSourceType;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  id!: string;
+}
 
 export class CreateEmailDraftDto {
   @ApiPropertyOptional({ enum: EmailProvider })
@@ -34,6 +48,12 @@ export class CreateEmailDraftDto {
   @MinLength(1)
   @MaxLength(20_000)
   body!: string;
+
+  @ApiPropertyOptional({ type: EmailDraftSourceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmailDraftSourceDto)
+  source?: EmailDraftSourceDto;
 
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
