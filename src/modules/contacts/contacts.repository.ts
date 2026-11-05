@@ -4,12 +4,16 @@ import { FilterQuery, Model } from 'mongoose';
 import { CustomerContactStatus } from '../../common/enums/customer-contact-status.enum';
 import { CustomerContact } from '../../database/schemas/customer-contact.schema';
 import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
+import { CustomerHealthSnapshot } from '../../database/schemas/customer-health-snapshot.schema';
+import { ListContactHealthQueryDto } from './dto/list-contact-health-query.dto';
 
 @Injectable()
 export class ContactsRepository {
   constructor(
     @InjectModel(CustomerContact.name)
     private readonly contacts: Model<CustomerContact>,
+    @InjectModel(CustomerHealthSnapshot.name)
+    private readonly healthSnapshots: Model<CustomerHealthSnapshot>,
   ) {}
 
   async create(input: Record<string, unknown>) {
@@ -49,6 +53,25 @@ export class ContactsRepository {
 
   findById(organizationId: string, id: string) {
     return this.contacts.findOne({ _id: id, organizationId }).lean().exec();
+  }
+
+  async healthHistory(
+    organizationId: string,
+    contactId: string,
+    query: ListContactHealthQueryDto,
+  ) {
+    const filter = { organizationId, contactId };
+    const [items, total] = await Promise.all([
+      this.healthSnapshots
+        .find(filter)
+        .sort({ capturedAt: -1, _id: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .lean()
+        .exec(),
+      this.healthSnapshots.countDocuments(filter).exec(),
+    ]);
+    return { items, total };
   }
 
   findActiveByIds(organizationId: string, ids: string[]) {

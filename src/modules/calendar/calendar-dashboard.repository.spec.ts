@@ -26,6 +26,10 @@ describe('CalendarDashboardRepository', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
     const from = new Date('2026-10-01T00:00:00.000Z');
     const to = new Date('2026-11-01T00:00:00.000Z');

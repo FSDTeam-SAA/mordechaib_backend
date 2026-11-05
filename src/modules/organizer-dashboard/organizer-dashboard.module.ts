@@ -22,6 +22,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CallIntelligenceModule } from '../call-intelligence/call-intelligence.module';
 import { ChiefOfStaffModule } from '../chief-of-staff/chief-of-staff.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { RoiDashboardModule } from '../roi-dashboard/roi-dashboard.module';
 import { OrganizerDashboardController } from './organizer-dashboard.controller';
 import { OrganizerDashboardRepository } from './organizer-dashboard.repository';
 import { OrganizerDashboardService } from './organizer-dashboard.service';
@@ -34,6 +35,7 @@ import { OrganizerDashboardService } from './organizer-dashboard.service';
     AiTelemetryModule,
     CallIntelligenceModule,
     ChiefOfStaffModule,
+    RoiDashboardModule,
     MongooseModule.forFeature([
       { name: TaskItem.name, schema: TaskItemSchema },
       { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
