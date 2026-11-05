@@ -41,6 +41,7 @@ type OutlookEventListItem = {
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
   attendees?: Array<{ emailAddress?: { address?: string } }>;
+  location?: { displayName?: string; address?: { street?: string; city?: string; state?: string; countryOrRegion?: string; postalCode?: string } };
 };
 
 type OutlookEventListResponse = {
@@ -160,7 +161,7 @@ export class OutlookCalendarProvider implements CalendarProvider {
       endDateTime: range.to.toISOString(),
       $top: '1000',
       $select:
-        'id,subject,bodyPreview,start,end,attendees,webLink,isCancelled,lastModifiedDateTime',
+        'id,subject,bodyPreview,start,end,attendees,location,webLink,isCancelled,lastModifiedDateTime',
     });
     let nextUrl: string | undefined =
       `https://graph.microsoft.com/v1.0/me/calendarView?${query.toString()}`;
@@ -203,6 +204,14 @@ export class OutlookCalendarProvider implements CalendarProvider {
       attendees: (event.attendees || [])
         .map((attendee) => attendee.emailAddress?.address?.trim().toLowerCase())
         .filter((email): email is string => !!email),
+      ...(event.location?.displayName?.trim()
+        ? {
+            location: {
+              label: event.location.displayName.trim(),
+              address: event.location.displayName.trim(),
+            },
+          }
+        : {}),
       htmlUrl: event.webLink,
       cancelled,
       providerUpdatedAt: event.lastModifiedDateTime
@@ -231,8 +240,16 @@ export class OutlookCalendarProvider implements CalendarProvider {
             },
           }
         : {}),
-      ...(input.meetingUrl !== undefined
-        ? { location: { displayName: input.meetingUrl || '' } }
+      ...(input.location !== undefined || input.meetingUrl !== undefined
+        ? {
+            location: {
+              displayName:
+                input.location?.address ||
+                input.location?.label ||
+                input.meetingUrl ||
+                '',
+            },
+          }
         : {}),
       ...(input.startsAt
         ? {

@@ -44,9 +44,38 @@ export class RoiDashboardService {
     query: GetRoiDashboardQueryDto,
     now = new Date(),
   ): Promise<RoiDashboardSnapshot> {
+    return this.buildDashboard(
+      organizationId,
+      roiRangeDays(query.range),
+      query.range,
+      now,
+    );
+  }
+
+  dashboardForDays(
+    organizationId: string,
+    days: number,
+    timezone: string,
+    now = new Date(),
+  ): Promise<RoiDashboardSnapshot> {
+    return this.buildDashboard(
+      organizationId,
+      days,
+      `${days}_DAYS`,
+      now,
+      timezone,
+    );
+  }
+
+  private async buildDashboard(
+    organizationId: string,
+    days: number,
+    rangeKey: string,
+    now: Date,
+    timezoneOverride?: string,
+  ): Promise<RoiDashboardSnapshot> {
     const organization = await this.organizations.findCurrent(organizationId);
-    const timezone = organization.timezone || 'UTC';
-    const days = roiRangeDays(query.range);
+    const timezone = timezoneOverride || organization.timezone || 'UTC';
     const currentRange = trailingLocalDaysRange(now, timezone, days);
     const previousRange = trailingLocalDaysRange(
       new Date(currentRange.start.getTime() - 1),
@@ -118,7 +147,7 @@ export class RoiDashboardService {
       timezone,
       configuration,
       range: {
-        key: query.range,
+        key: rangeKey,
         start: currentRange.start.toISOString(),
         end: currentRange.end.toISOString(),
         days,

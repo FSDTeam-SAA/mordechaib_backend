@@ -12,7 +12,15 @@ export type CalendarEventInput = {
   meetingType?: MeetingType;
   urgency?: MeetingUrgency;
   meetingUrl?: string;
+  location?: CalendarEventLocationInput;
   reminderMinutesBeforeStart: number;
+};
+
+export type CalendarEventLocationInput = {
+  label?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type CreateCalendarEventInput = CalendarEventInput;
@@ -33,6 +41,7 @@ export type SyncedCalendarEvent = {
   endsAt?: Date;
   timezone?: string;
   attendees: string[];
+  location?: CalendarEventLocationInput;
   htmlUrl?: string;
   cancelled: boolean;
   providerUpdatedAt?: Date;

@@ -14,9 +14,36 @@ import {
   MaxLength,
   Min,
   MinLength,
+  IsLatitude,
+  IsLongitude,
+  ValidateNested,
 } from 'class-validator';
 import { MeetingType } from '../../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../../common/enums/meeting-urgency.enum';
+
+export class CalendarEventLocationDto {
+  @ApiPropertyOptional({ example: 'Noltra office' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  label?: string;
+
+  @ApiPropertyOptional({ example: 'Gulshan, Dhaka, Bangladesh' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  address?: string;
+
+  @ApiPropertyOptional({ example: 23.7925 })
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 90.4078 })
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
+}
 
 export class CreateCalendarEventDto {
   @ApiProperty({ example: 'Quarterly planning', maxLength: 200 })
@@ -60,6 +87,12 @@ export class CreateCalendarEventDto {
   @ArrayUnique()
   @IsEmail({}, { each: true })
   attendees?: string[];
+
+  @ApiPropertyOptional({ type: CalendarEventLocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CalendarEventLocationDto)
+  location?: CalendarEventLocationDto;
 
   @ApiPropertyOptional({ example: 'Asia/Dhaka' })
   @IsOptional()
