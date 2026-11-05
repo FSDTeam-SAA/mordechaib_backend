@@ -10,9 +10,22 @@ import { CalendarEventsRepository } from './calendar-events.repository';
 import { SettingsModule } from '../settings/settings.module';
 import { CalendarDashboardRepository } from './calendar-dashboard.repository';
 import { CalendarDashboardService } from './calendar-dashboard.service';
+import { CalendarPriorityService } from './calendar-priority.service';
+import { CalendarSchedulingService } from './calendar-scheduling.service';
+import { OrganizationsModule } from '../organizations/organizations.module';
+import { CalendarTravelTimeService } from './calendar-travel-time.service';
+import { CalendarFollowUpsService } from './calendar-follow-ups.service';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { SourceAnalysesModule } from '../source-analyses/source-analyses.module';
 
 @Module({
-  imports: [ConfigModule, SettingsModule],
+  imports: [
+    ConfigModule,
+    SettingsModule,
+    OrganizationsModule,
+    AuditLogsModule,
+    SourceAnalysesModule,
+  ],
   controllers: [CalendarController, CalendarConnectionsController],
   providers: [
     CalendarService,
@@ -22,6 +35,10 @@ import { CalendarDashboardService } from './calendar-dashboard.service';
     CalendarEventsRepository,
     CalendarDashboardRepository,
     CalendarDashboardService,
+    CalendarPriorityService,
+    CalendarSchedulingService,
+    CalendarTravelTimeService,
+    CalendarFollowUpsService,
   ],
   exports: [
     CalendarService,
