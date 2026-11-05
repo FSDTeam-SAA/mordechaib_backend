@@ -11,6 +11,7 @@ import { AuthService } from '../auth/auth.service';
 import { CallIntelligenceService } from '../call-intelligence/call-intelligence.service';
 import { ExecutiveBriefingsService } from '../chief-of-staff/executive-briefings.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { RoiDashboardService } from '../roi-dashboard/roi-dashboard.service';
 import { OrganizerDashboardRepository } from './organizer-dashboard.repository';
 import { OrganizerDashboardService } from './organizer-dashboard.service';
 
@@ -22,6 +23,7 @@ describe('OrganizerDashboardService', () => {
   let organizations: Record<string, jest.Mock>;
   let calls: Record<string, jest.Mock>;
   let briefings: Record<string, jest.Mock>;
+  let roi: Record<string, jest.Mock>;
   let service: OrganizerDashboardService;
 
   beforeEach(() => {
@@ -38,6 +40,7 @@ describe('OrganizerDashboardService', () => {
     organizations = { findCurrent: jest.fn() };
     calls = { list: jest.fn() };
     briefings = { getLatest: jest.fn() };
+    roi = { dashboardForDays: jest.fn() };
     service = new OrganizerDashboardService(
       repository as unknown as OrganizerDashboardRepository,
       agents as unknown as AgentsService,
@@ -46,10 +49,11 @@ describe('OrganizerDashboardService', () => {
       organizations as unknown as OrganizationsService,
       calls as unknown as CallIntelligenceService,
       briefings as unknown as ExecutiveBriefingsService,
+      roi as unknown as RoiDashboardService,
     );
   });
 
-  it('returns measured task and meeting cards without inventing savings', async () => {
+  it('combines measured activity with configured savings estimates', async () => {
     auth.getMe.mockResolvedValue({ timezone: 'Asia/Dhaka' });
     organizations.findCurrent.mockResolvedValue({ timezone: 'UTC' });
     repository.summary.mockResolvedValue({
@@ -59,6 +63,31 @@ describe('OrganizerDashboardService', () => {
       ],
       overdueTasks: 4,
       meetingSeries: [{ date: '2026-09-22', value: 1 }],
+    });
+    roi.dashboardForDays.mockResolvedValue({
+      cards: {
+        moneySaved: {
+          availability: 'AVAILABLE',
+          amount: 50,
+          currency: 'USD',
+          isEstimated: true,
+          comparison: { direction: 'UP', percent: 10 },
+        },
+        hoursSaved: {
+          availability: 'AVAILABLE',
+          value: 2,
+          minutes: 120,
+          isEstimated: true,
+          comparison: { direction: 'UP', percent: 10 },
+        },
+      },
+      savingsTrend: [
+        {
+          date: '2026-09-22',
+          moneySaved: 50,
+          hoursSaved: 2,
+        },
+      ],
     });
 
     const result = await service.summary(
@@ -76,13 +105,22 @@ describe('OrganizerDashboardService', () => {
     });
     expect(result.cards.meetingsScheduled.total).toBe(1);
     expect(result.cards.moneySaved).toMatchObject({
-      availability: 'UNAVAILABLE',
-      amount: null,
+      availability: 'AVAILABLE',
+      amount: 50,
+      isEstimated: true,
     });
     expect(result.cards.hoursSaved).toMatchObject({
-      availability: 'UNAVAILABLE',
-      hours: null,
+      availability: 'AVAILABLE',
+      value: 2,
+      hours: 2,
+      isEstimated: true,
     });
+    expect(roi.dashboardForDays).toHaveBeenCalledWith(
+      'org-1',
+      7,
+      'Asia/Dhaka',
+      new Date('2026-09-22T06:00:00.000Z'),
+    );
   });
 
   it('returns the same global catalog with organization-scoped activity', async () => {

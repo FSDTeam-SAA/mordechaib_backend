@@ -45,6 +45,7 @@ import { OperationalDiagnosticModule } from './modules/operational-diagnostic/op
 import { SystemServicesModule } from './modules/system-services/system-services.module';
 import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module';
 import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module';
+import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enquiries.module';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module
     SystemServicesModule,
     RoiDashboardModule,
     CrmDashboardModule,
+    ContactEnquiriesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

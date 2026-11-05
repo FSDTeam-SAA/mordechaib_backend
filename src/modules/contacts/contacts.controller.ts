@@ -24,6 +24,7 @@ import { ContactsService } from './contacts.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { ListContactHealthQueryDto } from './dto/list-contact-health-query.dto';
 
 @ApiTags('Customer Contacts')
 @ApiBearerAuth()
@@ -59,6 +60,16 @@ export class ContactsController {
     @Param('id') id: string,
   ) {
     return this.contacts.get(organization.id, id);
+  }
+
+  @Get(':id/health')
+  @ApiOperation({ summary: 'List persisted AI customer-health snapshots' })
+  healthHistory(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('id') id: string,
+    @Query() query: ListContactHealthQueryDto,
+  ) {
+    return this.contacts.healthHistory(organization.id, id, query);
   }
 
   @Patch(':id')

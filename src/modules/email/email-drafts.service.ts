@@ -18,6 +18,10 @@ import {
 import { UserRole } from '../../common/enums/user-role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { User } from '../../database/schemas/user.schema';
+import { Message } from '../../database/schemas/message.schema';
+import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
+import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
+import { EmailDraftSourceType } from '../../common/enums/email-draft-source-type.enum';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CreateEmailDraftDto } from './dto/create-email-draft.dto';
 import { ListEmailDraftsDto } from './dto/list-email-drafts.dto';
@@ -39,6 +43,11 @@ export class EmailDraftsService {
     private readonly providerClient: EmailProviderClient,
     private readonly audits: AuditLogsService,
     @InjectModel(User.name) private readonly users: Model<User>,
+    @InjectModel(Message.name) private readonly messages: Model<Message>,
+    @InjectModel(PlatformMeeting.name)
+    private readonly meetings: Model<PlatformMeeting>,
+    @InjectModel(ManagedCalendarEvent.name)
+    private readonly calendarEvents: Model<ManagedCalendarEvent>,
   ) {}
 
   async create(
@@ -47,6 +56,7 @@ export class EmailDraftsService {
     input: CreateEmailDraftDto,
   ) {
     const values = this.normalize(input);
+    await this.assertSource(organizationId, values.source);
     if (input.clientDraftId && !isUUID(input.clientDraftId)) {
       throw new BadRequestException('clientDraftId must be a UUID');
     }
@@ -76,6 +86,24 @@ export class EmailDraftsService {
       if (!existing) throw error;
       return this.assertSameClientDraft(existing, values);
     }
+  }
+
+  private async assertSource(
+    organizationId: string,
+    source?: { type: EmailDraftSourceType; id: string },
+  ) {
+    if (!source) return;
+    if (!isValidObjectId(source.id)) {
+      throw new BadRequestException('source.id must be a MongoDB ObjectId');
+    }
+    const filter = { _id: source.id, organizationId };
+    const exists =
+      source.type === EmailDraftSourceType.USER_MESSAGE
+        ? await this.messages.exists(filter)
+        : source.type === EmailDraftSourceType.PLATFORM_MEETING
+          ? await this.meetings.exists(filter)
+          : await this.calendarEvents.exists(filter);
+    if (!exists) throw new BadRequestException('Email draft source was not found');
   }
 
   async ensureFromAiReply(input: {
@@ -357,6 +385,7 @@ export class EmailDraftsService {
     }
     return {
       ...(input.provider ? { provider: input.provider } : {}),
+      ...(input.source ? { source: input.source } : {}),
       to,
       subject,
       body,
@@ -412,7 +441,8 @@ export class EmailDraftsService {
       existing.provider !== values.provider ||
       existing.subject !== values.subject ||
       existing.body !== values.body ||
-      JSON.stringify(existing.to) !== JSON.stringify(values.to)
+      JSON.stringify(existing.to) !== JSON.stringify(values.to) ||
+      JSON.stringify(existing.source) !== JSON.stringify(values.source)
     ) {
       throw new ConflictException(
         'clientDraftId was reused with different content',
@@ -433,6 +463,7 @@ export class EmailDraftsService {
       sourceMessageId: value.sourceMessageId,
       sourceConversationId: value.sourceConversationId,
       sourceAiResponseId: value.sourceAiResponseId,
+      source: value.source,
       sentFrom: value.sentFrom,
       sentAt: value.sentAt,
       providerMessageId: value.providerMessageId,

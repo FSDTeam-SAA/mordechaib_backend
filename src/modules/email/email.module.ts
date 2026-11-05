@@ -13,6 +13,15 @@ import {
   EmailOAuthStateSchema,
 } from '../../database/schemas/email-oauth-state.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { Message, MessageSchema } from '../../database/schemas/message.schema';
+import {
+  PlatformMeeting,
+  PlatformMeetingSchema,
+} from '../../database/schemas/platform-meeting.schema';
+import {
+  ManagedCalendarEvent,
+  ManagedCalendarEventSchema,
+} from '../../database/schemas/managed-calendar-event.schema';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { EmailConnectionsController } from './email-connections.controller';
 import { EmailConnectionsRepository } from './email-connections.repository';
@@ -30,6 +39,9 @@ import { EmailProviderClient } from './email-provider.client';
       { name: EmailOAuthState.name, schema: EmailOAuthStateSchema },
       { name: EmailDraft.name, schema: EmailDraftSchema },
       { name: User.name, schema: UserSchema },
+      { name: Message.name, schema: MessageSchema },
+      { name: PlatformMeeting.name, schema: PlatformMeetingSchema },
+      { name: ManagedCalendarEvent.name, schema: ManagedCalendarEventSchema },
     ]),
   ],
   controllers: [EmailConnectionsController, EmailDraftsController],

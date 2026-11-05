@@ -60,6 +60,9 @@ describe('EmailDraftsService send approval', () => {
       provider as unknown as EmailProviderClient,
       audits as unknown as AuditLogsService,
       {} as Model<User>,
+      {} as never,
+      {} as never,
+      {} as never,
     );
   });
 

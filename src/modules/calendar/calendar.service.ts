@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
 import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { MeetingPrioritySource } from '../../common/enums/meeting-priority-source.enum';
 import { decryptText, encryptText } from '../../common/helpers/crypto.helper';
 import {
   CalendarEventInput,
@@ -96,6 +97,7 @@ export class CalendarService {
     userId: string,
     input: CreateCalendarEventDto,
   ) {
+    this.assertLocation(input.location);
     const { startsAt, endsAt } = this.timeRange(input.startTime, input.endTime);
     if (startsAt.getTime() <= Date.now()) {
       throw new BadRequestException('startTime must be in the future');
@@ -119,10 +121,14 @@ export class CalendarService {
       description: input.description,
       meetingType: input.meetingType,
       urgency: input.urgency,
+      prioritySource: input.urgency
+        ? MeetingPrioritySource.USER
+        : MeetingPrioritySource.DEFAULT,
       startsAt,
       endsAt,
       timezone,
       attendees: input.attendees || [],
+      location: input.location,
       reminderMinutesBeforeStart,
     });
     if (!reservation.event) {
@@ -146,6 +152,7 @@ export class CalendarService {
           endsAt,
           timezone,
           attendees: input.attendees || [],
+          location: input.location,
           reminderMinutesBeforeStart,
         },
         provider,
@@ -335,6 +342,7 @@ export class CalendarService {
     if (!Object.values(input).some((value) => value !== undefined)) {
       throw new BadRequestException('At least one update field is required');
     }
+    this.assertLocation(input.location);
     this.assertObjectId(id);
     const event = await this.events.findById(id, organizationId);
     if (!event) throw new NotFoundException('Calendar event not found');
@@ -361,10 +369,15 @@ export class CalendarService {
       description: input.description ?? event.description,
       meetingType: input.meetingType ?? event.meetingType,
       urgency: input.urgency ?? event.urgency,
+      prioritySource:
+        input.urgency !== undefined
+          ? MeetingPrioritySource.USER
+          : event.prioritySource,
       startsAt,
       endsAt,
       timezone,
       attendees: input.attendees ?? event.attendees,
+      location: input.location ?? event.location,
       reminderMinutesBeforeStart:
         input.reminderMinutesBeforeStart ?? event.reminderMinutesBeforeStart,
     };
@@ -375,6 +388,7 @@ export class CalendarService {
       endsAt: event.endsAt,
       timezone: event.timezone,
       attendees: event.attendees,
+      location: event.location,
       reminderMinutesBeforeStart: event.reminderMinutesBeforeStart,
     };
 
@@ -550,6 +564,27 @@ export class CalendarService {
       new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
     } catch {
       throw new BadRequestException('timezone must be a valid IANA timezone');
+    }
+  }
+
+  private assertLocation(location?: {
+    label?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+  }) {
+    if (!location) return;
+    const hasLatitude = location.latitude !== undefined;
+    const hasLongitude = location.longitude !== undefined;
+    if (hasLatitude !== hasLongitude) {
+      throw new BadRequestException(
+        'location latitude and longitude must be provided together',
+      );
+    }
+    if (!location.label?.trim() && !location.address?.trim() && !hasLatitude) {
+      throw new BadRequestException(
+        'location must include a label, address, or coordinates',
+      );
     }
   }
 

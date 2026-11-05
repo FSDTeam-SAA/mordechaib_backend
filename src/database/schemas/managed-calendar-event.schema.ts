@@ -4,6 +4,7 @@ import { CalendarEventStatus } from '../../common/enums/calendar-event-status.en
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
+import { MeetingPrioritySource } from '../../common/enums/meeting-priority-source.enum';
 import {
   AiActionProposal,
   AiProposalAgent,
@@ -12,6 +13,24 @@ import {
 
 export type ManagedCalendarEventDocument =
   HydratedDocument<ManagedCalendarEvent>;
+
+@Schema({ _id: false })
+export class CalendarEventLocation {
+  @Prop({ trim: true, maxlength: 300 })
+  label?: string;
+
+  @Prop({ trim: true, maxlength: 1000 })
+  address?: string;
+
+  @Prop({ min: -90, max: 90 })
+  latitude?: number;
+
+  @Prop({ min: -180, max: 180 })
+  longitude?: number;
+}
+
+export const CalendarEventLocationSchema =
+  SchemaFactory.createForClass(CalendarEventLocation);
 
 @Schema({ timestamps: true, collection: 'managed_calendar_events' })
 export class ManagedCalendarEvent {
@@ -58,6 +77,12 @@ export class ManagedCalendarEvent {
   })
   urgency!: MeetingUrgency;
 
+  @Prop({
+    enum: Object.values(MeetingPrioritySource),
+    default: MeetingPrioritySource.DEFAULT,
+  })
+  prioritySource!: MeetingPrioritySource;
+
   @Prop({ required: true, index: true })
   startsAt!: Date;
 
@@ -69,6 +94,9 @@ export class ManagedCalendarEvent {
 
   @Prop({ type: [String], default: [] })
   attendees!: string[];
+
+  @Prop({ type: CalendarEventLocationSchema })
+  location?: CalendarEventLocation;
 
   @Prop({ default: 15, min: 0, max: 40320 })
   reminderMinutesBeforeStart!: number;

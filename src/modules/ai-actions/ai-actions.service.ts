@@ -45,6 +45,7 @@ import {
   AiAnalysisResult,
 } from './dto/ai-analysis-result.dto';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
+import { MeetingAnalysisInsightsService } from '../source-analyses/meeting-analysis-insights.service';
 import { CrmRecordMutationsService } from '../crm/crm-record-mutations.service';
 import { UpdateCrmRecordActionDto } from '../crm/dto/update-crm-record-action.dto';
 
@@ -88,6 +89,7 @@ export class AiActionsService {
     private readonly organizations: OrganizationsService,
     private readonly auditLogs: AuditLogsService,
     private readonly sourceAnalyses: SourceAnalysesRepository,
+    private readonly meetingInsights: MeetingAnalysisInsightsService,
     private readonly crmMutations: CrmRecordMutationsService,
   ) {}
 
@@ -130,6 +132,7 @@ export class AiActionsService {
       source,
       analysis as unknown as Record<string, unknown>,
     );
+    await this.meetingInsights.persist(organizationId, source, analysis);
     return items;
   }
 

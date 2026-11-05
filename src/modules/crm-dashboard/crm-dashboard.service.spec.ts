@@ -1,14 +1,11 @@
 import { OrganizerDashboardService } from '../organizer-dashboard/organizer-dashboard.service';
-import { RoiDashboardService } from '../roi-dashboard/roi-dashboard.service';
 import { CrmDashboardService } from './crm-dashboard.service';
 import { CrmDashboardPeriod } from './dto/get-crm-dashboard-summary-query.dto';
 
 describe('CrmDashboardService', () => {
   const organizerDashboard = { summary: jest.fn() };
-  const roiDashboard = { dashboard: jest.fn() };
   const service = new CrmDashboardService(
     organizerDashboard as unknown as OrganizerDashboardService,
-    roiDashboard as unknown as RoiDashboardService,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -22,23 +19,20 @@ describe('CrmDashboardService', () => {
         end: '2026-11-05T18:00:00.000Z',
       },
       cards: {
-        tasksToday: { availability: 'AVAILABLE', total: 12, overdue: 2 },
-        meetingsScheduled: { availability: 'AVAILABLE', total: 5 },
-      },
-    });
-    roiDashboard.dashboard.mockResolvedValue({
-      cards: {
         moneySaved: {
           availability: 'AVAILABLE',
           amount: 300,
           currency: 'USD',
           isEstimated: true,
         },
+        tasksToday: { availability: 'AVAILABLE', total: 12, overdue: 2 },
         hoursSaved: {
           availability: 'AVAILABLE',
           value: 12,
+          hours: 12,
           isEstimated: true,
         },
+        meetingsScheduled: { availability: 'AVAILABLE', total: 5 },
       },
     });
 

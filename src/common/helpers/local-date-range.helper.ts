@@ -109,7 +109,22 @@ export function addLocalDays(
 }
 
 export function localMidnightUtc(value: LocalCalendarDate, timezone: string) {
-  let guess = Date.UTC(value.year, value.month - 1, value.day);
+  return localTimeUtc(value, '00:00', timezone);
+}
+
+export function localTimeUtc(
+  value: LocalCalendarDate,
+  time: string,
+  timezone: string,
+) {
+  assertValidTimezone(timezone);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  if (!match) {
+    throw new BadRequestException('time must use HH:mm format');
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  let guess = Date.UTC(value.year, value.month - 1, value.day, hour, minute);
   for (let iteration = 0; iteration < 3; iteration += 1) {
     const represented = localDateTimeParts(new Date(guess), timezone);
     const representedAsUtc = Date.UTC(
@@ -120,7 +135,13 @@ export function localMidnightUtc(value: LocalCalendarDate, timezone: string) {
       represented.minute,
       represented.second,
     );
-    const targetAsUtc = Date.UTC(value.year, value.month - 1, value.day);
+    const targetAsUtc = Date.UTC(
+      value.year,
+      value.month - 1,
+      value.day,
+      hour,
+      minute,
+    );
     guess += targetAsUtc - representedAsUtc;
   }
   return new Date(guess);

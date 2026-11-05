@@ -97,6 +97,7 @@ describe('AiActionsService analysis ingestion', () => {
       organizations as unknown as OrganizationsService,
       auditLogs as unknown as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
+      { persist: jest.fn() } as never,
       {} as CrmRecordMutationsService,
     );
   });

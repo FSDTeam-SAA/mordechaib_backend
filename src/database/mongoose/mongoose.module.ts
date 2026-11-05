@@ -137,6 +137,15 @@ import {
   PlatformServiceControl,
   PlatformServiceControlSchema,
 } from '../schemas/platform-service-control.schema';
+import {
+  MeetingFollowUp,
+  MeetingFollowUpSchema,
+} from '../schemas/meeting-follow-up.schema';
+import {
+  CustomerHealthSnapshot,
+  CustomerHealthSnapshotSchema,
+} from '../schemas/customer-health-snapshot.schema';
+import { EmailDraft, EmailDraftSchema } from '../schemas/email-draft.schema';
 
 @Global()
 @Module({
@@ -222,6 +231,12 @@ import {
         name: PlatformServiceControl.name,
         schema: PlatformServiceControlSchema,
       },
+      { name: MeetingFollowUp.name, schema: MeetingFollowUpSchema },
+      {
+        name: CustomerHealthSnapshot.name,
+        schema: CustomerHealthSnapshotSchema,
+      },
+      { name: EmailDraft.name, schema: EmailDraftSchema },
     ]),
   ],
   exports: [MongooseModule],

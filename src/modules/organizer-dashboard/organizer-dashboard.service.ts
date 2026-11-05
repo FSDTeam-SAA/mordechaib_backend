@@ -21,6 +21,7 @@ import { CallIntelligenceService } from '../call-intelligence/call-intelligence.
 import { CallIntelligenceItemKind } from '../call-intelligence/dto/list-call-intelligence-query.dto';
 import { ExecutiveBriefingsService } from '../chief-of-staff/executive-briefings.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { RoiDashboardService } from '../roi-dashboard/roi-dashboard.service';
 import {
   DashboardListQueryDto,
   DashboardSummaryQueryDto,
@@ -55,6 +56,7 @@ export class OrganizerDashboardService {
     private readonly organizations: OrganizationsService,
     private readonly callIntelligence: CallIntelligenceService,
     private readonly briefings: ExecutiveBriefingsService,
+    private readonly roiDashboard: RoiDashboardService,
   ) {}
 
   async summary(
@@ -69,15 +71,40 @@ export class OrganizerDashboardService {
     ]);
     const timezone = profile.timezone || organization.timezone || 'UTC';
     const seriesRange = trailingLocalDaysRange(now, timezone, query.days);
-    const snapshot = await this.repository.summary(
-      organizationId,
-      seriesRange,
-      timezone,
-      now,
-    );
+    const [snapshot, roi] = await Promise.all([
+      this.repository.summary(organizationId, seriesRange, timezone, now),
+      this.roiDashboard.dashboardForDays(
+        organizationId,
+        query.days,
+        timezone,
+        now,
+      ),
+    ]);
     const keys = localDateKeys(seriesRange.start, query.days, timezone);
     const tasks = this.fillSeries(keys, snapshot.taskSeries);
     const meetings = this.fillSeries(keys, snapshot.meetingSeries);
+    const moneySaved = roi.cards.moneySaved as {
+      availability: string;
+      amount: number;
+      currency: string;
+      isEstimated: true;
+      comparison: unknown;
+    };
+    const hoursSaved = roi.cards.hoursSaved as {
+      availability: string;
+      value: number;
+      minutes: number;
+      isEstimated: true;
+      comparison: unknown;
+    };
+    const moneySeries = roi.savingsTrend.map((entry) => ({
+      date: String(entry.date),
+      value: Number(entry.moneySaved || 0),
+    }));
+    const hoursSeries = roi.savingsTrend.map((entry) => ({
+      date: String(entry.date),
+      value: Number(entry.hoursSaved || 0),
+    }));
 
     return {
       asOf: now.toISOString(),
@@ -88,14 +115,7 @@ export class OrganizerDashboardService {
         days: query.days,
       },
       cards: {
-        moneySaved: {
-          availability: 'UNAVAILABLE',
-          amount: null,
-          currency: null,
-          isEstimated: true,
-          reason: 'TIME_SAVINGS_METHODOLOGY_NOT_CONFIGURED',
-          series: [],
-        },
+        moneySaved: { ...moneySaved, series: moneySeries },
         tasksToday: {
           availability: 'AVAILABLE',
           total: tasks.at(-1)?.value || 0,
@@ -104,12 +124,9 @@ export class OrganizerDashboardService {
           series: tasks,
         },
         hoursSaved: {
-          availability: 'UNAVAILABLE',
-          minutes: null,
-          hours: null,
-          isEstimated: true,
-          reason: 'TIME_SAVINGS_METHODOLOGY_NOT_CONFIGURED',
-          series: [],
+          ...hoursSaved,
+          hours: hoursSaved.value,
+          series: hoursSeries,
         },
         meetingsScheduled: {
           availability: 'AVAILABLE',

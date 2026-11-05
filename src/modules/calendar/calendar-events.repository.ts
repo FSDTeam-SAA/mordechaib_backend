@@ -5,6 +5,7 @@ import { CalendarEventStatus } from '../../common/enums/calendar-event-status.en
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { MeetingUrgency } from '../../common/enums/meeting-urgency.enum';
+import { MeetingPrioritySource } from '../../common/enums/meeting-priority-source.enum';
 import { SyncedCalendarEvent } from '../../common/types/calendar-provider.interface';
 import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
 
@@ -19,8 +20,10 @@ export type ReserveCalendarEvent = {
   endsAt: Date;
   timezone: string;
   attendees: string[];
+  location?: ManagedCalendarEvent['location'];
   meetingType?: MeetingType;
   urgency?: MeetingUrgency;
+  prioritySource: MeetingPrioritySource;
   reminderMinutesBeforeStart: number;
 };
 
@@ -165,6 +168,7 @@ export class CalendarEventsRepository {
             endsAt: event.endsAt,
             timezone: event.timezone,
             attendees: event.attendees,
+            location: event.location,
             providerEventUrl: event.htmlUrl,
             status: event.cancelled
               ? CalendarEventStatus.CANCELLED
@@ -180,6 +184,7 @@ export class CalendarEventsRepository {
             providerEventId: event.id,
             meetingType: MeetingType.OTHER,
             urgency: MeetingUrgency.MEDIUM,
+            prioritySource: MeetingPrioritySource.IMPORTED,
             reminderMinutesBeforeStart: 0,
             importedFromProvider: true,
           },

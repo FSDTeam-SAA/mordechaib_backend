@@ -6,12 +6,14 @@ import {
   EmailProvider,
 } from '../../common/enums/email-provider.enum';
 import { EmailDraft } from '../../database/schemas/email-draft.schema';
+import { EmailDraftSourceType } from '../../common/enums/email-draft-source-type.enum';
 
 export type EmailDraftValues = {
   provider?: EmailProvider;
   to: string[];
   subject: string;
   body: string;
+  source?: { type: EmailDraftSourceType; id: string };
 };
 
 @Injectable()
@@ -68,10 +70,14 @@ export class EmailDraftsRepository {
               userId: input.userId,
               sourceMessageId: input.sourceMessageId,
               sourceConversationId: input.sourceConversationId,
+              ...input.values,
+              source: {
+                type: EmailDraftSourceType.USER_MESSAGE,
+                id: input.sourceMessageId,
+              },
               status: EmailDraftStatus.DRAFT,
               revision: 1,
               sendAttemptCount: 0,
-              ...input.values,
             },
           },
           { upsert: true, new: true, runValidators: true },

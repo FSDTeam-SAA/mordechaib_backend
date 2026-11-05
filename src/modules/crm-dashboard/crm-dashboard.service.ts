@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { OrganizerDashboardService } from '../organizer-dashboard/organizer-dashboard.service';
-import { RoiDashboardService } from '../roi-dashboard/roi-dashboard.service';
 import {
   crmDashboardPeriodConfiguration,
   GetCrmDashboardSummaryQueryDto,
@@ -10,7 +9,6 @@ import {
 export class CrmDashboardService {
   constructor(
     private readonly organizerDashboard: OrganizerDashboardService,
-    private readonly roiDashboard: RoiDashboardService,
   ) {}
 
   async summary(
@@ -20,35 +18,28 @@ export class CrmDashboardService {
     now = new Date(),
   ) {
     const period = crmDashboardPeriodConfiguration(query.period);
-    const [measured, roi] = await Promise.all([
-      this.organizerDashboard.summary(
-        organizationId,
-        userId,
-        { days: period.days },
-        now,
-      ),
-      this.roiDashboard.dashboard(
-        organizationId,
-        { range: period.roiRange },
-        now,
-      ),
-    ]);
+    const summary = await this.organizerDashboard.summary(
+      organizationId,
+      userId,
+      { days: period.days },
+      now,
+    );
 
     return {
       organizationId,
       asOf: now.toISOString(),
-      timezone: measured.timezone,
+      timezone: summary.timezone,
       period: {
         key: query.period,
-        start: measured.range.start,
-        end: measured.range.end,
+        start: summary.range.start,
+        end: summary.range.end,
         days: period.days,
       },
       cards: {
-        moneySaved: roi.cards.moneySaved,
-        tasksToday: measured.cards.tasksToday,
-        hoursSaved: roi.cards.hoursSaved,
-        meetingsScheduled: measured.cards.meetingsScheduled,
+        moneySaved: summary.cards.moneySaved,
+        tasksToday: summary.cards.tasksToday,
+        hoursSaved: summary.cards.hoursSaved,
+        meetingsScheduled: summary.cards.meetingsScheduled,
       },
       methodology: {
         moneySaved: 'CONFIGURED_ESTIMATE',
