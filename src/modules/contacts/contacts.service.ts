@@ -16,6 +16,7 @@ import { ContactsRepository } from './contacts.repository';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { ListContactHealthQueryDto } from './dto/list-contact-health-query.dto';
 
 @Injectable()
 export class ContactsService {
@@ -60,6 +61,31 @@ export class ContactsService {
     const contact = await this.repository.findById(organizationId, id);
     if (!contact) throw new NotFoundException('Contact not found');
     return this.toResponse(contact);
+  }
+
+  async healthHistory(
+    organizationId: string,
+    id: string,
+    query: ListContactHealthQueryDto,
+  ) {
+    await this.get(organizationId, id);
+    const result = await this.repository.healthHistory(organizationId, id, query);
+    return {
+      items: result.items.map((item) => ({
+        id: String(item._id),
+        source: item.source,
+        healthScore: item.healthScore,
+        riskLevel: item.riskLevel,
+        analysisConfidence: item.analysisConfidence,
+        capturedAt: item.capturedAt,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        pages: Math.ceil(result.total / query.limit),
+      },
+    };
   }
 
   async update(

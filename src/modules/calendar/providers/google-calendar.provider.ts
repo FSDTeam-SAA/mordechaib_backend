@@ -33,6 +33,7 @@ type GoogleEventListItem = {
   start?: { dateTime?: string; date?: string; timeZone?: string };
   end?: { dateTime?: string; date?: string; timeZone?: string };
   attendees?: Array<{ email?: string }>;
+  location?: string;
 };
 
 type GoogleEventListResponse = {
@@ -155,6 +156,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
       attendees: (event.attendees || [])
         .map((attendee) => attendee.email?.trim().toLowerCase())
         .filter((email): email is string => !!email),
+      ...(event.location?.trim()
+        ? {
+            location: {
+              label: event.location.trim(),
+              address: event.location.trim(),
+            },
+          }
+        : {}),
       htmlUrl: event.htmlLink,
       cancelled,
       providerUpdatedAt: event.updated ? new Date(event.updated) : undefined,
@@ -177,8 +186,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
             description: this.description(input.description, input.meetingUrl),
           }
         : {}),
-      ...(input.meetingUrl !== undefined
-        ? { location: input.meetingUrl || '' }
+      ...(input.location !== undefined || input.meetingUrl !== undefined
+        ? {
+            location:
+              input.location?.address ||
+              input.location?.label ||
+              input.meetingUrl ||
+              '',
+          }
         : {}),
       ...(input.startsAt
         ? {

@@ -24,6 +24,11 @@ import { SyncCalendarDto } from './dto/sync-calendar.dto';
 import { CalendarDashboardQueryDto } from './dto/calendar-dashboard-query.dto';
 import { CalendarDashboardService } from './calendar-dashboard.service';
 import { CalendarService } from './calendar.service';
+import { CalendarFollowUpsService } from './calendar-follow-ups.service';
+import { ListMeetingFollowUpsQueryDto } from './dto/list-meeting-follow-ups-query.dto';
+import { ResolveMeetingFollowUpDto } from './dto/resolve-meeting-follow-up.dto';
+import { BackfillCalendarInsightsDto } from './dto/backfill-calendar-insights.dto';
+import { MeetingAnalysisInsightsService } from '../source-analyses/meeting-analysis-insights.service';
 
 @ApiTags('Calendar Integrations')
 @ApiBearerAuth()
@@ -33,7 +38,44 @@ export class CalendarController {
   constructor(
     private readonly calendarService: CalendarService,
     private readonly dashboard: CalendarDashboardService,
+    private readonly followUps: CalendarFollowUpsService,
+    private readonly meetingInsights: MeetingAnalysisInsightsService,
   ) {}
+
+  @Post('insights/backfill')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Idempotently backfill follow-up and customer-health insights',
+  })
+  backfillInsights(
+    @CurrentOrg() org: { id: string },
+    @Query() query: BackfillCalendarInsightsDto,
+  ) {
+    return this.meetingInsights.backfill(org.id, query.limit);
+  }
+
+  @Get('follow-ups')
+  @ApiOperation({ summary: 'List persisted meeting follow-up signals' })
+  listFollowUps(
+    @CurrentOrg() org: { id: string },
+    @Query() query: ListMeetingFollowUpsQueryDto,
+  ) {
+    return this.followUps.list(org.id, query);
+  }
+
+  @Patch('follow-ups/:id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Complete or dismiss a pending meeting follow-up' })
+  resolveFollowUp(
+    @CurrentOrg() org: { id: string },
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: ResolveMeetingFollowUpDto,
+  ) {
+    return this.followUps.resolve(org.id, user.id, id, dto);
+  }
 
   @Get('dashboard')
   @ApiOperation({
