@@ -67,4 +67,31 @@ export class CalendarDashboardQueryDto {
   @Min(1)
   @Max(100)
   conflictLimit = 20;
+
+  @ApiPropertyOptional({
+    type: Number,
+    default: 30,
+    minimum: 15,
+    maximum: 240,
+    description: 'Duration used by deterministic free-slot suggestions.',
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(240)
+  suggestionDurationMinutes = 30;
+
+  @ApiPropertyOptional({
+    type: Number,
+    default: 5,
+    minimum: 1,
+    maximum: 20,
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  suggestionLimit = 5;
 }
