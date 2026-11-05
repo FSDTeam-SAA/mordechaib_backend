@@ -1,0 +1,7 @@
+export enum MeetingFollowUpStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  DISMISSED = 'DISMISSED',
+}
+
+export const MEETING_FOLLOW_UP_DETECTION_THRESHOLD = 50;
