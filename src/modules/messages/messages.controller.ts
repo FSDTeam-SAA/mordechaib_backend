@@ -11,6 +11,7 @@ import {
   Req,
   Res,
   UploadedFiles,
+  UnauthorizedException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -178,7 +179,7 @@ export class MessagesController {
     message: Record<string, unknown>,
     request: Request,
     response: Response,
-    attachments: Parameters<AiChatStreamingService['open']>[3],
+    attachments: Parameters<AiChatStreamingService['open']>[4],
   ) {
     const clientController = new AbortController();
     let opened: OpenedAiChatStream | undefined;
@@ -194,6 +195,7 @@ export class MessagesController {
       opened = await this.chatStreaming.open(
         organizationId,
         messageId,
+        this.authorizationHeader(request),
         clientController.signal,
         attachments,
       );
@@ -271,6 +273,17 @@ export class MessagesController {
       .split(',')
       .map((value) => value.split(';')[0].trim().toLowerCase())
       .includes('text/event-stream');
+  }
+
+  private authorizationHeader(request: Request) {
+    const authorization = request.headers.authorization;
+    if (
+      typeof authorization !== 'string' ||
+      !authorization.startsWith('Bearer ')
+    ) {
+      throw new UnauthorizedException('Bearer access token is required');
+    }
+    return authorization;
   }
 
   private async forwardPreStreamResponse(

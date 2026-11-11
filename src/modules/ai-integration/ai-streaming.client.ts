@@ -26,19 +26,19 @@ export class AiStreamingClient {
   async open(
     path: string,
     body: Record<string, unknown>,
+    authorization: string,
     clientSignal: AbortSignal,
     attachments: AiStreamAttachment[] = [],
   ): Promise<AiStreamHandle> {
     await this.systemServices.assertAiServiceEnabled();
     const baseUrl = this.config.get<string>('aiService.baseUrl');
-    const secret = this.config.get<string>('aiService.sharedSecret');
     const enabled = this.config.get<boolean>(
       'aiService.automationEnabled',
       false,
     );
-    if (!enabled || !baseUrl || !secret) {
+    if (!enabled || !baseUrl) {
       this.logger.warn(
-        `AI stream skipped: automation=${enabled}, baseUrlConfigured=${Boolean(baseUrl)}, sharedSecretConfigured=${Boolean(secret)}`,
+        `AI stream skipped: automation=${enabled}, baseUrlConfigured=${Boolean(baseUrl)}`,
       );
       throw new ServiceUnavailableException(
         'AI service automation is disabled',
@@ -63,11 +63,11 @@ export class AiStreamingClient {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(body),
           };
-      const response = await fetch(`${baseUrl}${path}`, {
+      const response = await fetch(new URL(path, baseUrl).toString(), {
         method: 'POST',
         headers: {
           accept: 'text/event-stream',
-          'x-ai-actions-secret': secret,
+          Authorization: authorization,
           ...request.headers,
         },
         body: request.body,
