@@ -164,7 +164,7 @@ export default () => {
     'AI_CHAT_STREAM_TIMEOUT_MS',
   );
   const aiChatStreamPath =
-    process.env.AI_CHAT_STREAM_PATH?.trim() || '/api/v1/ai/chat';
+    process.env.AI_CHAT_STREAM_PATH?.trim() || '/api/v1/chat';
   if (!aiChatStreamPath.startsWith('/')) {
     throw new Error('AI_CHAT_STREAM_PATH must start with /');
   }

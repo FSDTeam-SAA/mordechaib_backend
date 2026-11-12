@@ -116,22 +116,25 @@ export class ExecutiveBriefingResponseValidator {
         });
       }
     }
-    const proposalStatuses = new Map<string, string | undefined>();
-    const proposalFactIds = new Map<string, string>();
+    const proposals = new Map<
+      string,
+      { status: string | undefined; factId: string; recordId: string }
+    >();
     for (const fact of input.facts.actionProposals.items) {
       const proposalId = this.string(
         fact.data.proposalId,
         'submitted proposalId',
         100,
       )!;
-      if (proposalStatuses.has(proposalId)) {
+      if (proposals.has(proposalId)) {
         this.invalid(`Duplicate submitted proposalId ${proposalId}`);
       }
-      proposalStatuses.set(
-        proposalId,
-        typeof fact.data.status === 'string' ? fact.data.status : undefined,
-      );
-      proposalFactIds.set(proposalId, fact.id);
+      proposals.set(proposalId, {
+        status:
+          typeof fact.data.status === 'string' ? fact.data.status : undefined,
+        factId: fact.id,
+        recordId: fact.sourceId,
+      });
     }
     const returnedRefs = this.validateReturnedRefs(
       value.sourceRefs,
@@ -208,6 +211,8 @@ export class ExecutiveBriefingResponseValidator {
       }
       for (const item of section.items) {
         if (!this.record(item)) this.invalid('Invalid briefing section item');
+        // AI must not control the Mongo record ID used by action commands.
+        delete item.proposalRecordId;
         this.string(item.id, 'section item id', 200);
         this.string(item.label, 'section item label', 500);
         this.string(item.detail, 'section item detail', 5_000, true);
@@ -247,18 +252,20 @@ export class ExecutiveBriefingResponseValidator {
               'linked proposalId',
               100,
             )!;
+            const linkedProposal = proposals.get(linkedProposalId);
             if (
-              proposalStatuses.get(linkedProposalId) !== 'NEEDS_CLARIFICATION'
+              linkedProposal?.status !== 'NEEDS_CLARIFICATION'
             ) {
               this.invalid(
                 'Recommendation-only item references an incompatible proposal',
               );
             }
-            if (!itemRefs.includes(proposalFactIds.get(linkedProposalId)!)) {
+            if (!itemRefs.includes(linkedProposal.factId)) {
               this.invalid(
                 'Linked proposal must be cited by the decision item',
               );
             }
+            item.proposalRecordId = linkedProposal.recordId;
           }
         }
         if (
@@ -273,11 +280,11 @@ export class ExecutiveBriefingResponseValidator {
             'decision proposalId',
             100,
           )!;
-          const proposalStatus = proposalStatuses.get(proposalId);
-          if (!proposalStatus) {
+          const proposal = proposals.get(proposalId);
+          if (!proposal?.status) {
             this.invalid('Decision item references an unknown proposal');
           }
-          if (!itemRefs.includes(proposalFactIds.get(proposalId)!)) {
+          if (!itemRefs.includes(proposal.factId)) {
             this.invalid(
               'Executable proposal must be cited by the decision item',
             );
@@ -288,15 +295,16 @@ export class ExecutiveBriefingResponseValidator {
             'decision proposalAction',
           );
           if (
-            (proposalStatus === 'PENDING' &&
+            (proposal.status === 'PENDING' &&
               item.proposalAction !== 'APPROVE') ||
-            (proposalStatus === 'FAILED' && item.proposalAction !== 'RETRY') ||
-            !['PENDING', 'FAILED'].includes(proposalStatus)
+            (proposal.status === 'FAILED' && item.proposalAction !== 'RETRY') ||
+            !['PENDING', 'FAILED'].includes(proposal.status)
           ) {
             this.invalid(
               'Decision action is incompatible with the current proposal status',
             );
           }
+          item.proposalRecordId = proposal.recordId;
         }
       }
     });
