@@ -52,6 +52,12 @@ type UploadedAttachment = {
 
 type CreateMessageOptions = {
   enqueueAi?: boolean;
+  /**
+   * SSE forwarding needs the multer file to remain on disk until the AI
+   * streaming client has encoded it as multipart. The controller-owned upload
+   * cleanup interceptor removes it after that request completes.
+   */
+  cleanupFiles?: boolean;
 };
 
 const MAX_EXTRACTED_TEXT_CHARACTERS = 100_000;
@@ -277,11 +283,13 @@ export class MessagesService {
         throw error;
       }
     } finally {
-      await Promise.allSettled(
-        files
-          .filter((file) => Boolean(file.path))
-          .map((file) => unlink(file.path)),
-      );
+      if (options.cleanupFiles !== false) {
+        await Promise.allSettled(
+          files
+            .filter((file) => Boolean(file.path))
+            .map((file) => unlink(file.path)),
+        );
+      }
     }
   }
 

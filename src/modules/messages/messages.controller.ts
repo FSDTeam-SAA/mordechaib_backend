@@ -157,7 +157,13 @@ export class MessagesController {
       user.id,
       input,
       files,
-      { enqueueAi: !streaming },
+      {
+        enqueueAi: !streaming,
+        // The multipart AI request reads the temporary upload after message
+        // persistence. TemporaryUploadCleanupInterceptor removes it once the
+        // complete SSE response has finished.
+        cleanupFiles: !streaming,
+      },
     );
     if (!streaming) {
       response.status(201).json({ success: true, data: message });
