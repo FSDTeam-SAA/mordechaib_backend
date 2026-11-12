@@ -83,5 +83,6 @@ export class DownloadCallAudioQueryDto {
     ],
   })
   @IsIn([AiProposalSourceType.CALL_AUDIO, AiProposalSourceType.CALL_TRANSCRIPT])
-  sourceType!: AiProposalSourceType;
+  sourceType!:
+    AiProposalSourceType.CALL_AUDIO | AiProposalSourceType.CALL_TRANSCRIPT;
 }

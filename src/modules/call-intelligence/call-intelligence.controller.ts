@@ -1,13 +1,10 @@
-import { createReadStream } from 'fs';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import {
-  BadGatewayException,
   Controller,
   Delete,
   Get,
   Headers,
   Param,
+  Post,
   Query,
   Res,
   UseGuards,
@@ -33,6 +30,8 @@ import {
 } from '../../common/types/request-context.type';
 import { CallIntelligenceDeletionService } from './call-intelligence-deletion.service';
 import { CallIntelligenceService } from './call-intelligence.service';
+import { CallAudioPlaybackTokenService } from './call-audio-playback-token.service';
+import { CallAudioStreamingService } from './call-audio-streaming.service';
 import {
   DownloadCallAudioQueryDto,
   DownloadCallIntelligenceReportQueryDto,
@@ -50,6 +49,8 @@ export class CallIntelligenceController {
   constructor(
     private readonly intelligence: CallIntelligenceService,
     private readonly deletion: CallIntelligenceDeletionService,
+    private readonly playbackTokens: CallAudioPlaybackTokenService,
+    private readonly audioStreaming: CallAudioStreamingService,
   ) {}
 
   @Get()
@@ -67,7 +68,8 @@ export class CallIntelligenceController {
 
   @Get(':sourceId/details')
   @ApiOperation({
-    summary: 'Get an aggregated call, meeting, or user-message intelligence view',
+    summary:
+      'Get an aggregated call, meeting, or user-message intelligence view',
     description:
       'For call and meeting sources, transcript content is omitted by default for a fast first paint; set includeTranscript=true to include it. USER_MESSAGE returns the source message in the message field. Action proposals across every status are returned when status is omitted, allowing the frontend to filter one response.',
   })
@@ -128,7 +130,13 @@ export class CallIntelligenceController {
     description:
       'Returns the audio bytes through the authenticated backend for both local and Cloudinary-backed recordings.',
   })
-  @ApiProduces('audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/webm')
+  @ApiProduces(
+    'audio/wav',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/ogg',
+    'audio/webm',
+  )
   @ApiOkResponse({
     description: 'Complete audio stream',
     schema: { type: 'string', format: 'binary' },
@@ -150,114 +158,35 @@ export class CallIntelligenceController {
       sourceId,
       query.sourceType,
     );
-    if ('downloadUrl' in audio) {
-      let upstream: globalThis.Response;
-      try {
-        upstream = await fetch(audio.downloadUrl, {
-          headers: rangeHeader ? { Range: rangeHeader } : undefined,
-        });
-      } catch {
-        throw new BadGatewayException('Call audio storage is unavailable');
-      }
-      if (upstream.status === 416) {
-        response.status(416);
-        const contentRange = upstream.headers.get('content-range');
-        if (contentRange) response.setHeader('Content-Range', contentRange);
-        response.end();
-        return;
-      }
-      if (!upstream.ok || !upstream.body) {
-        throw new BadGatewayException('Call audio could not be downloaded');
-      }
-      this.setAudioHeaders(
-        response,
-        upstream.headers.get('content-type') || audio.contentType,
-        audio.filename,
-        upstream.headers.get('content-length'),
-      );
-      response.setHeader('Accept-Ranges', 'bytes');
-      const contentRange = upstream.headers.get('content-range');
-      if (contentRange) response.setHeader('Content-Range', contentRange);
-      response.status(upstream.status === 206 ? 206 : 200);
-      await pipeline(Readable.fromWeb(upstream.body as never), response);
-      return;
-    }
-
-    const range = this.resolveByteRange(rangeHeader, audio.size);
-    if (range === 'INVALID') {
-      response.status(416);
-      response.setHeader('Content-Range', `bytes */${audio.size}`);
-      response.setHeader('Accept-Ranges', 'bytes');
-      response.end();
-      return;
-    }
-    const contentLength = range
-      ? range.end - range.start + 1
-      : audio.size;
-    this.setAudioHeaders(
-      response,
-      audio.contentType,
-      audio.filename,
-      contentLength.toString(),
-    );
-    response.setHeader('Accept-Ranges', 'bytes');
-    if (range) {
-      response.status(206);
-      response.setHeader(
-        'Content-Range',
-        `bytes ${range.start}-${range.end}/${audio.size}`,
-      );
-    }
-    await pipeline(
-      createReadStream(audio.filePath, range || undefined),
-      response,
-    );
+    await this.audioStreaming.stream(audio, rangeHeader, response);
   }
 
-  private resolveByteRange(
-    value: string | undefined,
-    size: number,
-  ): { start: number; end: number } | 'INVALID' | undefined {
-    if (!value) return undefined;
-    const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
-    if (!match || (!match[1] && !match[2])) return 'INVALID';
-
-    if (!match[1]) {
-      const suffixLength = Number(match[2]);
-      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
-        return 'INVALID';
-      }
-      return {
-        start: Math.max(0, size - suffixLength),
-        end: size - 1,
-      };
-    }
-
-    const start = Number(match[1]);
-    const requestedEnd = match[2] ? Number(match[2]) : size - 1;
-    if (
-      !Number.isSafeInteger(start) ||
-      !Number.isSafeInteger(requestedEnd) ||
-      start < 0 ||
-      start >= size ||
-      requestedEnd < start
-    ) {
-      return 'INVALID';
-    }
-    return { start, end: Math.min(requestedEnd, size - 1) };
-  }
-
-  private setAudioHeaders(
-    response: Response,
-    contentType: string,
-    filename: string,
-    contentLength: string | null,
+  @Post(':sourceId/audio/playback')
+  @ApiOperation({
+    summary: 'Create a short-lived call audio playback URL',
+    description:
+      'Returns a signed URL that an HTML audio element can use without exposing the user access token. The URL remains organization/source scoped and supports byte-range playback.',
+  })
+  async createAudioPlayback(
+    @CurrentOrg() organization: RequestOrganization,
+    @Param('sourceId') sourceId: string,
+    @Query() query: DownloadCallAudioQueryDto,
   ) {
-    response.setHeader('Content-Type', contentType);
-    if (contentLength) response.setHeader('Content-Length', contentLength);
-    response.setHeader(
-      'Content-Disposition',
-      `inline; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`,
+    // Resolve first so a capability is never issued for a missing or
+    // unauthorized recording.
+    await this.intelligence.getCallAudio(
+      organization.id,
+      sourceId,
+      query.sourceType,
     );
+    const issued = this.playbackTokens.issue({
+      organizationId: organization.id,
+      sourceId,
+      sourceType: query.sourceType,
+    });
+    return {
+      playbackPath: `/api/v1/call-intelligence/audio/playback/${issued.token}`,
+      expiresAt: issued.expiresAt,
+    };
   }
 }

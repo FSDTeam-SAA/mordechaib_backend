@@ -1,24 +1,12 @@
-import { CallIntelligenceController } from './call-intelligence.controller';
-import { CallIntelligenceDeletionService } from './call-intelligence-deletion.service';
-import { CallIntelligenceService } from './call-intelligence.service';
+import { CallAudioStreamingService } from './call-audio-streaming.service';
 
-describe('CallIntelligenceController audio ranges', () => {
-  const controller = new CallIntelligenceController(
-    {} as CallIntelligenceService,
-    {} as CallIntelligenceDeletionService,
-  );
+describe('CallAudioStreamingService ranges', () => {
+  const streaming = new CallAudioStreamingService();
   const resolve = (
     value: string | undefined,
     size: number,
   ): { start: number; end: number } | 'INVALID' | undefined =>
-    (
-      controller as unknown as {
-        resolveByteRange: (
-          input: string | undefined,
-          total: number,
-        ) => { start: number; end: number } | 'INVALID' | undefined;
-      }
-    ).resolveByteRange(value, size);
+    streaming.resolveByteRange(value, size);
 
   it('resolves bounded, open-ended, and suffix byte ranges', () => {
     expect(resolve('bytes=0-999', 2_000)).toEqual({ start: 0, end: 999 });

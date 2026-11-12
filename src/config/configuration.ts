@@ -231,6 +231,11 @@ export default () => {
     300,
     'CLOUDINARY_DOWNLOAD_URL_TTL_SECONDS',
   );
+  const callAudioPlaybackTtlSeconds = positiveInteger(
+    process.env.CALL_AUDIO_PLAYBACK_TTL_SECONDS,
+    300,
+    'CALL_AUDIO_PLAYBACK_TTL_SECONDS',
+  );
 
   if (twilioLiveMode && (!twilioAccountSid || !twilioAuthToken)) {
     throw new Error('Twilio credentials are required in live mode');
@@ -447,6 +452,12 @@ export default () => {
     jwt: {
       accessSecret,
       accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    },
+
+    callIntelligence: {
+      audioPlaybackSecret:
+        process.env.CALL_AUDIO_PLAYBACK_SECRET?.trim() || accessSecret,
+      audioPlaybackTtlSeconds: Math.min(callAudioPlaybackTtlSeconds, 900),
     },
 
     auth: {
