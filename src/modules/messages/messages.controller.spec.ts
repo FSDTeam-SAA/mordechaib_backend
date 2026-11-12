@@ -119,7 +119,7 @@ describe('MessagesController streaming create', () => {
       user.id,
       expect.any(Object),
       undefined,
-      { enqueueAi: true },
+      { enqueueAi: true, cleanupFiles: true },
     );
     expect(chatStreaming.open).not.toHaveBeenCalled();
     expect(response.statusCode).toBe(201);
@@ -149,7 +149,7 @@ describe('MessagesController streaming create', () => {
       user.id,
       expect.any(Object),
       undefined,
-      { enqueueAi: false },
+      { enqueueAi: false, cleanupFiles: false },
     );
     expect(chatStreaming.open).toHaveBeenCalledWith(
       organization.id,
@@ -196,7 +196,7 @@ describe('MessagesController streaming create', () => {
       user.id,
       expect.any(Object),
       [file],
-      { enqueueAi: false },
+      { enqueueAi: false, cleanupFiles: false },
     );
     expect(chatStreaming.open).toHaveBeenCalledWith(
       organization.id,
