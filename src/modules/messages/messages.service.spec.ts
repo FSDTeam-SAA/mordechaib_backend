@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { mkdtemp, readFile, writeFile } from 'fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
@@ -215,6 +215,42 @@ describe('MessagesService', () => {
     await expect(readFile(temporaryPath)).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('keeps an SSE attachment available until the stream has forwarded it', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'messages-test-'));
+    const temporaryPath = path.join(directory, 'brief.pdf');
+    await writeFile(temporaryPath, Buffer.from('%PDF-test'));
+    const file = {
+      path: temporaryPath,
+      originalname: 'brief.pdf',
+      mimetype: 'application/pdf',
+      size: (await readFile(temporaryPath)).byteLength,
+    } as Express.Multer.File;
+    storage.store.mockResolvedValue({
+      storageProvider: 'CLOUDINARY',
+      storageKey: 'messages/brief',
+      storageResourceType: 'raw',
+      storageDeliveryType: 'authenticated',
+      storageFormat: 'pdf',
+      sizeBytes: file.size,
+    });
+
+    try {
+      await service.create(
+        organizationId,
+        userId,
+        { startNewConversation: true, content: 'Review this PDF' },
+        [file],
+        { enqueueAi: false, cleanupFiles: false },
+      );
+
+      await expect(readFile(temporaryPath)).resolves.toEqual(
+        Buffer.from('%PDF-test'),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('extracts bounded plain text before the attachment is uploaded', async () => {
