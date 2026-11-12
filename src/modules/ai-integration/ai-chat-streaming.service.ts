@@ -37,6 +37,7 @@ export class AiChatStreamingService {
   async open(
     organizationId: string,
     sourceMessageId: string,
+    authorization: string,
     signal: AbortSignal,
     attachments: AiStreamAttachment[] = [],
   ): Promise<OpenedAiChatStream> {
@@ -60,8 +61,9 @@ export class AiChatStreamingService {
         sourceMessageId,
       );
       const handle: AiStreamHandle = await this.streaming.open(
-        this.config.get<string>('aiService.chatStreamPath', '/api/v1/ai/chat'),
-        prepared.request as unknown as Record<string, unknown>,
+        this.config.get<string>('aiService.chatStreamPath', '/api/v1/chat'),
+        this.upstreamRequest(prepared),
+        authorization,
         signal,
         attachments,
       );
@@ -160,11 +162,12 @@ export class AiChatStreamingService {
       } catch {
         throw new BadGatewayException('AI result event was not valid JSON');
       }
+      const adapted = this.adaptResult(opened.prepared, raw);
       const persisted = await this.turns.complete(
         opened.organizationId,
         opened.sourceMessageId,
         opened.prepared,
-        raw,
+        adapted,
       );
       await this.sourceContext.markMessageProcessed(
         opened.organizationId,
@@ -181,7 +184,7 @@ export class AiChatStreamingService {
         },
       });
       opened.settled = true;
-      await emit(event.raw);
+      await emit(this.sse('result', persisted.response));
       return { terminal: 'result', persisted };
     }
     if (event.event === 'error') {
@@ -233,5 +236,62 @@ export class AiChatStreamingService {
     } catch {
       return undefined;
     }
+  }
+
+  private upstreamRequest(prepared: PreparedAiChatTurn) {
+    return {
+      message: prepared.request.message.content,
+      agent: prepared.request.conversation.selectedAgent.name,
+    };
+  }
+
+  private adaptResult(prepared: PreparedAiChatTurn, value: unknown) {
+    const result = this.record(value, 'AI chat result');
+    const requestId = this.requiredText(result.request_id, 'request_id');
+    const summary = this.optionalText(result.summary);
+    const clarifyingQuestion = this.optionalText(
+      result.clarifying_question,
+    );
+    const content = summary || clarifyingQuestion;
+    if (!content) {
+      throw new BadGatewayException(
+        'AI chat result did not contain a summary or clarifying question',
+      );
+    }
+    return {
+      schemaVersion: '1.0',
+      turnId: prepared.request.turnId,
+      conversationId: prepared.request.conversation.id,
+      inReplyToMessageId: prepared.request.message.id,
+      reply: {
+        id: requestId,
+        content,
+        agent: prepared.request.conversation.selectedAgent,
+      },
+      result: { type: 'MESSAGE' },
+    };
+  }
+
+  private record(value: unknown, field: string): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadGatewayException(`${field} must be an object`);
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private requiredText(value: unknown, field: string) {
+    const text = this.optionalText(value);
+    if (!text) {
+      throw new BadGatewayException(`AI chat result ${field} is invalid`);
+    }
+    return text;
+  }
+
+  private optionalText(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private sse(event: string, data: unknown) {
+    return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   }
 }

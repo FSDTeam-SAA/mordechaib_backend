@@ -132,6 +132,7 @@ describe('MessagesController streaming create', () => {
   it('uses the same route for persisted SSE turns without queueing twice', async () => {
     const request = new MockRequest();
     request.headers.accept = 'text/event-stream';
+    request.headers.authorization = 'Bearer access-token';
     const response = new MockResponse();
 
     await controller.create(
@@ -153,6 +154,7 @@ describe('MessagesController streaming create', () => {
     expect(chatStreaming.open).toHaveBeenCalledWith(
       organization.id,
       createdMessage.id,
+      'Bearer access-token',
       expect.any(AbortSignal),
       [],
     );
@@ -171,6 +173,7 @@ describe('MessagesController streaming create', () => {
   it('passes validated multipart attachments to the same AI stream', async () => {
     const request = new MockRequest();
     request.headers.accept = 'text/event-stream';
+    request.headers.authorization = 'Bearer access-token';
     const response = new MockResponse();
     const file = {
       path: 'C:\\temp\\brief.pdf',
@@ -198,6 +201,7 @@ describe('MessagesController streaming create', () => {
     expect(chatStreaming.open).toHaveBeenCalledWith(
       organization.id,
       createdMessage.id,
+      'Bearer access-token',
       expect.any(AbortSignal),
       [
         {

@@ -74,7 +74,15 @@ describe('ExecutiveBriefingResponseValidator', () => {
       recommendationOnly: false,
     });
 
-    expect(() => validator.validate(value, input)).not.toThrow();
+    const validated = validator.validate(value, input);
+
+    expect(sectionItems(validated, 2)).toContainEqual(
+      expect.objectContaining({
+        proposalId: 'proposal-business-1',
+        proposalRecordId: 'proposal-db-1',
+        proposalAction: 'APPROVE',
+      }),
+    );
   });
 
   it('requires a decision card to cite its own proposal fact', () => {
@@ -110,7 +118,41 @@ describe('ExecutiveBriefingResponseValidator', () => {
       proposalId: 'proposal-business-clarification',
     });
 
-    expect(() => validator.validate(value, input)).not.toThrow();
+    const validated = validator.validate(value, input);
+
+    expect(sectionItems(validated, 0)).toContainEqual(
+      expect.objectContaining({
+        proposalId: 'proposal-business-clarification',
+        proposalRecordId: 'proposal-db-clarification',
+      }),
+    );
+  });
+
+  it('overwrites an AI-supplied proposal record id with the grounded id', () => {
+    const input = request();
+    const value = response(input);
+    value.sourceRefs.push({
+      ref: 'proposal-1',
+      sourceType: 'AI_ACTION_PROPOSAL',
+      sourceId: 'proposal-db-1',
+      capturedAt,
+    });
+    (value.sections[2].items as Array<Record<string, unknown>>).push({
+      id: 'decision-1',
+      label: 'Approve proposal',
+      severity: 'HIGH',
+      sourceRefs: ['proposal-1'],
+      proposalId: 'proposal-business-1',
+      proposalRecordId: 'invented-record-id',
+      proposalAction: 'APPROVE',
+      recommendationOnly: false,
+    });
+
+    const validated = validator.validate(value, input);
+
+    expect(sectionItems(validated, 2)).toContainEqual(
+      expect.objectContaining({ proposalRecordId: 'proposal-db-1' }),
+    );
   });
 
   it('rejects a proposal action on a recommendation-only item', () => {
@@ -127,6 +169,16 @@ describe('ExecutiveBriefingResponseValidator', () => {
 
     expect(() => validator.validate(value, input)).toThrow(BadRequestException);
   });
+
+  function sectionItems(value: Record<string, unknown>, index: number) {
+    const sections = value.sections;
+    if (!Array.isArray(sections)) throw new Error('Expected briefing sections');
+    const section = sections[index] as { items?: unknown } | undefined;
+    if (!Array.isArray(section?.items)) {
+      throw new Error('Expected briefing section items');
+    }
+    return section.items;
+  }
 
   function request(): ExecutiveBriefingAiRequest {
     const unavailable = {

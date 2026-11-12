@@ -13,13 +13,12 @@ describe('AiStreamingClient', () => {
     jest.restoreAllMocks();
   });
 
-  it('uses service authentication and leaves the response body unbuffered', async () => {
+  it('forwards bearer authentication and leaves the response body unbuffered', async () => {
     const config = {
       get: jest.fn((key: string, fallback?: unknown) => {
         const values: Record<string, unknown> = {
-          'aiService.baseUrl': 'https://ai.example.test',
+          'aiService.baseUrl': 'https://ai.example.test/',
           'aiService.automationEnabled': true,
-          'aiService.sharedSecret': 'service-secret',
           'aiService.chatStreamTimeoutMs': 300_000,
         };
         return values[key] ?? fallback;
@@ -36,20 +35,21 @@ describe('AiStreamingClient', () => {
     const client = new AiStreamingClient(config, systemServices);
 
     const handle = await client.open(
-      '/api/v1/ai/chat',
+      '/api/v1/chat',
       { message: 'Show the pipeline' },
+      'Bearer access-token',
       new AbortController().signal,
     );
 
     expect(systemServices.assertAiServiceEnabled).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://ai.example.test/api/v1/ai/chat',
+      'https://ai.example.test/api/v1/chat',
       expect.objectContaining({
         method: 'POST',
         headers: {
           accept: 'text/event-stream',
+          Authorization: 'Bearer access-token',
           'content-type': 'application/json',
-          'x-ai-actions-secret': 'service-secret',
         },
         body: JSON.stringify({ message: 'Show the pipeline' }),
       }),
@@ -59,13 +59,12 @@ describe('AiStreamingClient', () => {
     handle.abort();
   });
 
-  it('sends the unchanged structured turn and raw files as multipart', async () => {
+  it('sends the public chat fields and raw files as multipart', async () => {
     const config = {
       get: jest.fn((key: string, fallback?: unknown) => {
         const values: Record<string, unknown> = {
           'aiService.baseUrl': 'https://ai.example.test',
           'aiService.automationEnabled': true,
-          'aiService.sharedSecret': 'service-secret',
           'aiService.chatStreamTimeoutMs': 300_000,
         };
         return values[key] ?? fallback;
@@ -87,12 +86,12 @@ describe('AiStreamingClient', () => {
     try {
       const client = new AiStreamingClient(config, systemServices);
       await client.open(
-        '/api/v1/ai/chat',
+        '/api/v1/chat',
         {
-          schemaVersion: '1.0',
-          message: { id: 'message-1', content: 'Review this' },
-          recentMessages: [],
+          message: 'Review this',
+          agent: 'Stitch',
         },
+        'Bearer access-token',
         new AbortController().signal,
         [
           {
@@ -107,14 +106,11 @@ describe('AiStreamingClient', () => {
       const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
       expect(init.headers).toEqual({
         accept: 'text/event-stream',
-        'x-ai-actions-secret': 'service-secret',
+        Authorization: 'Bearer access-token',
       });
       const form = init.body as FormData;
-      expect(form.get('schemaVersion')).toBe('1.0');
-      expect(form.get('message')).toBe(
-        JSON.stringify({ id: 'message-1', content: 'Review this' }),
-      );
-      expect(form.get('recentMessages')).toBe('[]');
+      expect(form.get('message')).toBe('Review this');
+      expect(form.get('agent')).toBe('Stitch');
       const file = form.get('files') as File;
       expect(file.name).toBe('brief.pdf');
       expect(file.type).toBe('application/pdf');

@@ -11,8 +11,15 @@ describe('AiChatStreamingService', () => {
   const prepared = {
     request: {
       turnId: 'chat-turn-message-1',
-      conversation: { id: 'conversation-1' },
-      message: { id: sourceMessageId },
+      conversation: {
+        id: 'conversation-1',
+        selectedAgent: {
+          id: 'agent-1',
+          name: 'Laura',
+          type: 'CHIEF_OF_STAFF',
+        },
+      },
+      message: { id: sourceMessageId, content: 'Show the pipeline' },
     },
   };
   let turns: Record<string, jest.Mock>;
@@ -20,18 +27,18 @@ describe('AiChatStreamingService', () => {
   let sourceContext: Record<string, jest.Mock>;
   let activity: Record<string, jest.Mock>;
   let service: AiChatStreamingService;
+  const persistedResponse = {
+    reply: {
+      agent: { id: 'agent-1', name: 'Laura', type: 'CHIEF_OF_STAFF' },
+    },
+    result: { type: 'MESSAGE' },
+  };
 
   beforeEach(() => {
     turns = {
       prepare: jest.fn().mockResolvedValue(prepared),
       complete: jest.fn().mockResolvedValue({
-        response: {
-          reply: {
-            agent: { id: 'agent-1', name: 'Laura', type: 'CHIEF_OF_STAFF' },
-          },
-          result: { type: 'MEETING_PROPOSAL' },
-        },
-        proposal: { id: 'proposal-1' },
+        response: persistedResponse,
         assistantMessageCreated: true,
       }),
     };
@@ -58,9 +65,11 @@ describe('AiChatStreamingService', () => {
 
   it('persists the structured result before emitting the terminal event', async () => {
     const rawResult = {
-      schemaVersion: '1.0',
-      turnId: 'chat-turn-message-1',
-      result: { type: 'MEETING_PROPOSAL' },
+      request_id: 'request-1',
+      summary: 'The pipeline is healthy.',
+      agent_results: [],
+      pending_confirmations: [],
+      clarifying_question: null,
     };
     const response = new Response(
       'event: activity\ndata: {"stage":"planning"}\n\n' +
@@ -71,6 +80,7 @@ describe('AiChatStreamingService', () => {
     const opened = await service.open(
       organizationId,
       sourceMessageId,
+      'Bearer access-token',
       new AbortController().signal,
     );
     const emitted: string[] = [];
@@ -95,8 +105,32 @@ describe('AiChatStreamingService', () => {
     );
     expect(emitted).toEqual([
       'event: activity\ndata: {"stage":"planning"}\n\n',
-      `event: result\ndata: ${JSON.stringify(rawResult)}\n\n`,
+      `event: result\ndata: ${JSON.stringify(persistedResponse)}\n\n`,
     ]);
+    expect(streaming.open).toHaveBeenCalledWith(
+      '/api/v1/chat',
+      { message: 'Show the pipeline', agent: 'Laura' },
+      'Bearer access-token',
+      expect.any(AbortSignal),
+      [],
+    );
+    expect(turns.complete).toHaveBeenCalledWith(
+      organizationId,
+      sourceMessageId,
+      prepared,
+      {
+        schemaVersion: '1.0',
+        turnId: 'chat-turn-message-1',
+        conversationId: 'conversation-1',
+        inReplyToMessageId: sourceMessageId,
+        reply: {
+          id: 'request-1',
+          content: 'The pipeline is healthy.',
+          agent: prepared.request.conversation.selectedAgent,
+        },
+        result: { type: 'MESSAGE' },
+      },
+    );
     expect(activity.succeed).toHaveBeenCalledWith(
       'activity-1',
       expect.objectContaining({
@@ -115,6 +149,7 @@ describe('AiChatStreamingService', () => {
     const opened = await service.open(
       organizationId,
       sourceMessageId,
+      'Bearer access-token',
       new AbortController().signal,
     );
     const emitted: string[] = [];
@@ -137,6 +172,43 @@ describe('AiChatStreamingService', () => {
     ]);
   });
 
+  it('uses the clarifying question when the final summary is empty', async () => {
+    const response = new Response(
+      'event: result\ndata: ' +
+        JSON.stringify({
+          request_id: 'request-2',
+          summary: '',
+          agent_results: [],
+          pending_confirmations: [],
+          clarifying_question: 'Which quarter should I review?',
+        }) +
+        '\n\n',
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+    streaming.open.mockResolvedValue({ response, abort: jest.fn() });
+    const opened = await service.open(
+      organizationId,
+      sourceMessageId,
+      'Bearer access-token',
+      new AbortController().signal,
+    );
+
+    await service.consume(opened, jest.fn());
+
+    expect(turns.complete).toHaveBeenCalledWith(
+      organizationId,
+      sourceMessageId,
+      prepared,
+      expect.objectContaining({
+        reply: expect.objectContaining({
+          id: 'request-2',
+          content: 'Which quarter should I review?',
+        }),
+        result: { type: 'MESSAGE' },
+      }),
+    );
+  });
+
   it('marks an opened stream failed when the frontend disconnects early', async () => {
     const abort = jest.fn();
     const response = new Response(
@@ -147,6 +219,7 @@ describe('AiChatStreamingService', () => {
     const opened = await service.open(
       organizationId,
       sourceMessageId,
+      'Bearer access-token',
       new AbortController().signal,
     );
 
