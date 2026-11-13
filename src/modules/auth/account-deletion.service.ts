@@ -29,6 +29,9 @@ const ORGANIZATION_COLLECTIONS = [
   'integration_oauth_states',
   'crm_deals',
   'customer_contacts',
+  'customer_crm_links',
+  'customer_notes',
+  'customer_files',
   'call_logs',
   'approvals',
   'tasks',
@@ -84,41 +87,57 @@ export class AccountDeletionService {
         'Database connection is unavailable. Your account was not deleted.',
       );
     }
-    const [organization, users, subscription, attachments, recordings] =
-      await Promise.all([
-        db
-          .collection('organizations')
-          .findOne({ _id: this.objectId(input.organizationId) }),
-        db
-          .collection('users')
-          .find({ organizationId: input.organizationId })
-          .project({ _id: 1 })
-          .toArray(),
-        db
-          .collection('organization_subscriptions')
-          .findOne({ organizationId: input.organizationId }),
-        db
-          .collection('message_attachments')
-          .find({ organizationId: input.organizationId })
-          .project({
-            storageProvider: 1,
-            storageKey: 1,
-            storageResourceType: 1,
-            storageDeliveryType: 1,
-          })
-          .toArray() as Promise<StoredAttachment[]>,
-        db
-          .collection('call_recordings')
-          .find({ organizationId: input.organizationId })
-          .project({
-            localFilePath: 1,
-            storageProvider: 1,
-            storageKey: 1,
-            storageResourceType: 1,
-            storageDeliveryType: 1,
-          })
-          .toArray() as Promise<StoredRecording[]>,
-      ]);
+    const [
+      organization,
+      users,
+      subscription,
+      attachments,
+      customerFiles,
+      recordings,
+    ] = await Promise.all([
+      db
+        .collection('organizations')
+        .findOne({ _id: this.objectId(input.organizationId) }),
+      db
+        .collection('users')
+        .find({ organizationId: input.organizationId })
+        .project({ _id: 1 })
+        .toArray(),
+      db
+        .collection('organization_subscriptions')
+        .findOne({ organizationId: input.organizationId }),
+      db
+        .collection('message_attachments')
+        .find({ organizationId: input.organizationId })
+        .project({
+          storageProvider: 1,
+          storageKey: 1,
+          storageResourceType: 1,
+          storageDeliveryType: 1,
+        })
+        .toArray() as Promise<StoredAttachment[]>,
+      db
+        .collection('customer_files')
+        .find({ organizationId: input.organizationId })
+        .project({
+          storageProvider: 1,
+          storageKey: 1,
+          storageResourceType: 1,
+          storageDeliveryType: 1,
+        })
+        .toArray() as Promise<StoredAttachment[]>,
+      db
+        .collection('call_recordings')
+        .find({ organizationId: input.organizationId })
+        .project({
+          localFilePath: 1,
+          storageProvider: 1,
+          storageKey: 1,
+          storageResourceType: 1,
+          storageDeliveryType: 1,
+        })
+        .toArray() as Promise<StoredRecording[]>,
+    ]);
 
     // Stop future billing before local data is removed. A failed cancellation
     // leaves the workspace untouched so the user is never deleted while a
@@ -191,7 +210,7 @@ export class AccountDeletionService {
       this.removeCloudinaryAssets({
         organizationId: input.organizationId,
         userIds,
-        attachments: [...attachments, ...recordings],
+        attachments: [...attachments, ...customerFiles, ...recordings],
         hasOrganizationLogo: Boolean(organization?.logoUrl),
         hasOrganizationFavicon: Boolean(organization?.faviconUrl),
       }),

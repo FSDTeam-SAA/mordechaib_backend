@@ -54,6 +54,7 @@ describe('AccountDeletionService', () => {
     collection = jest.fn((name: string) => {
       if (name === 'users') return users;
       if (name === 'message_attachments') return attachments;
+      if (name === 'customer_files') return attachments;
       if (name === 'organizations') return organization;
       if (name === 'organization_subscriptions') return subscription;
       if (name === 'call_recordings') return recordings;

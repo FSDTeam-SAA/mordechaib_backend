@@ -32,10 +32,16 @@ export class CustomerHealthSnapshot {
   capturedAt!: Date;
 }
 
-export const CustomerHealthSnapshotSchema =
-  SchemaFactory.createForClass(CustomerHealthSnapshot);
+export const CustomerHealthSnapshotSchema = SchemaFactory.createForClass(
+  CustomerHealthSnapshot,
+);
 CustomerHealthSnapshotSchema.index(
   { organizationId: 1, contactId: 1, 'source.type': 1, 'source.id': 1 },
   { unique: true },
 );
 CustomerHealthSnapshotSchema.index({ organizationId: 1, capturedAt: -1 });
+CustomerHealthSnapshotSchema.index({
+  organizationId: 1,
+  contactId: 1,
+  capturedAt: -1,
+});

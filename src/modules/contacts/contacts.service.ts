@@ -6,7 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { CustomerContactStatus } from '../../common/enums/customer-contact-status.enum';
+import { CustomerLeadStatus } from '../../common/enums/customer-lead-status.enum';
 import {
   isE164,
   normalizePhoneNumber,
@@ -17,6 +20,8 @@ import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { ListContactHealthQueryDto } from './dto/list-contact-health-query.dto';
+import { BulkCreateContactsDto } from './dto/bulk-create-contacts.dto';
+import { parseContactCsv } from './contact-csv.parser';
 
 @Injectable()
 export class ContactsService {
@@ -41,6 +46,150 @@ export class ContactsService {
     );
     await this.audit(organizationId, userId, 'CONTACT_CREATED', contact);
     return this.toResponse(contact);
+  }
+
+  async bulkCreate(
+    organizationId: string,
+    userId: string,
+    dto: BulkCreateContactsDto,
+  ) {
+    const rows = dto.contacts.map((contact, index) => ({
+      index,
+      input: this.normalized(contact),
+    }));
+    rows.forEach(({ input }) => this.assertContactMethod(input));
+
+    const skipped = new Map<number, { code: string; message: string }>();
+    const emailIndexes = new Map<string, number>();
+    const phoneIndexes = new Map<string, number>();
+    for (const row of rows) {
+      const duplicateInRequest =
+        (row.input.email && emailIndexes.has(row.input.email)) ||
+        (row.input.phone && phoneIndexes.has(row.input.phone));
+      if (duplicateInRequest) {
+        skipped.set(row.index, {
+          code: 'DUPLICATE_IN_REQUEST',
+          message: 'Another row in this request uses the same email or phone',
+        });
+        continue;
+      }
+      if (row.input.email) emailIndexes.set(row.input.email, row.index);
+      if (row.input.phone) phoneIndexes.set(row.input.phone, row.index);
+    }
+
+    const existing = await this.repository.findDuplicatesMany(
+      organizationId,
+      [...emailIndexes.keys()],
+      [...phoneIndexes.keys()],
+    );
+    const existingEmails = new Set(
+      existing
+        .map((contact) => contact.email)
+        .filter((email): email is string => Boolean(email)),
+    );
+    const existingPhones = new Set(
+      existing
+        .map((contact) => contact.phone)
+        .filter((phone): phone is string => Boolean(phone)),
+    );
+    for (const row of rows) {
+      if (skipped.has(row.index)) continue;
+      if (
+        (row.input.email && existingEmails.has(row.input.email)) ||
+        (row.input.phone && existingPhones.has(row.input.phone))
+      ) {
+        skipped.set(row.index, {
+          code: 'DUPLICATE_EXISTING_CONTACT',
+          message: 'An active contact already uses this email or phone',
+        });
+      }
+    }
+
+    const candidates = rows
+      .filter((row) => !skipped.has(row.index))
+      .map((row) => ({ ...row, id: new Types.ObjectId() }));
+    let created: object[] = [];
+    if (candidates.length) {
+      try {
+        created = await this.repository.createMany(
+          candidates.map((candidate) => ({
+            _id: candidate.id,
+            ...candidate.input,
+            organizationId,
+            createdByUserId: userId,
+            status: CustomerContactStatus.ACTIVE,
+          })),
+        );
+      } catch (error) {
+        if ((error as { code?: number }).code !== 11000) throw error;
+        created = await this.repository.findByIds(
+          organizationId,
+          candidates.map((candidate) => String(candidate.id)),
+        );
+      }
+    }
+
+    const createdById = new Map(
+      created.map((contact) => {
+        const record = contact as unknown as Record<string, unknown>;
+        return [String(record._id), contact];
+      }),
+    );
+    const candidateByIndex = new Map(
+      candidates.map((candidate) => [candidate.index, candidate]),
+    );
+    for (const candidate of candidates) {
+      if (!createdById.has(String(candidate.id))) {
+        skipped.set(candidate.index, {
+          code: 'DUPLICATE_CONCURRENT',
+          message: 'The contact was created by another request',
+        });
+      }
+    }
+    await Promise.all(
+      created.map((contact) =>
+        this.audit(organizationId, userId, 'CONTACT_CREATED', contact),
+      ),
+    );
+
+    const items = rows.map((row) => {
+      const skip = skipped.get(row.index);
+      if (skip) return { index: row.index, status: 'SKIPPED', ...skip };
+      const candidate = candidateByIndex.get(row.index)!;
+      const contact = createdById.get(String(candidate.id))!;
+      return {
+        index: row.index,
+        status: 'CREATED',
+        contact: this.toResponse(contact),
+      };
+    });
+    return {
+      summary: {
+        received: rows.length,
+        created: created.length,
+        skipped: skipped.size,
+      },
+      items,
+    };
+  }
+
+  async bulkCreateFromCsv(
+    organizationId: string,
+    userId: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('A non-empty CSV file is required');
+    }
+    const contacts = parseContactCsv(file.buffer);
+    const validationErrors = await this.validateImportedContacts(contacts);
+    if (validationErrors.length) {
+      throw new BadRequestException({
+        message: 'CSV contains invalid contact rows',
+        errors: validationErrors,
+      });
+    }
+    return this.bulkCreate(organizationId, userId, { contacts });
   }
 
   async list(organizationId: string, query: ListContactsQueryDto) {
@@ -69,7 +218,11 @@ export class ContactsService {
     query: ListContactHealthQueryDto,
   ) {
     await this.get(organizationId, id);
-    const result = await this.repository.healthHistory(organizationId, id, query);
+    const result = await this.repository.healthHistory(
+      organizationId,
+      id,
+      query,
+    );
     return {
       items: result.items.map((item) => ({
         id: String(item._id),
@@ -213,6 +366,11 @@ export class ContactsService {
       phone?: string;
       company?: string;
       jobTitle?: string;
+      avatarUrl?: string;
+      location?: string;
+      website?: string;
+      linkedinUrl?: string;
+      leadStatus?: CustomerLeadStatus;
       notes?: string;
       tags?: string[];
     };
@@ -224,6 +382,39 @@ export class ContactsService {
         'At least one of email or phone is required',
       );
     }
+  }
+
+  private async validateImportedContacts(contacts: CreateContactDto[]) {
+    const errors: Array<{
+      row: number;
+      fields: Array<{ field: string; messages: string[] }>;
+    }> = [];
+    for (let index = 0; index < contacts.length; index += 1) {
+      const instance = plainToInstance(CreateContactDto, contacts[index]);
+      contacts[index] = instance;
+      const violations = await validate(instance, {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
+      const fields = violations.map((violation) => ({
+        field: violation.property,
+        messages: Object.values(violation.constraints || {}),
+      }));
+      try {
+        this.assertContactMethod(this.normalized(instance));
+      } catch (error) {
+        fields.push({
+          field: 'contactMethod',
+          messages: [
+            error instanceof Error
+              ? error.message
+              : 'At least one contact method is required',
+          ],
+        });
+      }
+      if (fields.length) errors.push({ row: index + 2, fields });
+    }
+    return errors;
   }
 
   private async assertNotDuplicate(
@@ -262,12 +453,20 @@ export class ContactsService {
     }
   }
 
-  private toResponse(contact: object) {
+  private toResponse(
+    contact: object,
+  ): Record<string, unknown> & { id: string; leadStatus: CustomerLeadStatus } {
     const record = contact as unknown as Record<string, unknown>;
     const { _id, __v, organizationId, ...response } = record;
     void __v;
     void organizationId;
-    return { id: String(_id), ...response };
+    return {
+      id: String(_id),
+      ...response,
+      leadStatus:
+        (response.leadStatus as CustomerLeadStatus | undefined) ??
+        CustomerLeadStatus.NEW,
+    };
   }
 
   private async audit(

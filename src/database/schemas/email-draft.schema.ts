@@ -34,6 +34,9 @@ export class EmailDraft {
   @Prop({ type: [String], required: true })
   to!: string[];
 
+  @Prop({ type: [String], default: [] })
+  contactIds!: string[];
+
   @Prop({ required: true, trim: true, maxlength: 300 })
   subject!: string;
 
@@ -82,6 +85,7 @@ export class EmailDraft {
 
 export const EmailDraftSchema = SchemaFactory.createForClass(EmailDraft);
 EmailDraftSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
+EmailDraftSchema.index({ organizationId: 1, contactIds: 1, sentAt: -1 });
 EmailDraftSchema.index({
   organizationId: 1,
   'source.type': 1,

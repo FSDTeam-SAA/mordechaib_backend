@@ -1,0 +1,6 @@
+export enum CustomerFileStatus {
+  ACTIVE = 'ACTIVE',
+  DELETION_PENDING = 'DELETION_PENDING',
+  DELETED = 'DELETED',
+  DELETE_FAILED = 'DELETE_FAILED',
+}

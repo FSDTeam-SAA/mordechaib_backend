@@ -60,10 +60,16 @@ import {
 import { AiChatHistoryController } from './ai-chat-history.controller';
 import { AiChatHistoryService } from './ai-chat-history.service';
 import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guard';
+import { ContactsModule } from '../contacts/contacts.module';
+import { CalendarModule } from '../calendar/calendar.module';
+import { AiBusinessContextController } from './ai-business-context.controller';
+import { AiBusinessContextService } from './ai-business-context.service';
 
 @Module({
   imports: [
     ConfigModule,
+    ContactsModule,
+    CalendarModule,
     MongooseModule.forFeature([
       { name: MeetingBot.name, schema: MeetingBotSchema },
       { name: MeetingTranscript.name, schema: MeetingTranscriptSchema },
@@ -85,10 +91,11 @@ import { AiServiceSecretGuard } from '../../common/guards/ai-service-secret.guar
       { name: AiSourceAnalysis.name, schema: AiSourceAnalysisSchema },
     ]),
   ],
-  controllers: [AiChatHistoryController],
+  controllers: [AiChatHistoryController, AiBusinessContextController],
   providers: [
     AiSourceContextService,
     AiChatHistoryService,
+    AiBusinessContextService,
     AiServiceSecretGuard,
     CloudinaryMessageAttachmentStorage,
   ],

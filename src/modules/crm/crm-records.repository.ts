@@ -102,6 +102,14 @@ export class CrmRecordsRepository {
     return this.records.findOne({ _id: id, organizationId }).lean().exec();
   }
 
+  findByIds(organizationId: string, ids: string[]) {
+    if (!ids.length) return Promise.resolve([]);
+    return this.records
+      .find({ organizationId, _id: { $in: ids } })
+      .lean()
+      .exec();
+  }
+
   findByExternalId(
     organizationId: string,
     provider: CrmProviderType,

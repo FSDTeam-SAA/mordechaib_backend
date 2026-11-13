@@ -42,6 +42,7 @@ import { SourceAnalysesModule } from '../source-analyses/source-analyses.module'
   ],
   exports: [
     CalendarService,
+    CalendarDashboardService,
     CalendarRepository,
     GoogleCalendarProvider,
     OutlookCalendarProvider,

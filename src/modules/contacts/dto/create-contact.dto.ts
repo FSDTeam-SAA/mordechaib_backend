@@ -5,11 +5,14 @@ import {
   ArrayUnique,
   IsArray,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { CustomerLeadStatus } from '../../../common/enums/customer-lead-status.enum';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -53,6 +56,48 @@ export class CreateContactDto {
   @IsString()
   @MaxLength(200)
   jobTitle?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://res.cloudinary.com/example/image/upload/customer.png',
+    maxLength: 500,
+  })
+  @Transform(trim)
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(500)
+  avatarUrl?: string;
+
+  @ApiPropertyOptional({ example: 'New York, USA', maxLength: 300 })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  location?: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com', maxLength: 500 })
+  @Transform(trim)
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(500)
+  website?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://www.linkedin.com/in/example',
+    maxLength: 500,
+  })
+  @Transform(trim)
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(500)
+  linkedinUrl?: string;
+
+  @ApiPropertyOptional({
+    enum: CustomerLeadStatus,
+    default: CustomerLeadStatus.NEW,
+  })
+  @IsOptional()
+  @IsEnum(CustomerLeadStatus)
+  leadStatus?: CustomerLeadStatus;
 
   @ApiPropertyOptional({ maxLength: 5000 })
   @Transform(trim)

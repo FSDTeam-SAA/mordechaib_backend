@@ -76,6 +76,7 @@ import { CrmObjectRecordsController } from './crm-object-records.controller';
     CrmAnalyticsService,
     CrmBriefingFactsService,
     CrmRecordMutationsService,
+    CrmRecordsService,
   ],
 })
 export class CrmModule {}

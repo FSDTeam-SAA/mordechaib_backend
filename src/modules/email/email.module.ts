@@ -30,10 +30,12 @@ import { EmailDraftsController } from './email-drafts.controller';
 import { EmailDraftsRepository } from './email-drafts.repository';
 import { EmailDraftsService } from './email-drafts.service';
 import { EmailProviderClient } from './email-provider.client';
+import { ContactsModule } from '../contacts/contacts.module';
 
 @Module({
   imports: [
     AuditLogsModule,
+    ContactsModule,
     MongooseModule.forFeature([
       { name: EmailConnection.name, schema: EmailConnectionSchema },
       { name: EmailOAuthState.name, schema: EmailOAuthStateSchema },
