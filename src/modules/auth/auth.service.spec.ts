@@ -46,6 +46,7 @@ describe('AuthService email verification', () => {
       findByEmail: jest.fn(),
       findByEmailWithPassword: jest.fn(),
       findById: jest.fn(),
+      findByIdWithPassword: jest.fn(),
       updatePassword: jest.fn(),
       create: jest.fn(),
       markEmailVerified: jest.fn(),
@@ -235,9 +236,7 @@ describe('AuthService email verification', () => {
     ).resolves.toEqual({ message: 'Password reset successfully' });
 
     expect(tokens.consume).toHaveBeenCalledWith(
-      createHash('sha256')
-        .update('verified-reset-token')
-        .digest('hex'),
+      createHash('sha256').update('verified-reset-token').digest('hex'),
       AuthTokenType.PASSWORD_RESET_VERIFIED,
     );
     expect(repository.updatePassword).toHaveBeenCalledWith(
@@ -283,6 +282,57 @@ describe('AuthService email verification', () => {
     expect(auditLogs.create).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: { fields: ['avatarUrl'] } }),
     );
+  });
+
+  it('changes the password, revokes every session, and writes a security audit', async () => {
+    repository.findByIdWithPassword.mockResolvedValue(
+      user({ passwordHash: await bcrypt.hash('Current1!', 4) }),
+    );
+    repository.updatePassword.mockResolvedValue(user());
+    sessions.revokeAllForUser.mockResolvedValue({ modifiedCount: 2 });
+
+    await expect(
+      service.changePassword(userId, {
+        currentPassword: 'Current1!',
+        newPassword: 'Different2!',
+      }),
+    ).resolves.toEqual({
+      message: 'Password changed successfully. Please sign in again.',
+    });
+
+    expect(repository.updatePassword).toHaveBeenCalledWith(
+      userId,
+      expect.any(String),
+    );
+    expect(sessions.revokeAllForUser).toHaveBeenCalledWith(
+      userId,
+      'PASSWORD_CHANGED',
+    );
+    expect(auditLogs.create).toHaveBeenCalledWith({
+      organizationId,
+      userId,
+      action: 'USER_PASSWORD_CHANGED',
+      resourceType: 'User',
+      resourceId: userId,
+      metadata: { allSessionsRevoked: true },
+    });
+  });
+
+  it('rejects password reuse without updating credentials or sessions', async () => {
+    repository.findByIdWithPassword.mockResolvedValue(
+      user({ passwordHash: await bcrypt.hash('Current1!', 4) }),
+    );
+
+    await expect(
+      service.changePassword(userId, {
+        currentPassword: 'Current1!',
+        newPassword: 'Current1!',
+      }),
+    ).rejects.toThrow('New password must be different from current password');
+
+    expect(repository.updatePassword).not.toHaveBeenCalled();
+    expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    expect(auditLogs.create).not.toHaveBeenCalled();
   });
 
   it('rejects an uploaded avatar combined with avatarUrl', async () => {

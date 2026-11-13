@@ -85,6 +85,10 @@ type AiChatTurnRequest = {
   turnId: string;
   idempotencyKey: string;
   organizationId: string;
+  requester: {
+    userId: string;
+    name: string;
+  };
   conversation: {
     id: string;
     title: string;
@@ -120,6 +124,10 @@ type AiChatTurnRequest = {
   "turnId": "chat-turn-6acc73f1c89621797405eb83",
   "idempotencyKey": "chat-turn-6acc73f1c89621797405eb83",
   "organizationId": "6ab750484438958c8b717d1e",
+  "requester": {
+    "userId": "6ab750494438958c8b717d20",
+    "name": "Example Organizer"
+  },
   "conversation": {
     "id": "6acc7392c89621797405eb70",
     "title": "New Chat",
@@ -178,6 +186,9 @@ type AiChatTurnRequest = {
 ### Request interpretation rules
 
 - `turnId` identifies the current chat turn.
+- `requester` is authoritative Main Backend context derived from the persisted
+  organizer message sender and authenticated JWT; never derive it from model
+  output or accept a replacement requester from the frontend.
 - `conversation.id` identifies the complete chat session.
 - `message` is the current organizer message.
 - `recentMessages` is chronological, oldest to newest.
