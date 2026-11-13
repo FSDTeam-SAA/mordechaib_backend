@@ -1,5 +1,10 @@
 # AI Backend Chat Implementation Contract
 
+> Transport, attachments, `customerId`, CRM grounding and the SSE stream are
+> defined in [AI_BACKEND_UNIFIED_CHAT_STREAMING_HANDOFF.md](AI_BACKEND_UNIFIED_CHAT_STREAMING_HANDOFF.md).
+> Where the two differ, that document wins. This one remains the reference for
+> the JSON business contract and result semantics.
+
 ## 1. Objective
 
 Implement one dedicated AI Chat endpoint that receives an organizer's current
@@ -73,7 +78,7 @@ type ChatMessage = {
 
 type PendingChatDraft = {
   id: string;
-  kind: "TASK" | "MEETING";
+  kind: "TASK" | "MEETING" | "CRM_RECORD_UPDATE";
   status: "NEEDS_CLARIFICATION" | "READY";
   revision: number;
   payload: Record<string, unknown>;
@@ -218,7 +223,8 @@ type AiChatTurnResponse = {
     | MessageResult
     | ClarificationResult
     | TaskProposalResult
-    | MeetingProposalResult;
+    | MeetingProposalResult
+    | CrmRecordUpdateProposalResult;
 };
 
 type MessageResult = {
@@ -280,7 +286,7 @@ type ClarificationResult = {
   type: "CLARIFICATION";
   draft: {
     id: string;
-    kind: "TASK" | "MEETING";
+    kind: "TASK" | "MEETING" | "CRM_RECORD_UPDATE";
     payload: Record<string, unknown>;
   };
   questions: ClarificationQuestion[];
@@ -382,6 +388,7 @@ type TaskProposalPayload = {
   reminder?: object;
   subtasks?: object[];
   tags?: string[];
+  customerId?: string; // exact Main Backend customer id; see §8.1 of the unified handoff
 };
 
 type TaskProposalResult = {
@@ -447,6 +454,7 @@ type MeetingProposalPayload = {
   reminderMinutesBeforeStart?: number;
   sendBot?: boolean;
   botName?: string;
+  customerId?: string; // exact Main Backend customer id; see §8.1 of the unified handoff
 };
 
 type MeetingProposalResult = {
@@ -498,10 +506,13 @@ Meeting rules:
 - `title`, `startsAt`, and `timezone` are required for a ready proposal;
 - `startsAt` must contain `Z` or an explicit UTC offset;
 - `timezone` must be an IANA timezone such as `Asia/Dhaka`;
-- invitees are explicitly provided email addresses;
+- invitees are organizer-supplied email addresses or explicitly confirmed
+  CRM matches from the organization- and requester-scoped customer lookup;
 - if the invitee email is missing, return `CLARIFICATION`;
 - if exact date/time or platform is missing, return `CLARIFICATION`;
-- do not perform CRM lookup in this phase;
+- CRM customer lookup is allowed through the read-only AI-internal customer
+  routes (see `AI_BACKEND_UNIFIED_CHAT_STREAMING_HANDOFF.md` §9); a match,
+  even a single one, must be confirmed before its email or `customerId` is used;
 - do not say the meeting was scheduled—say it is ready for review.
 
 ## 8A. Result: `CRM_RECORD_UPDATE_PROPOSAL`

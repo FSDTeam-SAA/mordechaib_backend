@@ -190,6 +190,10 @@ files = <binary file 1>
 files = <binary file 2>
 ```
 
+Main Backend encodes the multipart body itself (`AiStreamingClient`), so every
+upload carries `Content-Type` with its boundary and an exact `Content-Length`.
+The AI Backend requires that header and answers `411 LENGTH_REQUIRED` without it.
+
 File limits must match Main Backend:
 
 - at most 5 files;

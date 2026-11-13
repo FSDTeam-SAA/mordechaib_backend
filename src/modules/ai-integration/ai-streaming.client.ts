@@ -102,7 +102,10 @@ export class AiStreamingClient {
   private async multipartRequest(
     body: Record<string, unknown>,
     attachments: AiStreamAttachment[],
-  ): Promise<{ headers: Record<string, string>; body: FormData }> {
+  ): Promise<{
+    headers: Record<string, string>;
+    body: Uint8Array<ArrayBuffer>;
+  }> {
     const form = new FormData();
     for (const [field, value] of Object.entries(body)) {
       if (value === undefined) continue;
@@ -119,8 +122,17 @@ export class AiStreamingClient {
         attachment.originalName,
       );
     }
-    // Fetch must generate the multipart boundary. Setting Content-Type here
-    // would produce a malformed request without that boundary.
-    return { headers: {}, body: form };
+    // Encode the form ourselves so the request always has a Content-Length:
+    // the AI Backend refuses a multipart body of unknown size with 411. The
+    // encoder generates the boundary, and its Content-Type carries it.
+    const encoded = new Response(form);
+    const contentType = encoded.headers.get('content-type');
+    if (!contentType?.startsWith('multipart/form-data; boundary=')) {
+      throw new Error('Multipart encoding did not produce a boundary');
+    }
+    return {
+      headers: { 'content-type': contentType },
+      body: new Uint8Array(await encoded.arrayBuffer()),
+    };
   }
 }
