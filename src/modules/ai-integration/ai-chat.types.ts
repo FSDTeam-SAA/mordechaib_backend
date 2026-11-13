@@ -30,6 +30,10 @@ export type AiChatTurnRequest = {
   turnId: string;
   idempotencyKey: string;
   organizationId: string;
+  requester: {
+    userId: string;
+    name: string;
+  };
   conversation: {
     id: string;
     title: string;

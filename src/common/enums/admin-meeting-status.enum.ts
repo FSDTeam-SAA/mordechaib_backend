@@ -1,0 +1,12 @@
+export enum AdminMeetingStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  FAILED = 'FAILED',
+}
+
+export enum AdminMeetingSourceType {
+  PLATFORM_MEETING = 'PLATFORM_MEETING',
+  CALENDAR_EVENT = 'CALENDAR_EVENT',
+}

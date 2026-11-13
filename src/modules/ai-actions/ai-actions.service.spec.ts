@@ -18,6 +18,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UpdateAiActionProposalDto } from './dto/update-ai-action-proposal.dto';
 import { CrmRecordMutationsService } from '../crm/crm-record-mutations.service';
+import { ContactsService } from '../contacts/contacts.service';
 
 describe('AiActionsService analysis ingestion', () => {
   const organizationId = '66cc9bdfa847ea856c7b41d2';
@@ -27,6 +28,7 @@ describe('AiActionsService analysis ingestion', () => {
     type: AiProposalSourceType.GOOGLE_MEET,
     id: '66cc9bdfa847ea856c7b41d4',
   };
+  const customerId = '66cc9bdfa847ea856c7b41c1';
   const owner = {
     id: '66cc9bdfa847ea856c7b41f1',
     email: 'owner@example.com',
@@ -48,10 +50,17 @@ describe('AiActionsService analysis ingestion', () => {
     getActionCenter: jest.fn(),
     updatePendingPayload: jest.fn(),
     summarizeSources: jest.fn(),
+    approvePending: jest.fn(),
+    claimApprovedForExecution: jest.fn(),
+    markExecuted: jest.fn(),
+    markFailed: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
   const auditLogs = { create: jest.fn() };
+  const contacts = { assertActiveIds: jest.fn() };
+  const tasks = { createFromAiProposal: jest.fn() };
+  const meetings = { createFromAiProposal: jest.fn() };
   const analysis = {
     sentimentAnalysis: {
       score: { positive: 60, neutral: 30, negative: 10 },
@@ -91,14 +100,88 @@ describe('AiActionsService analysis ingestion', () => {
     auditLogs.create.mockResolvedValue(undefined);
     service = new AiActionsService(
       repository as unknown as AiActionsRepository,
-      {} as TasksService,
-      {} as PlatformMeetingsService,
+      tasks as unknown as TasksService,
+      meetings as unknown as PlatformMeetingsService,
       {} as UsersService,
       organizations as unknown as OrganizationsService,
       auditLogs as unknown as AuditLogsService,
       sourceAnalyses as unknown as SourceAnalysesRepository,
       { persist: jest.fn() } as never,
       {} as CrmRecordMutationsService,
+      contacts as unknown as ContactsService,
+    );
+  });
+
+  it('validates and preserves a confirmed Noltra customer on a chat proposal', async () => {
+    await service.ingestChatDraft(organizationId, {
+      conversationId: '66cc9bdfa847ea856c7b41d3',
+      draftId: 'meeting-with-customer-001',
+      sourceMessageId: '66cc9bdfa847ea856c7b41d4',
+      actionType: AiActionType.SCHEDULE_MEETING,
+      proposedByAgent: {
+        id: operationsAgentId,
+        name: 'Operations Agent',
+        type: AgentType.OPERATIONS,
+      },
+      payload: {
+        platform: 'GOOGLE_MEET',
+        title: 'Customer review',
+        startsAt: '2026-12-01T09:00:00.000Z',
+        timezone: 'UTC',
+        invitees: ['customer@example.com'],
+        customerId,
+      },
+      evidenceText: 'Schedule the review with this customer',
+      effectiveTimezone: 'UTC',
+    });
+
+    expect(contacts.assertActiveIds).toHaveBeenCalledWith(organizationId, [
+      customerId,
+    ]);
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ customerId }),
+      }),
+    );
+  });
+
+  it('maps an approved proposal customerId to the task contact linkage', async () => {
+    const proposalId = '66cc9bdfa847ea856c7b41d5';
+    const approved = {
+      _id: proposalId,
+      organizationId,
+      proposalId: 'chat:conversation:task-with-customer',
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.APPROVED,
+      approvedByUserId: owner.id,
+      payload: { title: 'Follow up with customer', customerId },
+      proposedByAgent: {
+        id: salesAgentId,
+        name: 'Sales Agent',
+        type: AgentType.SALES,
+      },
+    };
+    repository.approvePending.mockResolvedValue(approved);
+    repository.claimApprovedForExecution.mockResolvedValue(approved);
+    repository.markExecuted.mockResolvedValue({
+      ...approved,
+      status: AiActionProposalStatus.EXECUTED,
+    });
+    tasks.createFromAiProposal.mockResolvedValue({ id: 'task-1' });
+
+    await service.approve(organizationId, owner, proposalId);
+
+    expect(tasks.createFromAiProposal).toHaveBeenCalledWith(
+      organizationId,
+      owner.id,
+      expect.objectContaining({
+        title: 'Follow up with customer',
+        contactIds: [customerId],
+      }),
+      expect.objectContaining({ aiActionProposalId: proposalId }),
+    );
+    expect(tasks.createFromAiProposal.mock.calls[0][2]).not.toHaveProperty(
+      'customerId',
     );
   });
 

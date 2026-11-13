@@ -135,6 +135,11 @@ export const ManagedCalendarEventSchema =
   SchemaFactory.createForClass(ManagedCalendarEvent);
 ManagedCalendarEventSchema.index({ organizationId: 1, startsAt: -1 });
 ManagedCalendarEventSchema.index({
+  startsAt: 1,
+  status: 1,
+  organizationId: 1,
+});
+ManagedCalendarEventSchema.index({
   organizationId: 1,
   status: 1,
   startsAt: 1,

@@ -1,7 +1,9 @@
 import {
   BadGatewayException,
+  ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,10 +30,12 @@ const ORGANIZATION_COLLECTIONS = [
   'integrations',
   'integration_oauth_states',
   'crm_deals',
+  'crm_records',
   'customer_contacts',
   'customer_crm_links',
   'customer_notes',
   'customer_files',
+  'customer_health_snapshots',
   'call_logs',
   'approvals',
   'tasks',
@@ -54,9 +58,13 @@ const ORGANIZATION_COLLECTIONS = [
   'meeting_oauth_states',
   'platform_meetings',
   'managed_calendar_events',
+  'meeting_follow_ups',
   'conversations',
   'messages',
   'message_attachments',
+  'email_connections',
+  'email_drafts',
+  'email_oauth_states',
   'ai_settings',
   'ai_action_proposals',
   'ai_source_analyses',
@@ -65,6 +73,9 @@ const ORGANIZATION_COLLECTIONS = [
   'executive_briefings',
   'strategic_notes',
   'notifications',
+  'diagnostic_assessments',
+  'roi_configurations',
+  'support_requests',
 ] as const;
 
 @Injectable()
@@ -93,6 +104,7 @@ export class AccountDeletionService {
       subscription,
       attachments,
       customerFiles,
+      supportAttachments,
       recordings,
     ] = await Promise.all([
       db
@@ -127,6 +139,25 @@ export class AccountDeletionService {
         })
         .toArray() as Promise<StoredAttachment[]>,
       db
+        .collection('support_requests')
+        .find({ organizationId: input.organizationId })
+        .project({
+          attachments: {
+            storageProvider: 1,
+            storageKey: 1,
+            storageResourceType: 1,
+            storageDeliveryType: 1,
+          },
+        })
+        .toArray()
+        .then((requests) =>
+          requests.flatMap((request) =>
+            Array.isArray(request.attachments)
+              ? (request.attachments as StoredAttachment[])
+              : [],
+          ),
+        ),
+      db
         .collection('call_recordings')
         .find({ organizationId: input.organizationId })
         .project({
@@ -138,6 +169,15 @@ export class AccountDeletionService {
         })
         .toArray() as Promise<StoredRecording[]>,
     ]);
+
+    if (!organization) {
+      throw new NotFoundException('Workspace not found');
+    }
+    if (!users.some((user) => String(user._id) === input.ownerUserId)) {
+      throw new ForbiddenException(
+        'The requesting owner does not belong to this workspace',
+      );
+    }
 
     // Stop future billing before local data is removed. A failed cancellation
     // leaves the workspace untouched so the user is never deleted while a
@@ -162,42 +202,30 @@ export class AccountDeletionService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async () => {
-        await Promise.all(
-          ORGANIZATION_COLLECTIONS.map((collectionName) =>
-            db
-              .collection(collectionName)
-              .deleteMany(
-                { organizationId: input.organizationId },
-                { session },
-              ),
-          ),
-        );
-        await Promise.all([
-          userIds.length
-            ? db
-                .collection('auth_sessions')
-                .deleteMany({ userId: { $in: userIds } }, { session })
-            : Promise.resolve(),
-          userIds.length
-            ? db
-                .collection('auth_tokens')
-                .deleteMany({ userId: { $in: userIds } }, { session })
-            : Promise.resolve(),
-          userIds.length
-            ? db
-                .collection('notification_preferences')
-                .deleteMany({ userId: { $in: userIds } }, { session })
-            : Promise.resolve(),
-          db
-            .collection('users')
-            .deleteMany({ organizationId: input.organizationId }, { session }),
-          db
-            .collection('organizations')
-            .deleteOne(
-              { _id: this.objectId(input.organizationId) },
-              { session },
-            ),
-        ]);
+        // MongoDB transactions do not support parallel operations on one
+        // session. Sequential deletion keeps the transaction deterministic.
+        for (const collectionName of ORGANIZATION_COLLECTIONS) {
+          await db
+            .collection(collectionName)
+            .deleteMany({ organizationId: input.organizationId }, { session });
+        }
+        if (userIds.length) {
+          await db
+            .collection('auth_sessions')
+            .deleteMany({ userId: { $in: userIds } }, { session });
+          await db
+            .collection('auth_tokens')
+            .deleteMany({ userId: { $in: userIds } }, { session });
+          await db
+            .collection('notification_preferences')
+            .deleteMany({ userId: { $in: userIds } }, { session });
+        }
+        await db
+          .collection('users')
+          .deleteMany({ organizationId: input.organizationId }, { session });
+        await db
+          .collection('organizations')
+          .deleteOne({ _id: this.objectId(input.organizationId) }, { session });
       });
     } finally {
       await session.endSession();
@@ -210,7 +238,12 @@ export class AccountDeletionService {
       this.removeCloudinaryAssets({
         organizationId: input.organizationId,
         userIds,
-        attachments: [...attachments, ...customerFiles, ...recordings],
+        attachments: [
+          ...attachments,
+          ...customerFiles,
+          ...supportAttachments,
+          ...recordings,
+        ],
         hasOrganizationLogo: Boolean(organization?.logoUrl),
         hasOrganizationFavicon: Boolean(organization?.faviconUrl),
       }),
