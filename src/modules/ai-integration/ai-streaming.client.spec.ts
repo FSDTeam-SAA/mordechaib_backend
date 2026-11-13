@@ -107,12 +107,22 @@ describe('AiStreamingClient', () => {
       );
 
       const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
-      expect(init.headers).toEqual({
+      const headers = init.headers as Record<string, string>;
+      expect(headers).toEqual({
         accept: 'text/event-stream',
         Authorization: 'Bearer access-token',
         'x-ai-actions-secret': 'service-secret',
+        'content-type': expect.stringMatching(
+          /^multipart\/form-data; boundary=\S+$/,
+        ),
       });
-      const form = init.body as FormData;
+      // A byte body has a known size, so fetch always sends Content-Length
+      // (the AI Backend answers 411 to a multipart body without one).
+      expect(init.body).toBeInstanceOf(Uint8Array);
+      expect((init.body as Uint8Array).byteLength).toBeGreaterThan(0);
+      const form = await new Response(init.body, {
+        headers: { 'content-type': headers['content-type'] },
+      }).formData();
       expect(form.get('message')).toBe('Review this');
       expect(form.get('agent')).toBe('Stitch');
       const file = form.get('files') as File;
