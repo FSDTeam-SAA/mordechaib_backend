@@ -32,6 +32,7 @@ import {
   EmailDraftValues,
 } from './email-drafts.repository';
 import { EmailProviderClient, EmailSendError } from './email-provider.client';
+import { ContactsService } from '../contacts/contacts.service';
 
 @Injectable()
 export class EmailDraftsService {
@@ -48,6 +49,7 @@ export class EmailDraftsService {
     private readonly meetings: Model<PlatformMeeting>,
     @InjectModel(ManagedCalendarEvent.name)
     private readonly calendarEvents: Model<ManagedCalendarEvent>,
+    private readonly contacts: ContactsService,
   ) {}
 
   async create(
@@ -56,6 +58,7 @@ export class EmailDraftsService {
     input: CreateEmailDraftDto,
   ) {
     const values = this.normalize(input);
+    await this.assertContacts(organizationId, values.contactIds);
     await this.assertSource(organizationId, values.source);
     if (input.clientDraftId && !isUUID(input.clientDraftId)) {
       throw new BadRequestException('clientDraftId must be a UUID');
@@ -103,7 +106,8 @@ export class EmailDraftsService {
         : source.type === EmailDraftSourceType.PLATFORM_MEETING
           ? await this.meetings.exists(filter)
           : await this.calendarEvents.exists(filter);
-    if (!exists) throw new BadRequestException('Email draft source was not found');
+    if (!exists)
+      throw new BadRequestException('Email draft source was not found');
   }
 
   async ensureFromAiReply(input: {
@@ -125,6 +129,7 @@ export class EmailDraftsService {
       .exec();
     if (!owner) return undefined;
     const values = this.normalize(input.draft);
+    await this.assertContacts(input.organizationId, values.contactIds);
     const saved = await this.repository.ensureAiDraft({
       organizationId: input.organizationId,
       userId: input.userId,
@@ -178,6 +183,7 @@ export class EmailDraftsService {
   ) {
     this.assertId(id);
     const changes = this.normalizePartial(input);
+    await this.assertContacts(organizationId, changes.contactIds);
     if (!Object.keys(changes).length) {
       throw new BadRequestException('No email draft changes were provided');
     }
@@ -386,6 +392,9 @@ export class EmailDraftsService {
     return {
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.source ? { source: input.source } : {}),
+      ...(input.contactIds
+        ? { contactIds: [...new Set(input.contactIds)].sort() }
+        : {}),
       to,
       subject,
       body,
@@ -401,6 +410,9 @@ export class EmailDraftsService {
         throw new BadRequestException('Email provider is invalid');
       }
       changes.provider = input.provider;
+    }
+    if (input.contactIds !== undefined) {
+      changes.contactIds = [...new Set(input.contactIds)].sort();
     }
     if (input.to !== undefined) {
       if (
@@ -442,6 +454,8 @@ export class EmailDraftsService {
       existing.subject !== values.subject ||
       existing.body !== values.body ||
       JSON.stringify(existing.to) !== JSON.stringify(values.to) ||
+      JSON.stringify(existing.contactIds || []) !==
+        JSON.stringify(values.contactIds || []) ||
       JSON.stringify(existing.source) !== JSON.stringify(values.source)
     ) {
       throw new ConflictException(
@@ -456,6 +470,7 @@ export class EmailDraftsService {
       id: String(value._id),
       provider: value.provider,
       to: value.to,
+      contactIds: value.contactIds || [],
       subject: value.subject,
       body: value.body,
       status: value.status,
@@ -476,6 +491,15 @@ export class EmailDraftsService {
   private assertId(id: string) {
     if (!isValidObjectId(id)) {
       throw new BadRequestException('Invalid email draft id');
+    }
+  }
+
+  private async assertContacts(
+    organizationId: string,
+    contactIds: string[] | undefined,
+  ) {
+    if (contactIds?.length) {
+      await this.contacts.assertActiveIds(organizationId, contactIds);
     }
   }
 

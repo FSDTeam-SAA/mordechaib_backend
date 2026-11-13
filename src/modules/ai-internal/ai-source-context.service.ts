@@ -27,6 +27,7 @@ import {
 import { MessageAttachmentStatus } from '../../common/enums/message-attachment-status.enum';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { UserStatus } from '../../common/enums/user-status.enum';
 import {
   aiIsoTimestamp,
   boundedAiText,
@@ -168,7 +169,14 @@ export class AiSourceContextService {
     const user = await this.users
       .findOne(
         { _id: userId, organizationId },
-        { firstName: 1, lastName: 1, timezone: 1, language: 1 },
+        {
+          firstName: 1,
+          lastName: 1,
+          timezone: 1,
+          language: 1,
+          role: 1,
+          status: 1,
+        },
       )
       .lean()
       .exec();
@@ -178,7 +186,23 @@ export class AiSourceContextService {
       name: `${user.firstName} ${user.lastName}`.trim(),
       timezone: user.timezone,
       language: user.language,
+      role: user.role,
+      status: user.status,
     };
+  }
+
+  async requireActiveRequester(organizationId: string, userId: string) {
+    if (!isValidObjectId(organizationId)) {
+      throw new BadRequestException('Invalid organization id');
+    }
+    if (!isValidObjectId(userId)) {
+      throw new BadRequestException('Invalid requester user id');
+    }
+    const requester = await this.requesterContext(organizationId, userId);
+    if (!requester || requester.status !== UserStatus.ACTIVE) {
+      throw new NotFoundException('Active requester not found');
+    }
+    return requester;
   }
 
   private async meetingContext(

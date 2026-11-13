@@ -6,9 +6,11 @@ import {
   IsArray,
   IsEmail,
   IsEnum,
+  IsMongoId,
   IsOptional,
   IsString,
   IsUUID,
+  ArrayUnique,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -38,6 +40,17 @@ export class CreateEmailDraftDto {
   @ArrayMaxSize(10)
   @IsEmail({}, { each: true })
   to!: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Customer contacts related to this email activity',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsMongoId({ each: true })
+  contactIds?: string[];
 
   @IsString()
   @MinLength(1)

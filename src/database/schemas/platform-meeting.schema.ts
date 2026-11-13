@@ -105,6 +105,11 @@ export const PlatformMeetingSchema =
 PlatformMeetingSchema.index({ organizationId: 1, startsAt: -1 });
 PlatformMeetingSchema.index({ organizationId: 1, platform: 1, startsAt: -1 });
 PlatformMeetingSchema.index({ organizationId: 1, contactIds: 1, startsAt: -1 });
+PlatformMeetingSchema.index({
+  organizationId: 1,
+  contactIds: 1,
+  createdAt: -1,
+});
 PlatformMeetingSchema.index(
   { organizationId: 1, aiActionProposalId: 1 },
   {
