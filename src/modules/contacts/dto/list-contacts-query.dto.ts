@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { CustomerContactStatus } from '../../../common/enums/customer-contact-status.enum';
+import { CustomerLeadStatus } from '../../../common/enums/customer-lead-status.enum';
 
 export class ListContactsQueryDto {
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
@@ -40,4 +41,9 @@ export class ListContactsQueryDto {
   @IsOptional()
   @IsEnum(CustomerContactStatus)
   status: CustomerContactStatus = CustomerContactStatus.ACTIVE;
+
+  @ApiPropertyOptional({ enum: CustomerLeadStatus })
+  @IsOptional()
+  @IsEnum(CustomerLeadStatus)
+  leadStatus?: CustomerLeadStatus;
 }

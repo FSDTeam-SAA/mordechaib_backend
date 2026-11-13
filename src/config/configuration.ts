@@ -524,6 +524,8 @@ export default () => {
       messageFolder: process.env.CLOUDINARY_MESSAGE_FOLDER || 'noltra/messages',
       supportFolder:
         process.env.CLOUDINARY_SUPPORT_FOLDER || 'noltra/support-requests',
+      customerFileFolder:
+        process.env.CLOUDINARY_CUSTOMER_FILE_FOLDER || 'noltra/customer-files',
       profileAvatarFolder:
         process.env.CLOUDINARY_PROFILE_AVATAR_FOLDER || 'noltra/avatars',
       agentImageFolder:

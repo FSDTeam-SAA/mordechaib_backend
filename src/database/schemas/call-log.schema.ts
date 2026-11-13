@@ -101,3 +101,4 @@ export class CallLog {
 
 export const CallLogSchema = SchemaFactory.createForClass(CallLog);
 CallLogSchema.index({ organizationId: 1, createdAt: -1 });
+CallLogSchema.index({ organizationId: 1, contactId: 1, createdAt: -1 });

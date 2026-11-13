@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { CustomerContactStatus } from '../../common/enums/customer-contact-status.enum';
+import { CustomerLeadStatus } from '../../common/enums/customer-lead-status.enum';
 
 export type CustomerContactDocument = HydratedDocument<CustomerContact>;
 
@@ -27,6 +28,25 @@ export class CustomerContact {
   @Prop({ trim: true, maxlength: 200 })
   jobTitle?: string;
 
+  @Prop({ trim: true, maxlength: 500 })
+  avatarUrl?: string;
+
+  @Prop({ trim: true, maxlength: 300 })
+  location?: string;
+
+  @Prop({ trim: true, maxlength: 500 })
+  website?: string;
+
+  @Prop({ trim: true, maxlength: 500 })
+  linkedinUrl?: string;
+
+  @Prop({
+    required: true,
+    enum: Object.values(CustomerLeadStatus),
+    default: CustomerLeadStatus.NEW,
+  })
+  leadStatus!: CustomerLeadStatus;
+
   @Prop({ trim: true, maxlength: 5000 })
   notes?: string;
 
@@ -51,6 +71,12 @@ export class CustomerContact {
 export const CustomerContactSchema =
   SchemaFactory.createForClass(CustomerContact);
 CustomerContactSchema.index({ organizationId: 1, status: 1, updatedAt: -1 });
+CustomerContactSchema.index({
+  organizationId: 1,
+  status: 1,
+  leadStatus: 1,
+  updatedAt: -1,
+});
 CustomerContactSchema.index(
   { organizationId: 1, email: 1 },
   {

@@ -10,6 +10,7 @@ import { EmailConnectionsService } from './email-connections.service';
 import { EmailDraftsRepository } from './email-drafts.repository';
 import { EmailDraftsService } from './email-drafts.service';
 import { EmailProviderClient, EmailSendError } from './email-provider.client';
+import { ContactsService } from '../contacts/contacts.service';
 
 describe('EmailDraftsService send approval', () => {
   const organizationId = 'org-1';
@@ -63,6 +64,7 @@ describe('EmailDraftsService send approval', () => {
       {} as never,
       {} as never,
       {} as never,
+      { assertActiveIds: jest.fn() } as unknown as ContactsService,
     );
   });
 
