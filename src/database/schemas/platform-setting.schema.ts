@@ -54,6 +54,15 @@ export class PlatformSetting {
   @Prop({ required: true, type: String, enum: PLATFORM_TIME_FORMATS })
   timeFormat!: (typeof PLATFORM_TIME_FORMATS)[number];
 
+  @Prop({ required: true, default: false })
+  maintenanceMode!: boolean;
+
+  @Prop({ trim: true, maxlength: 2_048 })
+  logoUrl?: string;
+
+  @Prop({ trim: true, maxlength: 2_048 })
+  faviconUrl?: string;
+
   @Prop({ required: true, min: 0, default: 0 })
   revision!: number;
 

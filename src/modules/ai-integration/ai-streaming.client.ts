@@ -32,13 +32,14 @@ export class AiStreamingClient {
   ): Promise<AiStreamHandle> {
     await this.systemServices.assertAiServiceEnabled();
     const baseUrl = this.config.get<string>('aiService.baseUrl');
+    const sharedSecret = this.config.get<string>('aiService.sharedSecret');
     const enabled = this.config.get<boolean>(
       'aiService.automationEnabled',
       false,
     );
-    if (!enabled || !baseUrl) {
+    if (!enabled || !baseUrl || !sharedSecret) {
       this.logger.warn(
-        `AI stream skipped: automation=${enabled}, baseUrlConfigured=${Boolean(baseUrl)}`,
+        `AI stream skipped: automation=${enabled}, baseUrlConfigured=${Boolean(baseUrl)}, sharedSecretConfigured=${Boolean(sharedSecret)}`,
       );
       throw new ServiceUnavailableException(
         'AI service automation is disabled',
@@ -68,6 +69,7 @@ export class AiStreamingClient {
         headers: {
           accept: 'text/event-stream',
           Authorization: authorization,
+          'x-ai-actions-secret': sharedSecret,
           ...request.headers,
         },
         body: request.body,

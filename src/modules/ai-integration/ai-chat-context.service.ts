@@ -68,9 +68,9 @@ export class AiChatContextService {
     }
     const [organization, requester, selectedAgent] = await Promise.all([
       this.sourceContext.organizationContext(organizationId),
-      this.sourceContext.requesterContext(
+      this.sourceContext.requireActiveRequester(
         organizationId,
-        source.requesterUserId,
+        source.requesterUserId || '',
       ),
       this.agents.resolve(organizationId, source.conversation.selectedAgentId),
     ]);
@@ -98,6 +98,10 @@ export class AiChatContextService {
         turnId,
         idempotencyKey: turnId,
         organizationId,
+        requester: {
+          userId: requester.userId,
+          name: requester.name,
+        },
         conversation: {
           id: source.conversation.id,
           title: source.conversation.title,
@@ -121,7 +125,7 @@ export class AiChatContextService {
         pendingDrafts: this.pendingDrafts(source.pendingProposals || []),
         context: {
           effectiveTimezone,
-          language: requester?.language || organization.language || 'en',
+          language: requester.language || organization.language || 'en',
           currentTime,
         },
       },

@@ -87,6 +87,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
   @Delete('me')
+  @ApiOperation({
+    summary: 'Permanently delete the owner workspace and all tenant data',
+    description:
+      'Owner-only destructive operation. Requires the current password and confirmation exactly equal to DELETE. Active billing is cancelled before tenant data is transactionally removed.',
+  })
   deleteAccount(
     @CurrentUser() user: RequestUser,
     @Body() dto: DeleteAccountDto,
@@ -132,6 +137,12 @@ export class AuthController {
   }
 
   @Patch('change-password')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
+  @ApiOperation({
+    summary: 'Change the signed-in user password and revoke every session',
+    description:
+      'The frontend must confirm the new password locally before submission. A successful change revokes the current session and every other session, so the user must sign in again.',
+  })
   changePassword(
     @CurrentUser() user: RequestUser,
     @Body() dto: ChangePasswordDto,

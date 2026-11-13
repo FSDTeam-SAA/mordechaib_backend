@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { RequestUser } from '../../common/types/request-context.type';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { OrganizationLogoStorageService } from '../organizations/organization-logo-storage.service';
 import { PlatformSettingsRepository } from './platform-settings.repository';
 import { PlatformSettingsService } from './platform-settings.service';
 
@@ -20,6 +21,10 @@ describe('PlatformSettingsService', () => {
   const repository = { find: jest.fn(), update: jest.fn() };
   const config = { get: jest.fn() };
   const audits = { create: jest.fn() };
+  const brandingStorage = {
+    uploadPlatformLogo: jest.fn(),
+    uploadPlatformFavicon: jest.fn(),
+  };
   let service: PlatformSettingsService;
 
   beforeEach(() => {
@@ -39,10 +44,17 @@ describe('PlatformSettingsService', () => {
       return fallback;
     });
     audits.create.mockResolvedValue(undefined);
+    brandingStorage.uploadPlatformLogo.mockResolvedValue(
+      'https://cdn.noltra.ai/platform-logo.png',
+    );
+    brandingStorage.uploadPlatformFavicon.mockResolvedValue(
+      'https://cdn.noltra.ai/platform-favicon.png',
+    );
     service = new PlatformSettingsService(
       repository as unknown as PlatformSettingsRepository,
       config as unknown as ConfigService,
       audits as unknown as AuditLogsService,
+      brandingStorage as unknown as OrganizationLogoStorageService,
     );
   });
 
@@ -57,6 +69,9 @@ describe('PlatformSettingsService', () => {
       defaultCurrency: 'USD',
       dateFormat: 'MM/DD/YYYY',
       timeFormat: '12H',
+      maintenanceMode: false,
+      logoUrl: null,
+      faviconUrl: null,
       revision: 0,
       updatedByUserId: null,
       updatedAt: null,
@@ -104,5 +119,53 @@ describe('PlatformSettingsService', () => {
     await expect(
       service.update(actor, { expectedRevision: 3, platformName: 'Changed' }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('uploads platform branding and persists only generated URLs', async () => {
+    const logo = { buffer: Buffer.from('logo') } as Express.Multer.File;
+    const favicon = {
+      buffer: Buffer.from('favicon'),
+    } as Express.Multer.File;
+
+    const result = await service.updateBranding(
+      actor,
+      { expectedRevision: 0 },
+      { logo, favicon },
+    );
+
+    expect(brandingStorage.uploadPlatformLogo).toHaveBeenCalledWith(logo);
+    expect(brandingStorage.uploadPlatformFavicon).toHaveBeenCalledWith(favicon);
+    expect(repository.update).toHaveBeenCalledWith(
+      0,
+      {
+        logoUrl: 'https://cdn.noltra.ai/platform-logo.png',
+        faviconUrl: 'https://cdn.noltra.ai/platform-favicon.png',
+      },
+      actor.id,
+    );
+    expect(audits.create).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'PLATFORM_BRANDING_UPDATED' }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        logoUrl: 'https://cdn.noltra.ai/platform-logo.png',
+        faviconUrl: 'https://cdn.noltra.ai/platform-favicon.png',
+      }),
+    );
+  });
+
+  it('rejects a branding update without an asset', async () => {
+    await expect(
+      service.updateBranding(actor, { expectedRevision: 0 }, {}),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  it('caches maintenance state for the guard hot path', async () => {
+    repository.find.mockResolvedValue({ maintenanceMode: true });
+
+    await expect(service.isMaintenanceModeEnabled()).resolves.toBe(true);
+    await expect(service.isMaintenanceModeEnabled()).resolves.toBe(true);
+    expect(repository.find).toHaveBeenCalledTimes(1);
   });
 });
