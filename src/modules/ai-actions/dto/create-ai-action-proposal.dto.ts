@@ -1,4 +1,5 @@
-import { PickType } from '@nestjs/swagger';
+import { ApiPropertyOptional, PickType } from '@nestjs/swagger';
+import { IsMongoId, IsOptional } from 'class-validator';
 import { CreateConnectedMeetingDto } from '../../meeting-bots/dto/create-connected-meeting.dto';
 import { CreateTaskDto } from '../../tasks/dto/create-task.dto';
 
@@ -17,7 +18,16 @@ export class AiTaskActionPayloadDto extends PickType(CreateTaskDto, [
   'reminder',
   'subtasks',
   'tags',
-] as const) {}
+] as const) {
+  @ApiPropertyOptional({
+    description:
+      'Noltra customer ID resolved from the organization-scoped customer directory',
+    example: '66cc9bdfa847ea856c7b41d2',
+  })
+  @IsOptional()
+  @IsMongoId()
+  customerId?: string;
+}
 
 export class AiMeetingActionPayloadDto extends PickType(
   CreateConnectedMeetingDto,
@@ -33,4 +43,13 @@ export class AiMeetingActionPayloadDto extends PickType(
     'sendBot',
     'botName',
   ] as const,
-) {}
+) {
+  @ApiPropertyOptional({
+    description:
+      'Noltra customer ID resolved from the organization-scoped customer directory',
+    example: '66cc9bdfa847ea856c7b41d2',
+  })
+  @IsOptional()
+  @IsMongoId()
+  customerId?: string;
+}

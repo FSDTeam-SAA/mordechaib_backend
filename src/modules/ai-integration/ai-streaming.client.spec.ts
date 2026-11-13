@@ -19,6 +19,7 @@ describe('AiStreamingClient', () => {
         const values: Record<string, unknown> = {
           'aiService.baseUrl': 'https://ai.example.test/',
           'aiService.automationEnabled': true,
+          'aiService.sharedSecret': 'service-secret',
           'aiService.chatStreamTimeoutMs': 300_000,
         };
         return values[key] ?? fallback;
@@ -49,6 +50,7 @@ describe('AiStreamingClient', () => {
         headers: {
           accept: 'text/event-stream',
           Authorization: 'Bearer access-token',
+          'x-ai-actions-secret': 'service-secret',
           'content-type': 'application/json',
         },
         body: JSON.stringify({ message: 'Show the pipeline' }),
@@ -65,6 +67,7 @@ describe('AiStreamingClient', () => {
         const values: Record<string, unknown> = {
           'aiService.baseUrl': 'https://ai.example.test',
           'aiService.automationEnabled': true,
+          'aiService.sharedSecret': 'service-secret',
           'aiService.chatStreamTimeoutMs': 300_000,
         };
         return values[key] ?? fallback;
@@ -107,6 +110,7 @@ describe('AiStreamingClient', () => {
       expect(init.headers).toEqual({
         accept: 'text/event-stream',
         Authorization: 'Bearer access-token',
+        'x-ai-actions-secret': 'service-secret',
       });
       const form = init.body as FormData;
       expect(form.get('message')).toBe('Review this');

@@ -10,16 +10,41 @@ describe('AiChatStreamingService', () => {
   const sourceMessageId = 'message-1';
   const prepared = {
     request: {
+      schemaVersion: '1.0',
       turnId: 'chat-turn-message-1',
+      idempotencyKey: 'chat-turn-message-1',
+      organizationId,
+      requester: {
+        userId: 'user-1',
+        name: 'Mahabur Rahman',
+      },
       conversation: {
         id: 'conversation-1',
+        title: 'Pipeline review',
         selectedAgent: {
           id: 'agent-1',
           name: 'Laura',
           type: 'CHIEF_OF_STAFF',
         },
       },
-      message: { id: sourceMessageId, content: 'Show the pipeline' },
+      message: {
+        id: sourceMessageId,
+        senderType: 'USER',
+        content: 'Show the pipeline',
+        createdAt: '2026-11-13T06:00:00.000Z',
+      },
+      recentMessages: [],
+      historyPage: {
+        included: 0,
+        hasOlder: false,
+        olderMessagesCursor: null,
+      },
+      pendingDrafts: [],
+      context: {
+        effectiveTimezone: 'Asia/Dhaka',
+        language: 'en',
+        currentTime: '2026-11-13T06:00:00.000Z',
+      },
     },
   };
   let turns: Record<string, jest.Mock>;
@@ -65,11 +90,16 @@ describe('AiChatStreamingService', () => {
 
   it('persists the structured result before emitting the terminal event', async () => {
     const rawResult = {
-      request_id: 'request-1',
-      summary: 'The pipeline is healthy.',
-      agent_results: [],
-      pending_confirmations: [],
-      clarifying_question: null,
+      schemaVersion: '1.0',
+      turnId: prepared.request.turnId,
+      conversationId: prepared.request.conversation.id,
+      inReplyToMessageId: sourceMessageId,
+      reply: {
+        id: 'request-1',
+        content: 'The pipeline is healthy.',
+        agent: prepared.request.conversation.selectedAgent,
+      },
+      result: { type: 'MESSAGE' },
     };
     const response = new Response(
       'event: activity\ndata: {"stage":"planning"}\n\n' +
@@ -108,8 +138,8 @@ describe('AiChatStreamingService', () => {
       `event: result\ndata: ${JSON.stringify(persistedResponse)}\n\n`,
     ]);
     expect(streaming.open).toHaveBeenCalledWith(
-      '/api/v1/chat',
-      { message: 'Show the pipeline', agent: 'Laura' },
+      '/api/v1/ai/chat',
+      prepared.request,
       'Bearer access-token',
       expect.any(AbortSignal),
       [],
@@ -118,18 +148,7 @@ describe('AiChatStreamingService', () => {
       organizationId,
       sourceMessageId,
       prepared,
-      {
-        schemaVersion: '1.0',
-        turnId: 'chat-turn-message-1',
-        conversationId: 'conversation-1',
-        inReplyToMessageId: sourceMessageId,
-        reply: {
-          id: 'request-1',
-          content: 'The pipeline is healthy.',
-          agent: prepared.request.conversation.selectedAgent,
-        },
-        result: { type: 'MESSAGE' },
-      },
+      rawResult,
     );
     expect(activity.succeed).toHaveBeenCalledWith(
       'activity-1',
@@ -172,16 +191,38 @@ describe('AiChatStreamingService', () => {
     ]);
   });
 
-  it('uses the clarifying question when the final summary is empty', async () => {
+  it('passes a structured clarification result through without adapting it', async () => {
+    const rawResult = {
+      schemaVersion: '1.0',
+      turnId: prepared.request.turnId,
+      conversationId: prepared.request.conversation.id,
+      inReplyToMessageId: sourceMessageId,
+      reply: {
+        id: 'request-2',
+        content: 'Which quarter should I review?',
+        agent: prepared.request.conversation.selectedAgent,
+      },
+      result: {
+        type: 'CLARIFICATION',
+        draft: {
+          id: 'draft-1',
+          kind: 'TASK',
+          payload: {},
+        },
+        questions: [
+          {
+            id: 'quarter',
+            field: 'quarter',
+            question: 'Which quarter should I review?',
+            inputType: 'text',
+            required: true,
+          },
+        ],
+      },
+    };
     const response = new Response(
       'event: result\ndata: ' +
-        JSON.stringify({
-          request_id: 'request-2',
-          summary: '',
-          agent_results: [],
-          pending_confirmations: [],
-          clarifying_question: 'Which quarter should I review?',
-        }) +
+        JSON.stringify(rawResult) +
         '\n\n',
       { status: 200, headers: { 'content-type': 'text/event-stream' } },
     );
@@ -199,13 +240,7 @@ describe('AiChatStreamingService', () => {
       organizationId,
       sourceMessageId,
       prepared,
-      expect.objectContaining({
-        reply: expect.objectContaining({
-          id: 'request-2',
-          content: 'Which quarter should I review?',
-        }),
-        result: { type: 'MESSAGE' },
-      }),
+      rawResult,
     );
   });
 

@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -114,4 +115,12 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsEnum(PLATFORM_TIME_FORMATS)
   timeFormat?: (typeof PLATFORM_TIME_FORMATS)[number];
+
+  @ApiPropertyOptional({
+    description:
+      'Temporarily blocks customer-facing API traffic while preserving authentication, health checks, webhooks, and platform-admin recovery routes.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  maintenanceMode?: boolean;
 }

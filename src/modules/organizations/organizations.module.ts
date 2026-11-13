@@ -13,6 +13,6 @@ import { OrganizationLogoStorageService } from './organization-logo-storage.serv
     OrganizationsRepository,
     OrganizationLogoStorageService,
   ],
-  exports: [OrganizationsService],
+  exports: [OrganizationsService, OrganizationLogoStorageService],
 })
 export class OrganizationsModule {}

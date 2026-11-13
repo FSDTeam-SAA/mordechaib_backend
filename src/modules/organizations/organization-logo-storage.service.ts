@@ -53,6 +53,30 @@ export class OrganizationLogoStorageService {
     });
   }
 
+  async uploadPlatformLogo(file: Express.Multer.File) {
+    return this.uploadAsset(file, {
+      folderKey: 'cloudinary.platformBrandingFolder',
+      defaultFolder: 'noltra/platform-branding',
+      publicId: 'logo',
+      allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [{ width: 512, height: 512, crop: 'limit' }],
+      tag: 'noltra-platform-logo',
+      label: 'Platform logo',
+    });
+  }
+
+  async uploadPlatformFavicon(file: Express.Multer.File) {
+    return this.uploadAsset(file, {
+      folderKey: 'cloudinary.platformBrandingFolder',
+      defaultFolder: 'noltra/platform-branding',
+      publicId: 'favicon',
+      allowedFormats: ['png', 'ico'],
+      transformation: [{ width: 64, height: 64, crop: 'limit' }],
+      tag: 'noltra-platform-favicon',
+      label: 'Platform favicon',
+    });
+  }
+
   private async uploadAsset(
     file: Express.Multer.File,
     input: {
