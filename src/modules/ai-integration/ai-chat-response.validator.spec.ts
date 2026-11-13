@@ -14,6 +14,7 @@ describe('AiChatResponseValidator', () => {
     turnId: 'chat-turn-message-1',
     idempotencyKey: 'chat-turn-message-1',
     organizationId: 'organization-1',
+    requester: { userId: 'user-1', name: 'Test Organizer' },
     conversation: {
       id: 'conversation-1',
       title: 'New Chat',

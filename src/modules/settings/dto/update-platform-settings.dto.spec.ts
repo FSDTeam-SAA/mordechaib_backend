@@ -9,6 +9,7 @@ describe('UpdatePlatformSettingsDto', () => {
       supportEmail: ' SUPPORT@NOLTRA.AI ',
       supportPhone: '+1 (555) 123-4567',
       defaultCurrency: 'bdt',
+      maintenanceMode: true,
     });
 
     await expect(validate(dto)).resolves.toHaveLength(0);
@@ -18,6 +19,7 @@ describe('UpdatePlatformSettingsDto', () => {
         supportEmail: 'support@noltra.ai',
         supportPhone: '+15551234567',
         defaultCurrency: 'BDT',
+        maintenanceMode: true,
       }),
     );
   });
@@ -31,6 +33,19 @@ describe('UpdatePlatformSettingsDto', () => {
     await expect(validate(dto)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ property: 'platformUrl' }),
+      ]),
+    );
+  });
+
+  it('rejects a non-boolean maintenance flag', async () => {
+    const dto = plainToInstance(UpdatePlatformSettingsDto, {
+      expectedRevision: 0,
+      maintenanceMode: 'true',
+    });
+
+    await expect(validate(dto)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ property: 'maintenanceMode' }),
       ]),
     );
   });

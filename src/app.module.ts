@@ -46,6 +46,7 @@ import { SystemServicesModule } from './modules/system-services/system-services.
 import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module';
 import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module';
 import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enquiries.module';
+import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/admin-meeting-calendar.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enqu
     RoiDashboardModule,
     CrmDashboardModule,
     ContactEnquiriesModule,
+    AdminMeetingCalendarModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
