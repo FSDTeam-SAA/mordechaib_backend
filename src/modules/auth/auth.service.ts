@@ -446,6 +446,14 @@ export class AuthService {
       await bcrypt.hash(dto.newPassword, this.bcryptRounds),
     );
     await this.sessionsRepository.revokeAllForUser(userId, 'PASSWORD_CHANGED');
+    await this.auditLogs.create({
+      organizationId: user.organizationId,
+      userId,
+      action: 'USER_PASSWORD_CHANGED',
+      resourceType: 'User',
+      resourceId: userId,
+      metadata: { allSessionsRevoked: true },
+    });
     return { message: 'Password changed successfully. Please sign in again.' };
   }
 

@@ -48,6 +48,7 @@ import { SourceAnalysesRepository } from '../source-analyses/source-analyses.rep
 import { MeetingAnalysisInsightsService } from '../source-analyses/meeting-analysis-insights.service';
 import { CrmRecordMutationsService } from '../crm/crm-record-mutations.service';
 import { UpdateCrmRecordActionDto } from '../crm/dto/update-crm-record-action.dto';
+import { ContactsService } from '../contacts/contacts.service';
 
 type StoredProposal = AiActionProposal & {
   _id: unknown;
@@ -91,6 +92,7 @@ export class AiActionsService {
     private readonly sourceAnalyses: SourceAnalysesRepository,
     private readonly meetingInsights: MeetingAnalysisInsightsService,
     private readonly crmMutations: CrmRecordMutationsService,
+    private readonly contacts: ContactsService,
   ) {}
 
   /**
@@ -642,7 +644,9 @@ export class AiActionsService {
       );
       let target: { type: AiActionTargetType; id: string };
       if (proposal.actionType === AiActionType.CREATE_TASK) {
-        const taskPayload = payload as AiTaskActionPayloadDto;
+        const taskPayload = this.withCustomerContact(
+          payload as AiTaskActionPayloadDto,
+        );
         await this.assertValidAssignee(
           proposal.organizationId,
           taskPayload.assignedToUserId,
@@ -658,7 +662,9 @@ export class AiActionsService {
         );
         target = { type: AiActionTargetType.TASK, id: task.id };
       } else if (proposal.actionType === AiActionType.SCHEDULE_MEETING) {
-        const meetingPayload = payload as AiMeetingActionPayloadDto;
+        const meetingPayload = this.withCustomerContact(
+          payload as AiMeetingActionPayloadDto,
+        );
         const meeting = await this.meetings.createFromAiProposal(
           proposal.organizationId,
           creatorUserId,
@@ -1276,6 +1282,22 @@ export class AiActionsService {
         errors: this.validationMessages(errors),
       });
     }
+    if (
+      (actionType === AiActionType.CREATE_TASK ||
+        actionType === AiActionType.SCHEDULE_MEETING) &&
+      (instance as AiTaskActionPayloadDto | AiMeetingActionPayloadDto)
+        .customerId
+    ) {
+      if (!organizationId) {
+        throw new BadRequestException(
+          `${actionType} customer validation requires organization context`,
+        );
+      }
+      await this.contacts.assertActiveIds(organizationId, [
+        (instance as AiTaskActionPayloadDto | AiMeetingActionPayloadDto)
+          .customerId!,
+      ]);
+    }
     if (actionType === AiActionType.SCHEDULE_MEETING) {
       const meeting = instance as AiMeetingActionPayloadDto;
       if (!meeting.startsAt) {
@@ -1346,6 +1368,21 @@ export class AiActionsService {
     if (!timezone) return { ...payload };
     assertValidTimezone(timezone);
     return { ...payload, timezone };
+  }
+
+  /**
+   * AI uses a singular customerId because one chat proposal is grounded to one
+   * confirmed customer. Task and meeting aggregates keep their existing,
+   * reusable multi-customer representation in contactIds.
+   */
+  private withCustomerContact<
+    T extends AiTaskActionPayloadDto | AiMeetingActionPayloadDto,
+  >(payload: T): Omit<T, 'customerId'> & { contactIds?: string[] } {
+    const { customerId, ...actionPayload } = payload;
+    return {
+      ...actionPayload,
+      ...(customerId ? { contactIds: [customerId] } : {}),
+    };
   }
 
   private async assertValidAssignee(
@@ -1419,6 +1456,7 @@ export class AiActionsService {
       department: payload.department,
       estimatedDurationMinutes: payload.estimatedDurationMinutes,
       tags: payload.tags,
+      customerId: payload.customerId,
     };
   }
 
@@ -1434,6 +1472,7 @@ export class AiActionsService {
       durationMinutes: payload.durationMinutes,
       timezone: payload.timezone,
       invitees: payload.invitees,
+      customerId: payload.customerId,
     };
   }
 
