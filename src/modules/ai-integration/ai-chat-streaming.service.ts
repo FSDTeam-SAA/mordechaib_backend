@@ -61,10 +61,7 @@ export class AiChatStreamingService {
         sourceMessageId,
       );
       const handle: AiStreamHandle = await this.streaming.open(
-        this.config.get<string>(
-          'aiService.chatStreamPath',
-          '/api/v1/ai/chat',
-        ),
+        this.config.get<string>('aiService.chatStreamPath', '/api/v1/ai/chat'),
         this.upstreamRequest(prepared),
         authorization,
         signal,
@@ -230,10 +227,20 @@ export class AiChatStreamingService {
     });
   }
 
+  /**
+   * The AI chat contract's terminal error is `{ code, message, retryable }`;
+   * `detail` is still read for streams that only send the older field.
+   */
   private errorDetail(data: string | undefined) {
     if (!data) return undefined;
     try {
-      const parsed = JSON.parse(data) as { detail?: unknown };
+      const parsed = JSON.parse(data) as {
+        message?: unknown;
+        detail?: unknown;
+      };
+      if (typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message;
+      }
       return typeof parsed.detail === 'string' ? parsed.detail : undefined;
     } catch {
       return undefined;

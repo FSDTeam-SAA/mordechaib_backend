@@ -19,7 +19,7 @@ export class StripeProvider {
     cancelUrl: string;
     metadata: Record<string, string>;
     trialDays?: number;
-  }) {
+  }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     return this.client.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: params.priceId, quantity: 1 }],
@@ -46,7 +46,7 @@ export class StripeProvider {
     successUrl: string;
     cancelUrl: string;
     metadata: Record<string, string>;
-  }) {
+  }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     return this.client.checkout.sessions.create({
       mode: 'payment',
       line_items: [
@@ -67,7 +67,9 @@ export class StripeProvider {
     });
   }
 
-  cancelSubscription(stripeSubscriptionId: string) {
+  cancelSubscription(
+    stripeSubscriptionId: string,
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -75,14 +77,19 @@ export class StripeProvider {
 
   // Account deletion is different from a normal voluntary cancellation:
   // no future billing may remain after the workspace has been erased.
-  cancelSubscriptionImmediately(stripeSubscriptionId: string) {
+  cancelSubscriptionImmediately(
+    stripeSubscriptionId: string,
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     return this.client.subscriptions.cancel(stripeSubscriptionId);
   }
 
   // Screen 3 — no charges while paused; Stripe resumes billing on its own
   // at resumesAt (behavior 'void' means no invoices are generated at all
   // during the pause, as opposed to generating and marking them uncollectible).
-  pauseSubscription(stripeSubscriptionId: string, resumesAt: Date) {
+  pauseSubscription(
+    stripeSubscriptionId: string,
+    resumesAt: Date,
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       pause_collection: {
         behavior: 'void',
@@ -92,7 +99,9 @@ export class StripeProvider {
   }
 
   // "Resume anytime with one click" — clears the pause early.
-  resumeSubscription(stripeSubscriptionId: string) {
+  resumeSubscription(
+    stripeSubscriptionId: string,
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       pause_collection: '',
     });
@@ -104,7 +113,7 @@ export class StripeProvider {
   async upgradeSubscriptionPrice(
     stripeSubscriptionId: string,
     newPriceId: string,
-  ) {
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     const subscription =
       await this.client.subscriptions.retrieve(stripeSubscriptionId);
     const itemId = subscription.items.data[0]?.id;
@@ -119,7 +128,11 @@ export class StripeProvider {
     });
   }
 
-  constructWebhookEvent(rawBody: Buffer, signature: string, secret: string) {
+  constructWebhookEvent(
+    rawBody: Buffer,
+    signature: string,
+    secret: string,
+  ): Stripe.Event {
     return this.client.webhooks.constructEvent(rawBody, signature, secret);
   }
 
@@ -129,7 +142,7 @@ export class StripeProvider {
     organizationId: string;
     callSid: string;
     durationSeconds: number;
-  }) {
+  }): Promise<Stripe.Response<Stripe.InvoiceItem>> {
     return this.client.invoiceItems.create(
       {
         customer: params.customerId,
@@ -148,14 +161,20 @@ export class StripeProvider {
   // --- Product/Price management, used by SubscriptionPlansService so an
   // admin never has to touch the Stripe dashboard to create a plan. ---
 
-  createProduct(params: { name: string; description?: string }) {
+  createProduct(params: {
+    name: string;
+    description?: string;
+  }): Promise<Stripe.Response<Stripe.Product>> {
     return this.client.products.create({
       name: params.name,
       description: params.description,
     });
   }
 
-  updateProductName(productId: string, name: string) {
+  updateProductName(
+    productId: string,
+    name: string,
+  ): Promise<Stripe.Response<Stripe.Product>> {
     return this.client.products.update(productId, { name });
   }
 
@@ -168,7 +187,7 @@ export class StripeProvider {
     productId: string;
     unitAmountUsd: number;
     interval: 'month' | 'year';
-  }) {
+  }): Promise<Stripe.Response<Stripe.Price>> {
     return this.client.prices.create({
       product: params.productId,
       currency: 'usd',
@@ -241,7 +260,7 @@ export class StripeProvider {
   // Marks a Price inactive so it can no longer be used for new checkouts,
   // without deleting it (Stripe Prices can't be deleted, only archived —
   // and existing subscriptions referencing it are unaffected either way).
-  archivePrice(priceId: string) {
+  archivePrice(priceId: string): Promise<Stripe.Response<Stripe.Price>> {
     return this.client.prices.update(priceId, { active: false });
   }
 
@@ -256,7 +275,7 @@ export class StripeProvider {
     cancelUrl: string;
     trialDays?: number;
     metadata: Record<string, string>;
-  }) {
+  }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     const lineItems = [
       { price: params.planPriceId, quantity: 1 },
       ...params.addonPriceIds.map((pid) => ({ price: pid, quantity: 1 })),
@@ -275,7 +294,10 @@ export class StripeProvider {
   }
 
   // Adds a new recurring item (an add-on tier) to an existing subscription.
-  addSubscriptionItem(stripeSubscriptionId: string, priceId: string) {
+  addSubscriptionItem(
+    stripeSubscriptionId: string,
+    priceId: string,
+  ): Promise<Stripe.Response<Stripe.SubscriptionItem>> {
     return this.client.subscriptionItems.create({
       subscription: stripeSubscriptionId,
       price: priceId,
@@ -285,7 +307,10 @@ export class StripeProvider {
 
   // Swaps the price on an existing subscription item (used when replacing
   // one add-on tier with another in the same category).
-  updateSubscriptionItem(itemId: string, newPriceId: string) {
+  updateSubscriptionItem(
+    itemId: string,
+    newPriceId: string,
+  ): Promise<Stripe.Response<Stripe.SubscriptionItem>> {
     return this.client.subscriptionItems.update(itemId, {
       price: newPriceId,
       quantity: 1,
@@ -294,7 +319,9 @@ export class StripeProvider {
   }
 
   // Removes a subscription item (deletes an add-on from the subscription).
-  deleteSubscriptionItem(itemId: string) {
+  deleteSubscriptionItem(
+    itemId: string,
+  ): Promise<Stripe.Response<Stripe.DeletedSubscriptionItem>> {
     return this.client.subscriptionItems.del(itemId, {
       proration_behavior: 'create_prorations',
     });

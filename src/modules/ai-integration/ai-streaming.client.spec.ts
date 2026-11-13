@@ -36,7 +36,7 @@ describe('AiStreamingClient', () => {
     const client = new AiStreamingClient(config, systemServices);
 
     const handle = await client.open(
-      '/api/v1/chat',
+      '/api/v1/ai/chat',
       { message: 'Show the pipeline' },
       'Bearer access-token',
       new AbortController().signal,
@@ -44,7 +44,7 @@ describe('AiStreamingClient', () => {
 
     expect(systemServices.assertAiServiceEnabled).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://ai.example.test/api/v1/chat',
+      'https://ai.example.test/api/v1/ai/chat',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -89,7 +89,7 @@ describe('AiStreamingClient', () => {
     try {
       const client = new AiStreamingClient(config, systemServices);
       await client.open(
-        '/api/v1/chat',
+        '/api/v1/ai/chat',
         {
           message: 'Review this',
           agent: 'Stitch',

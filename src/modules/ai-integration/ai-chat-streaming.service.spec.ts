@@ -191,6 +191,36 @@ describe('AiChatStreamingService', () => {
     ]);
   });
 
+  it('records the contract error message from a structured error event', async () => {
+    const raw =
+      'event: error\ndata: {"code":"RATE_LIMITED","message":"The chat model is rate limited.","retryable":true}\n\n';
+    const response = new Response(raw, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    streaming.open.mockResolvedValue({ response, abort: jest.fn() });
+    const opened = await service.open(
+      organizationId,
+      sourceMessageId,
+      'Bearer access-token',
+      new AbortController().signal,
+    );
+    const emitted: string[] = [];
+
+    await expect(
+      service.consume(opened, (event) => {
+        emitted.push(event);
+      }),
+    ).resolves.toEqual({ terminal: 'error' });
+    expect(sourceContext.markMessageProcessed).toHaveBeenLastCalledWith(
+      organizationId,
+      sourceMessageId,
+      'FAILED',
+      'The chat model is rate limited.',
+    );
+    expect(emitted).toEqual([raw]);
+  });
+
   it('passes a structured clarification result through without adapting it', async () => {
     const rawResult = {
       schemaVersion: '1.0',
@@ -221,9 +251,7 @@ describe('AiChatStreamingService', () => {
       },
     };
     const response = new Response(
-      'event: result\ndata: ' +
-        JSON.stringify(rawResult) +
-        '\n\n',
+      'event: result\ndata: ' + JSON.stringify(rawResult) + '\n\n',
       { status: 200, headers: { 'content-type': 'text/event-stream' } },
     );
     streaming.open.mockResolvedValue({ response, abort: jest.fn() });

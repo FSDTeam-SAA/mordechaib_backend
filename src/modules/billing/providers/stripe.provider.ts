@@ -19,7 +19,7 @@ export class StripeProvider {
     cancelUrl: string;
     metadata: Record<string, string>;
     trialDays?: number;
-  }) {
+  }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     return this.client.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: params.priceId, quantity: 1 }],
@@ -35,13 +35,19 @@ export class StripeProvider {
     });
   }
 
-  cancelSubscription(stripeSubscriptionId: string) {
+  cancelSubscription(
+    stripeSubscriptionId: string,
+  ): Promise<Stripe.Response<Stripe.Subscription>> {
     return this.client.subscriptions.update(stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
   }
 
-  constructWebhookEvent(rawBody: Buffer, signature: string, secret: string) {
+  constructWebhookEvent(
+    rawBody: Buffer,
+    signature: string,
+    secret: string,
+  ): Stripe.Event {
     return this.client.webhooks.constructEvent(rawBody, signature, secret);
   }
 }
