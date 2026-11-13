@@ -8,6 +8,7 @@ path it has in the repository:
 ```text
 change-files/
 ├── tsconfig.json
+├── jest.config.cjs
 └── src/modules/
     ├── ai-integration/
     │   ├── ai-chat-streaming.service.ts
@@ -18,8 +19,14 @@ change-files/
 ```
 
 To apply them, copy each file over the file at the same path in the
-repository. The changes are already in the working tree of this checkout;
-nothing has been committed.
+repository.
+
+> **This folder is excluded from the build, the type check and the tests**
+> (`tsconfig.json` → `"exclude"`, `jest.config.cjs` →
+> `testPathIgnorePatterns`; see §3). The copied `.ts` files import their
+> neighbours by relative path, so if TypeScript or Jest scanned them they
+> would fail. If you delete this folder, the two exclude entries can stay;
+> they are harmless.
 
 **Results after the changes**
 
@@ -141,7 +148,29 @@ has three of them: `createCheckoutSession`, `cancelSubscription` and
 
 ---
 
-## 3. Deployment notes
+## 3. Keeping `change-files/` out of the build and tests
+
+### `tsconfig.json`
+
+**Added:** `"exclude": ["node_modules", "dist", "change-files"]`.
+
+`tsconfig.json` has no `include`, so TypeScript and the editor check every
+`.ts` file under the project, including the copies in this folder. Setting
+`exclude` replaces TypeScript's default list, so `node_modules` and `dist`
+(the `outDir`) are listed again. `nest build` uses `tsconfig.build.json`
+(`include: ["src/**/*.ts"]`) and was never affected.
+
+### `jest.config.cjs`
+
+**Added:** `testPathIgnorePatterns: ['/node_modules/', '<rootDir>/change-files/']`.
+
+Jest's `testRegex` (`.*\.spec\.ts$`) matches any spec file under the project,
+so without this it would also run the two copied spec files, and they would
+fail to import their dependencies.
+
+---
+
+## 4. Deployment notes
 
 - **Main Backend env:** keep `AI_CHAT_STREAM_PATH=/api/v1/ai/chat` (the default),
   and remove any override that points at `/api/v1/chat`. That route no longer
