@@ -101,6 +101,15 @@ export class CrmRecordsService {
     return this.toResponse(record);
   }
 
+  async getMany(organizationId: string, ids: string[]) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.some((id) => !isValidObjectId(id))) {
+      throw new BadRequestException('CRM record ids must be valid MongoDB ids');
+    }
+    const records = await this.records.findByIds(organizationId, uniqueIds);
+    return records.map((record) => this.toResponse(record));
+  }
+
   private assertDateRange(query: ListCrmRecordsQueryDto) {
     if (
       query.updatedFrom &&
@@ -114,7 +123,7 @@ export class CrmRecordsService {
     }
   }
 
-  private toResponse(record: object) {
+  private toResponse(record: object): Record<string, unknown> & { id: string } {
     const value = record as Record<string, unknown>;
     const { _id, __v, organizationId, rawPayload, ...response } = value;
     void __v;

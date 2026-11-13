@@ -11,6 +11,7 @@ import { EmailDraftSourceType } from '../../common/enums/email-draft-source-type
 export type EmailDraftValues = {
   provider?: EmailProvider;
   to: string[];
+  contactIds?: string[];
   subject: string;
   body: string;
   source?: { type: EmailDraftSourceType; id: string };
