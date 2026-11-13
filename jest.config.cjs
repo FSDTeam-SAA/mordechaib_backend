@@ -3,6 +3,8 @@ module.exports = {
   rootDir: '.',
   testEnvironment: 'node',
   testRegex: '.*\\.spec\\.ts$',
+  // change-files/ holds reference copies of changed files, not runnable tests.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/change-files/'],
   transform: {
     '^.+\\.(t|j)s$': [
       'ts-jest',
