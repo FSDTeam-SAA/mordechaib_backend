@@ -21,6 +21,8 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequestUser } from '../../common/types/request-context.type';
+import { ListOrgTeamMembersQueryDto } from '../org-team/dto/list-org-team-members-query.dto';
+import { OrgTeamService } from '../org-team/org-team.service';
 import { ChangeOrganizationPlanDto } from './dto/change-organization-plan.dto';
 import { ListOrganizationPlanOptionsQueryDto } from './dto/list-organization-plan-options-query.dto';
 import { ListOrganizationsAdminQueryDto } from './dto/list-organizations-admin-query.dto';
@@ -37,7 +39,10 @@ import { OrganizationsAdminService } from './organizations-admin.service';
 @Controller('organizations-admin')
 @UseGuards(PlatformAdminGuard)
 export class OrganizationsAdminController {
-  constructor(private readonly service: OrganizationsAdminService) {}
+  constructor(
+    private readonly service: OrganizationsAdminService,
+    private readonly orgTeam: OrgTeamService,
+  ) {}
 
   @Get()
   @ApiOperation({

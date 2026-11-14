@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AgentType } from '../../common/enums/agent-type.enum';
+import { BusinessMemoryKind } from '../../common/enums/business-memory.enum';
+import { BusinessMemoryCandidate } from '../business-memory/business-memory.service';
 import {
   AiChatAgentIdentity,
   AiChatClarificationQuestion,
@@ -163,6 +165,54 @@ export class AiChatResponseValidator {
       throw new BadRequestException('Invalid chat draft kind');
     }
     return value;
+  }
+
+  /**
+   * The optional `memories` an AI turn proposes. Lenient on purpose: an invalid
+   * item is dropped, never the turn - the reply and result stay authoritative.
+   */
+  memories(value: unknown): BusinessMemoryCandidate[] {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const items = (value as Record<string, unknown>).memories;
+    if (!Array.isArray(items)) return [];
+    const kinds = Object.values(BusinessMemoryKind) as string[];
+    const candidates: BusinessMemoryCandidate[] = [];
+    // Invalid items never push out valid ones: filter, then keep the first five.
+    for (const item of items.slice(0, 20)) {
+      if (candidates.length === 5) break;
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const memory = item as Record<string, unknown>;
+      const content =
+        typeof memory.content === 'string' ? memory.content.trim() : '';
+      if (
+        typeof memory.kind !== 'string' ||
+        !kinds.includes(memory.kind) ||
+        !content ||
+        content.length > 1_000
+      ) {
+        continue;
+      }
+      const contactIds = Array.isArray(memory.contactIds)
+        ? memory.contactIds
+            .filter(
+              (id): id is string =>
+                typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id),
+            )
+            .slice(0, 10)
+        : [];
+      const dueOn =
+        typeof memory.dueOn === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(memory.dueOn)
+          ? memory.dueOn
+          : undefined;
+      candidates.push({
+        kind: memory.kind as BusinessMemoryKind,
+        content,
+        ...(contactIds.length ? { contactIds } : {}),
+        ...(dueOn ? { dueOn } : {}),
+      });
+    }
+    return candidates;
   }
 
   private sameAgent(left: AiChatAgentIdentity, right: AiChatAgentIdentity) {

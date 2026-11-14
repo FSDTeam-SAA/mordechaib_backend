@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OrgTeamModule } from '../org-team/org-team.module';
 import { TeamController } from './team.controller';
 import { TeamRepository } from './team.repository';
 import { TeamService } from './team.service';
@@ -7,9 +8,9 @@ import { TeamService } from './team.service';
 // (src/database/mongoose/mongoose.module.ts), same as every other schema
 // in this codebase, so it doesn't need MongooseModule.forFeature() here.
 @Module({
+  imports: [OrgTeamModule],
   controllers: [TeamController],
   providers: [TeamService, TeamRepository],
   exports: [TeamService],
 })
-
 export class TeamModule {}
