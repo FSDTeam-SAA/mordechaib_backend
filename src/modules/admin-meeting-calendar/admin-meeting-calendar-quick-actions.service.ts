@@ -8,6 +8,7 @@ import { PlatformMeetingsService } from '../meeting-bots/platform-meetings.servi
 import { UsersService } from '../users/users.service';
 import { AdminScheduleMeetingDto } from './dto/admin-schedule-meeting.dto';
 import { AdminSyncCalendarDto } from './dto/admin-sync-calendar.dto';
+import { AdminMeetingOperationLeaseService } from './admin-meeting-operation-lease.service';
 
 @Injectable()
 export class AdminMeetingCalendarQuickActionsService {
@@ -16,53 +17,68 @@ export class AdminMeetingCalendarQuickActionsService {
     private readonly meetings: PlatformMeetingsService,
     private readonly calendar: CalendarService,
     private readonly audits: AuditLogsService,
+    private readonly leases: AdminMeetingOperationLeaseService,
   ) {}
 
   async schedule(actor: RequestUser, input: AdminScheduleMeetingDto) {
-    const organizer = await this.requireOrganizer(
-      input.organizationId,
-      input.organizerUserId,
-    );
-    const {
-      organizationId,
-      organizerUserId: _organizerUserId,
-      ...meeting
-    } = input;
-    const result = await this.meetings.create(
-      organizationId,
-      String(organizer._id),
-      meeting,
-    );
-    await this.audit(actor, organizationId, 'SCHEDULE', {
-      organizerUserId: String(organizer._id),
-      meetingId: this.resourceId(result),
-      platform: meeting.platform,
+    return this.leases.run({
+      key: `meeting-create:${input.organizationId}:${input.idempotencyKey}`,
+      operation: 'SCHEDULE',
+      actorUserId: actor.id,
+      execute: async () => {
+        const organizer = await this.requireOrganizer(
+          input.organizationId,
+          input.organizerUserId,
+        );
+        const {
+          organizationId,
+          organizerUserId: _organizerUserId,
+          ...meeting
+        } = input;
+        const result = await this.meetings.create(
+          organizationId,
+          String(organizer._id),
+          meeting,
+        );
+        await this.audit(actor, organizationId, 'SCHEDULE', {
+          organizerUserId: String(organizer._id),
+          meetingId: this.resourceId(result),
+          platform: meeting.platform,
+        });
+        return result;
+      },
     });
-    return result;
   }
 
   async sync(actor: RequestUser, input: AdminSyncCalendarDto) {
-    const organizer = await this.requireOrganizer(
-      input.organizationId,
-      input.organizerUserId,
-    );
-    const {
-      organizationId,
-      organizerUserId: _organizerUserId,
-      ...syncInput
-    } = input;
-    const result = await this.calendar.syncEvents(
-      organizationId,
-      String(organizer._id),
-      syncInput,
-    );
-    await this.audit(actor, organizationId, 'SYNC', {
-      organizerUserId: String(organizer._id),
-      provider: syncInput.provider || 'ALL_CONNECTED',
-      availability: result.availability,
-      totalSynchronized: result.totalSynchronized,
+    return this.leases.run({
+      key: `calendar-sync:${input.organizationId}`,
+      operation: 'SYNC',
+      actorUserId: actor.id,
+      execute: async () => {
+        const organizer = await this.requireOrganizer(
+          input.organizationId,
+          input.organizerUserId,
+        );
+        const {
+          organizationId,
+          organizerUserId: _organizerUserId,
+          ...syncInput
+        } = input;
+        const result = await this.calendar.syncEvents(
+          organizationId,
+          String(organizer._id),
+          syncInput,
+        );
+        await this.audit(actor, organizationId, 'SYNC', {
+          organizerUserId: String(organizer._id),
+          provider: syncInput.provider || 'ALL_CONNECTED',
+          availability: result.availability,
+          totalSynchronized: result.totalSynchronized,
+        });
+        return result;
+      },
     });
-    return result;
   }
 
   private async requireOrganizer(organizationId: string, userId: string) {

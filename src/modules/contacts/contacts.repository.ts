@@ -135,6 +135,17 @@ export class ContactsRepository {
       .exec();
   }
 
+  findActiveByPhone(organizationId: string, phone: string) {
+    return this.contacts
+      .findOne({
+        organizationId,
+        phone,
+        status: CustomerContactStatus.ACTIVE,
+      })
+      .lean()
+      .exec();
+  }
+
   findDuplicate(
     organizationId: string,
     input: { email?: string; phone?: string },

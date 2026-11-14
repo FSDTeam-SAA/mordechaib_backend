@@ -1,4 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   AiActionProposalStatus,
   AiActionType,
@@ -54,13 +57,17 @@ describe('AiActionsService analysis ingestion', () => {
     claimApprovedForExecution: jest.fn(),
     markExecuted: jest.fn(),
     markFailed: jest.fn(),
+    restorePendingAfterRecoverableFailure: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
   const auditLogs = { create: jest.fn() };
   const contacts = { assertActiveIds: jest.fn() };
   const tasks = { createFromAiProposal: jest.fn() };
-  const meetings = { createFromAiProposal: jest.fn() };
+  const meetings = {
+    createFromAiProposal: jest.fn(),
+    assertAiProposalExecutable: jest.fn(),
+  };
   const analysis = {
     sentimentAnalysis: {
       score: { positive: 60, neutral: 30, negative: 10 },
@@ -98,6 +105,7 @@ describe('AiActionsService analysis ingestion', () => {
       ...input,
     }));
     auditLogs.create.mockResolvedValue(undefined);
+    meetings.assertAiProposalExecutable.mockResolvedValue(undefined);
     service = new AiActionsService(
       repository as unknown as AiActionsRepository,
       tasks as unknown as TasksService,
@@ -162,6 +170,7 @@ describe('AiActionsService analysis ingestion', () => {
       },
     };
     repository.approvePending.mockResolvedValue(approved);
+    repository.findById.mockResolvedValue(approved);
     repository.claimApprovedForExecution.mockResolvedValue(approved);
     repository.markExecuted.mockResolvedValue({
       ...approved,
@@ -183,6 +192,102 @@ describe('AiActionsService analysis ingestion', () => {
     expect(tasks.createFromAiProposal.mock.calls[0][2]).not.toHaveProperty(
       'customerId',
     );
+  });
+
+  it('keeps a meeting proposal pending when its calendar is not connected', async () => {
+    const proposalId = '66cc9bdfa847ea856c7b41d5';
+    const pending = {
+      _id: proposalId,
+      organizationId,
+      proposalId: 'chat:conversation:meeting-without-calendar',
+      actionType: AiActionType.SCHEDULE_MEETING,
+      status: AiActionProposalStatus.PENDING,
+      payload: {
+        platform: 'GOOGLE_MEET',
+        title: 'Customer review',
+        startsAt: '2026-12-20T09:00:00.000Z',
+        timezone: 'UTC',
+        invitees: ['customer@example.com'],
+      },
+      proposedByAgent: {
+        id: operationsAgentId,
+        name: 'Operations Agent',
+        type: AgentType.OPERATIONS,
+      },
+    };
+    repository.findById.mockResolvedValue(pending);
+    meetings.assertAiProposalExecutable.mockRejectedValue(
+      new ServiceUnavailableException(
+        'Connect a Google or Outlook calendar before scheduling a meeting',
+      ),
+    );
+
+    await expect(
+      service.approve(organizationId, owner, proposalId),
+    ).rejects.toThrow(
+      'Connect a Google or Outlook calendar before scheduling a meeting',
+    );
+
+    expect(repository.approvePending).not.toHaveBeenCalled();
+    expect(repository.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('rolls an executing meeting proposal back to pending after a recoverable failure', async () => {
+    const proposalId = '66cc9bdfa847ea856c7b41d5';
+    const pending = {
+      _id: proposalId,
+      organizationId,
+      proposalId: 'chat:conversation:recoverable-meeting',
+      actionType: AiActionType.SCHEDULE_MEETING,
+      status: AiActionProposalStatus.PENDING,
+      payload: {
+        platform: 'GOOGLE_MEET',
+        title: 'Customer review',
+        startsAt: '2026-12-20T09:00:00.000Z',
+        timezone: 'UTC',
+        invitees: ['customer@example.com'],
+      },
+      proposedByAgent: {
+        id: operationsAgentId,
+        name: 'Operations Agent',
+        type: AgentType.OPERATIONS,
+      },
+    };
+    const approved = {
+      ...pending,
+      status: AiActionProposalStatus.APPROVED,
+      approvedByUserId: owner.id,
+    };
+    const executing = {
+      ...approved,
+      status: AiActionProposalStatus.EXECUTING,
+    };
+    repository.findById.mockResolvedValue(pending);
+    repository.approvePending.mockResolvedValue(approved);
+    repository.claimApprovedForExecution.mockResolvedValue(executing);
+    repository.restorePendingAfterRecoverableFailure.mockResolvedValue({
+      ...pending,
+      executionError: 'Calendar provider temporarily unavailable',
+    });
+    meetings.createFromAiProposal.mockRejectedValue(
+      new ServiceUnavailableException(
+        'Calendar provider temporarily unavailable',
+      ),
+    );
+
+    await expect(
+      service.approve(organizationId, owner, proposalId),
+    ).rejects.toThrow('Calendar provider temporarily unavailable');
+
+    expect(
+      repository.restorePendingAfterRecoverableFailure,
+    ).toHaveBeenCalledWith(
+      organizationId,
+      proposalId,
+      'Calendar provider temporarily unavailable',
+      AiActionProposalStatus.EXECUTING,
+    );
+    expect(repository.markFailed).not.toHaveBeenCalled();
   });
 
   it('creates a stable chat clarification draft without fabricated analysis', async () => {

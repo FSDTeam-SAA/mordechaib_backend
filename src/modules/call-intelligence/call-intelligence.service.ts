@@ -25,6 +25,7 @@ import {
 } from '../../common/helpers/ai-action-source.helper';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
 import { ContactsService } from '../contacts/contacts.service';
+import { ContactCommercialContextService } from '../contacts/contact-commercial-context.service';
 import { MessagesService } from '../messages/messages.service';
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { SourceAnalysesRepository } from '../source-analyses/source-analyses.repository';
@@ -86,6 +87,7 @@ export class CallIntelligenceService {
     private readonly cloudinaryStorage: CloudinaryMessageAttachmentStorage,
     private readonly contacts: ContactsService,
     private readonly messages: MessagesService,
+    private readonly commercialContext: ContactCommercialContextService,
   ) {}
 
   async list(organizationId: string, query: ListCallIntelligenceQueryDto) {
@@ -271,6 +273,10 @@ export class CallIntelligenceService {
     const analysis = storedAnalysis
       ? this.publicDocument(storedAnalysis as unknown as LeanRecord)
       : null;
+    const crm = await this.commercialContext.resolve(
+      organizationId,
+      this.commercialReference(media.metadata),
+    );
     return {
       source,
       metadata: media.metadata,
@@ -280,7 +286,7 @@ export class CallIntelligenceService {
       analysis,
       actions,
       extensions: {
-        crm: null,
+        crm,
       },
     };
   }
@@ -718,6 +724,10 @@ export class CallIntelligenceService {
         occurredAt: call?.startedAt,
         endedAt: call?.endedAt,
         durationSeconds: call?.durationSeconds ?? recording.recordingDuration,
+        contactId: call?.contactId,
+        phoneNumber: this.callPartyNumber(
+          call as unknown as LeanRecord | undefined,
+        ),
         recordingStatus: recording.recordingStatus,
         aiStatus: recording.aiStatus,
         transcriptionProvider: recording.transcriptionProvider,
@@ -837,6 +847,7 @@ export class CallIntelligenceService {
         durationMinutes: connectedMeeting?.durationMinutes,
         timezone: connectedMeeting?.timezone,
         invitees: connectedMeeting?.invitees || [],
+        contactId: this.singleContactId(connectedMeeting?.contactIds),
         botName: meeting.botName,
         recordingId: meeting.recordingId,
       },
@@ -862,6 +873,27 @@ export class CallIntelligenceService {
     const { _id, __v, ...document } = value;
     void __v;
     return { id: String(_id), ...document };
+  }
+
+  private commercialReference(metadata: Record<string, unknown>) {
+    return {
+      contactId:
+        typeof metadata.contactId === 'string'
+          ? metadata.contactId
+          : undefined,
+      phone:
+        typeof metadata.phoneNumber === 'string'
+          ? metadata.phoneNumber
+          : undefined,
+    };
+  }
+
+  private singleContactId(value: unknown) {
+    if (!Array.isArray(value)) return undefined;
+    const contactIds = value.filter(
+      (item): item is string => typeof item === 'string',
+    );
+    return contactIds.length === 1 ? contactIds[0] : undefined;
   }
 
   private assertSourceId(sourceId: string) {

@@ -1,10 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   AdminMeetingSourceType,
   AdminMeetingStatus,
 } from '../../common/enums/admin-meeting-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
+import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 
 export class AdminMeetingOrganization {
   @ApiProperty()
@@ -167,4 +169,129 @@ export class AdminMeetingCalendarActionResponse {
 
   @ApiProperty({ required: false })
   deleted?: boolean;
+}
+
+export class AdminScheduledMeetingResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  organizationId!: string;
+
+  @ApiProperty()
+  createdByUserId!: string;
+
+  @ApiProperty({ enum: MeetingPlatform })
+  platform!: MeetingPlatform;
+
+  @ApiProperty()
+  title!: string;
+
+  @ApiPropertyOptional()
+  agenda?: string;
+
+  @ApiProperty({ format: 'date-time' })
+  startsAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  endsAt!: string;
+
+  @ApiProperty()
+  durationMinutes!: number;
+
+  @ApiProperty()
+  timezone!: string;
+
+  @ApiProperty({ type: [String] })
+  invitees!: string[];
+
+  @ApiProperty({ type: [String] })
+  contactIds!: string[];
+
+  @ApiProperty({ enum: PlatformMeetingStatus })
+  status!: PlatformMeetingStatus;
+
+  @ApiProperty()
+  botRequested!: boolean;
+
+  @ApiProperty()
+  reminderMinutesBeforeStart!: number;
+
+  @ApiPropertyOptional({ enum: CalendarProviderType })
+  calendarProvider?: CalendarProviderType;
+
+  @ApiPropertyOptional()
+  providerMeetingId?: string;
+
+  @ApiPropertyOptional()
+  meetingBotId?: string;
+
+  @ApiPropertyOptional()
+  calendarEventId?: string;
+
+  @ApiPropertyOptional()
+  calendarEventUrl?: string;
+
+  @ApiPropertyOptional()
+  joinUrl?: string;
+
+  @ApiPropertyOptional()
+  startUrl?: string;
+
+  @ApiPropertyOptional()
+  aiActionProposalId?: string;
+
+  @ApiPropertyOptional({ type: Object })
+  metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  createdAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  updatedAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'True when the same idempotency key already created this meeting.',
+  })
+  duplicate?: boolean;
+}
+
+export class AdminCalendarSyncProviderResult {
+  @ApiProperty({ enum: CalendarProviderType })
+  provider!: CalendarProviderType;
+
+  @ApiProperty({ enum: ['SYNCHRONIZED', 'FAILED'] })
+  status!: 'SYNCHRONIZED' | 'FAILED';
+
+  @ApiProperty()
+  synchronized!: number;
+
+  @ApiPropertyOptional()
+  skipped?: number;
+
+  @ApiPropertyOptional()
+  error?: string;
+}
+
+export class AdminCalendarSyncResponse {
+  @ApiProperty({ enum: ['AVAILABLE', 'PARTIAL'] })
+  availability!: 'AVAILABLE' | 'PARTIAL';
+
+  @ApiProperty({ format: 'date-time' })
+  synchronizedAt!: string;
+
+  @ApiProperty({
+    example: {
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-12-01T00:00:00.000Z',
+    },
+  })
+  range!: { from: string; to: string };
+
+  @ApiProperty({ type: [AdminCalendarSyncProviderResult] })
+  providers!: AdminCalendarSyncProviderResult[];
+
+  @ApiProperty()
+  totalSynchronized!: number;
 }

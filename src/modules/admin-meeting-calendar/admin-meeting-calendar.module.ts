@@ -8,12 +8,18 @@ import {
   ManagedCalendarEvent,
   ManagedCalendarEventSchema,
 } from '../../database/schemas/managed-calendar-event.schema';
+import {
+  AdminMeetingOperationLease,
+  AdminMeetingOperationLeaseSchema,
+} from '../../database/schemas/admin-meeting-operation-lease.schema';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { MeetingBotsModule } from '../meeting-bots/meeting-bots.module';
 import { UsersModule } from '../users/users.module';
 import { AdminMeetingCalendarActionsService } from './admin-meeting-calendar-actions.service';
 import { AdminMeetingCalendarQuickActionsService } from './admin-meeting-calendar-quick-actions.service';
+import { AdminMeetingOperationLeaseRepository } from './admin-meeting-operation-lease.repository';
+import { AdminMeetingOperationLeaseService } from './admin-meeting-operation-lease.service';
 import { AdminMeetingCalendarController } from './admin-meeting-calendar.controller';
 import { AdminMeetingCalendarRepository } from './admin-meeting-calendar.repository';
 import { AdminMeetingCalendarService } from './admin-meeting-calendar.service';
@@ -30,6 +36,10 @@ import { AdminMeetingCalendarService } from './admin-meeting-calendar.service';
         name: ManagedCalendarEvent.name,
         schema: ManagedCalendarEventSchema,
       },
+      {
+        name: AdminMeetingOperationLease.name,
+        schema: AdminMeetingOperationLeaseSchema,
+      },
     ]),
   ],
   controllers: [AdminMeetingCalendarController],
@@ -38,6 +48,8 @@ import { AdminMeetingCalendarService } from './admin-meeting-calendar.service';
     AdminMeetingCalendarService,
     AdminMeetingCalendarActionsService,
     AdminMeetingCalendarQuickActionsService,
+    AdminMeetingOperationLeaseRepository,
+    AdminMeetingOperationLeaseService,
   ],
 })
 export class AdminMeetingCalendarModule {}

@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseEnumPipe,
   Post,
@@ -11,11 +13,18 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiUnauthorizedResponse,
+  ApiServiceUnavailableResponse,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AdminMeetingSourceType } from '../../common/enums/admin-meeting-status.enum';
@@ -27,6 +36,8 @@ import { AdminMeetingCalendarService } from './admin-meeting-calendar.service';
 import {
   AdminMeetingCalendarActionResponse,
   AdminMeetingCalendarResponse,
+  AdminCalendarSyncResponse,
+  AdminScheduledMeetingResponse,
 } from './admin-meeting-calendar.types';
 import { AdminMeetingCalendarQueryDto } from './dto/admin-meeting-calendar-query.dto';
 import { AdminScheduleMeetingDto } from './dto/admin-schedule-meeting.dto';
@@ -34,6 +45,8 @@ import { AdminSyncCalendarDto } from './dto/admin-sync-calendar.dto';
 
 @ApiTags('Meeting Calendar (platform admin)')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ description: 'Authentication is required.' })
+@ApiForbiddenResponse({ description: 'Platform admin access is required.' })
 @Controller('platform/meeting-calendar')
 @UseGuards(PlatformAdminGuard)
 export class AdminMeetingCalendarController {
@@ -61,6 +74,17 @@ export class AdminMeetingCalendarController {
       'Validates the selected organizer as an active OWNER or ADMIN in the target organization, then reuses the standard provider-backed meeting workflow.',
   })
   @ApiBody({ type: AdminScheduleMeetingDto })
+  @ApiCreatedResponse({ type: AdminScheduledMeetingResponse })
+  @ApiBadRequestResponse({ description: 'The meeting request is invalid.' })
+  @ApiNotFoundResponse({
+    description: 'An eligible organizer was not found in the organization.',
+  })
+  @ApiConflictResponse({
+    description: 'An equivalent operation is already in progress.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'The connected meeting provider is unavailable.',
+  })
   schedule(
     @CurrentUser() user: RequestUser,
     @Body() input: AdminScheduleMeetingDto,
@@ -75,6 +99,20 @@ export class AdminMeetingCalendarController {
       'Validates the selected target-organization organizer and reuses the standard idempotent Google/Outlook synchronization workflow.',
   })
   @ApiBody({ type: AdminSyncCalendarDto })
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AdminCalendarSyncResponse })
+  @ApiBadRequestResponse({
+    description: 'The synchronization range is invalid.',
+  })
+  @ApiNotFoundResponse({
+    description: 'An eligible organizer was not found in the organization.',
+  })
+  @ApiConflictResponse({
+    description: 'A calendar sync is already running for the organization.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'No selected calendar could be synchronized.',
+  })
   sync(@CurrentUser() user: RequestUser, @Body() input: AdminSyncCalendarDto) {
     return this.quickActions.sync(user, input);
   }
@@ -86,7 +124,12 @@ export class AdminMeetingCalendarController {
       'A platform meeting becomes eligible after its scheduled start time. Synchronized provider-only calendar events derive completion from provider/time state and cannot be manually completed.',
   })
   @ApiParam({ name: 'sourceType', enum: AdminMeetingSourceType })
+  @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: AdminMeetingCalendarActionResponse })
+  @ApiNotFoundResponse({ description: 'Meeting calendar item not found.' })
+  @ApiConflictResponse({
+    description: 'The transition is invalid or another action is in progress.',
+  })
   complete(
     @CurrentUser() user: RequestUser,
     @Param('sourceType', new ParseEnumPipe(AdminMeetingSourceType))
@@ -103,7 +146,15 @@ export class AdminMeetingCalendarController {
       'Cancels the provider resource before persisting the cancelled state. Linked platform meetings remain the authoritative action target after deduplication.',
   })
   @ApiParam({ name: 'sourceType', enum: AdminMeetingSourceType })
+  @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: AdminMeetingCalendarActionResponse })
+  @ApiNotFoundResponse({ description: 'Meeting calendar item not found.' })
+  @ApiConflictResponse({
+    description: 'The transition is invalid or another action is in progress.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'The provider resource could not be fully cancelled.',
+  })
   cancel(
     @CurrentUser() user: RequestUser,
     @Param('sourceType', new ParseEnumPipe(AdminMeetingSourceType))
@@ -121,6 +172,10 @@ export class AdminMeetingCalendarController {
   })
   @ApiParam({ name: 'sourceType', enum: AdminMeetingSourceType })
   @ApiOkResponse({ type: AdminMeetingCalendarActionResponse })
+  @ApiNotFoundResponse({ description: 'Meeting calendar item not found.' })
+  @ApiConflictResponse({
+    description: 'The item is not terminal or another action is in progress.',
+  })
   delete(
     @CurrentUser() user: RequestUser,
     @Param('sourceType', new ParseEnumPipe(AdminMeetingSourceType))

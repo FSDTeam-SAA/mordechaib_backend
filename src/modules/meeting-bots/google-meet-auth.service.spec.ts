@@ -10,6 +10,7 @@ describe('GoogleMeetAuthService', () => {
   const encryptionKey = 'g'.repeat(32);
   const repository = {
     find: jest.fn(),
+    findConnected: jest.fn(),
     upsert: jest.fn(),
     disconnect: jest.fn(),
   };
@@ -39,6 +40,7 @@ describe('GoogleMeetAuthService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     repository.find.mockResolvedValue(null);
+    repository.findConnected.mockResolvedValue(null);
     repository.upsert.mockResolvedValue({});
     oauthState.consume.mockResolvedValue({
       organizationId: 'org-1',
@@ -55,6 +57,17 @@ describe('GoogleMeetAuthService', () => {
       email: 'organizer@example.com',
       name: 'Organizer',
     });
+  });
+
+  it('validates the persisted Google connection without remote side effects', async () => {
+    repository.findConnected.mockResolvedValue({ status: 'CONNECTED' });
+
+    await expect(service.assertConnected('org-1')).resolves.toBeUndefined();
+    expect(repository.findConnected).toHaveBeenCalledWith(
+      'org-1',
+      'GOOGLE_MEET',
+    );
+    expect(provider.exchangeCode).not.toHaveBeenCalled();
   });
 
   it('stores organization Google tokens encrypted', async () => {

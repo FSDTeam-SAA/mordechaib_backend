@@ -26,6 +26,20 @@ const countQueryResult = (value: number) => ({
   exec: jest.fn().mockResolvedValue(value),
 });
 
+const unavailableCrmContext = {
+  availability: 'UNAVAILABLE',
+  reason: 'No customer is linked.',
+  customer: null,
+  resolution: null,
+  linkedDealCount: 0,
+  revenue: { availability: 'UNAVAILABLE' },
+  commercial: null,
+};
+
+const commercialContextMock = () => ({
+  resolve: jest.fn().mockResolvedValue(unavailableCrmContext),
+});
+
 describe('CallIntelligenceService', () => {
   it('lists call and meeting sources together with details links', async () => {
     const callRecording = {
@@ -136,6 +150,7 @@ describe('CallIntelligenceService', () => {
         ]),
       } as never,
       {} as never,
+      commercialContextMock() as never,
     );
 
     const result = await service.list('66cc9bdfa847ea856c7b4199', {
@@ -245,6 +260,7 @@ describe('CallIntelligenceService', () => {
       {} as never,
       { listActiveSummaries: jest.fn().mockResolvedValue([]) } as never,
       {} as never,
+      commercialContextMock() as never,
     );
 
     const result = await service.list('66cc9bdfa847ea856c7b4199', {
@@ -300,6 +316,7 @@ describe('CallIntelligenceService', () => {
       {} as never,
       {} as never,
       {} as never,
+      commercialContextMock() as never,
     );
 
     const result = await service.getDetails(
@@ -321,7 +338,7 @@ describe('CallIntelligenceService', () => {
         }),
         transcript: expect.objectContaining({ included: false }),
         analysis: expect.objectContaining({ summary: 'Follow-up requested.' }),
-        extensions: { crm: null },
+        extensions: { crm: unavailableCrmContext },
       }),
     );
     expect(actions.getActionCenter).toHaveBeenCalledWith(
@@ -375,6 +392,7 @@ describe('CallIntelligenceService', () => {
           createdAt: new Date('2026-10-12T05:45:21.862Z'),
         }),
       } as never,
+      commercialContextMock() as never,
     );
 
     const result = await service.getDetails(
@@ -427,6 +445,7 @@ describe('CallIntelligenceService', () => {
       {} as never,
       {} as never,
       {} as never,
+      commercialContextMock() as never,
     );
     const report = service.createReport(
       {

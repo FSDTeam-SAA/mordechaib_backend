@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate, ValidationError } from 'class-validator';
@@ -519,6 +520,30 @@ export class AiActionsService {
 
   async approve(organizationId: string, actor: RequestUser, id: string) {
     this.assertObjectId(id);
+    const beforeApproval = await this.getStored(organizationId, id);
+    if (beforeApproval.status === AiActionProposalStatus.EXECUTED) {
+      return { ...this.toResponse(beforeApproval), duplicate: true };
+    }
+    if (
+      beforeApproval.status === AiActionProposalStatus.PENDING ||
+      beforeApproval.status === AiActionProposalStatus.APPROVED
+    ) {
+      try {
+        await this.assertExecutionPreconditions(beforeApproval);
+      } catch (error) {
+        if (beforeApproval.status === AiActionProposalStatus.APPROVED) {
+          await this.repository
+            .restorePendingAfterRecoverableFailure(
+              organizationId,
+              id,
+              this.errorMessage(error),
+              AiActionProposalStatus.APPROVED,
+            )
+            .catch(() => undefined);
+        }
+        throw error;
+      }
+    }
     const reviewer = this.reviewer(actor);
     const approvedNow = await this.repository.approvePending(
       organizationId,
@@ -713,14 +738,28 @@ export class AiActionsService {
       };
     } catch (error) {
       const message = this.errorMessage(error);
-      await this.repository
-        .markFailed(proposal.organizationId, proposalId, message)
-        .catch(() => undefined);
+      const recoverable = this.isRecoverableMeetingFailure(proposal, error);
+      if (recoverable) {
+        await this.repository
+          .restorePendingAfterRecoverableFailure(
+            proposal.organizationId,
+            proposalId,
+            message,
+            AiActionProposalStatus.EXECUTING,
+          )
+          .catch(() => undefined);
+      } else {
+        await this.repository
+          .markFailed(proposal.organizationId, proposalId, message)
+          .catch(() => undefined);
+      }
       await this.auditLogs
         .create({
           organizationId: proposal.organizationId,
           userId: creatorUserId,
-          action: 'AI_ACTION_PROPOSAL_EXECUTION_FAILED',
+          action: recoverable
+            ? 'AI_ACTION_PROPOSAL_EXECUTION_ROLLED_BACK'
+            : 'AI_ACTION_PROPOSAL_EXECUTION_FAILED',
           resourceType: 'AiActionProposal',
           resourceId: proposalId,
           metadata: { actionType: proposal.actionType, error: message },
@@ -728,6 +767,31 @@ export class AiActionsService {
         .catch(() => undefined);
       throw error;
     }
+  }
+
+  private async assertExecutionPreconditions(proposal: StoredProposal) {
+    if (proposal.actionType !== AiActionType.SCHEDULE_MEETING) return;
+    const payload = await this.validatePayload(
+      proposal.actionType,
+      proposal.payload,
+      undefined,
+      proposal.organizationId,
+    );
+    await this.meetings.assertAiProposalExecutable(
+      proposal.organizationId,
+      this.withCustomerContact(payload as AiMeetingActionPayloadDto),
+    );
+  }
+
+  private isRecoverableMeetingFailure(
+    proposal: StoredProposal,
+    error: unknown,
+  ) {
+    return (
+      proposal.actionType === AiActionType.SCHEDULE_MEETING &&
+      (error instanceof BadRequestException ||
+        error instanceof ServiceUnavailableException)
+    );
   }
 
   private async storeAnalysisAction(

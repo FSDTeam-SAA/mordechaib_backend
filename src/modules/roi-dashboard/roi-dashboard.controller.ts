@@ -14,6 +14,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { AUDIT_ACTION } from '../../common/constants/audit-action.constants';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RawResponse } from '../../common/decorators/raw-response.decorator';
@@ -26,6 +27,7 @@ import {
   RequestOrganization,
   RequestUser,
 } from '../../common/types/request-context.type';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { GetRoiDashboardQueryDto } from './dto/get-roi-dashboard-query.dto';
 import { UpdateRoiConfigurationDto } from './dto/update-roi-configuration.dto';
 import { RoiDashboardService } from './roi-dashboard.service';
@@ -42,6 +44,7 @@ export class RoiDashboardController {
     private readonly dashboard: RoiDashboardService,
     private readonly settings: RoiSettingsService,
     private readonly reports: RoiReportService,
+    private readonly audits: AuditLogsService,
   ) {}
 
   @Get()
@@ -75,11 +78,28 @@ export class RoiDashboardController {
   @ApiOperation({ summary: 'Download an on-demand ROI report as PDF' })
   async report(
     @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
     @Query() query: GetRoiDashboardQueryDto,
     @Res() response: Response,
   ) {
     const snapshot = await this.dashboard.dashboard(organization.id, query);
     const report = await this.reports.create(snapshot);
+    await this.audits.create({
+      organizationId: organization.id,
+      userId: user.id,
+      action: AUDIT_ACTION.ROI_REPORT_GENERATED,
+      resourceType: 'ROI_REPORT',
+      metadata: {
+        format: 'PDF',
+        rangeStart: snapshot.range.start,
+        rangeEnd: snapshot.range.end,
+        rangeDays: snapshot.range.days,
+        timezone: snapshot.timezone,
+        methodologyVersion: snapshot.configuration.methodologyVersion,
+        generatedAt: snapshot.asOf,
+        sizeBytes: report.length,
+      },
+    });
     const date = localDateKey(new Date(snapshot.asOf), snapshot.timezone);
     response.status(200);
     response.setHeader('Content-Type', 'application/pdf');

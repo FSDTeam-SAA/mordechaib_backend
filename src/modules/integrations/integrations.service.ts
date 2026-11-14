@@ -74,6 +74,15 @@ const INTEGRATION_CARDS = [
   },
 ] as const;
 
+type EmailConnectionCardState = {
+  provider: EmailProvider;
+  connected: boolean;
+  email?: string;
+  expiresAt?: Date;
+  connectedByUserId?: string;
+  connectedAccounts?: number;
+};
+
 @Injectable()
 export class IntegrationsService {
   constructor(
@@ -82,87 +91,117 @@ export class IntegrationsService {
   ) {}
 
   async findAll(organizationId: string, userId: string) {
-    const [
-      integrations,
-      twilioAccount,
-      twilioSetting,
-      twilioPhoneNumber,
-      emailConnections,
-    ] = await Promise.all([
-      this.repository.findByOrganization(organizationId),
-      this.repository.findTwilioAccount(organizationId),
-      this.repository.findTwilioSetting(organizationId),
-      this.repository.findActiveTwilioPhoneNumber(organizationId),
-      this.emailConnections.list(organizationId, userId),
-    ]);
+    const emailConnections = await this.emailConnections.list(
+      organizationId,
+      userId,
+    );
+    const items = await this.buildCards(organizationId, emailConnections);
+
+    return { organizationId, items };
+  }
+
+  async findOrganizationOverview(organizationId: string) {
+    const emailConnections =
+      await this.emailConnections.listForOrganization(organizationId);
+    const items = await this.buildCards(organizationId, emailConnections);
+    const connected = items.filter((item) => item.connected).length;
+    const attentionRequired = items.filter(
+      (item) =>
+        item.status === 'FAILED' ||
+        item.status === 'DISCONNECTED' ||
+        item.status === 'PENDING' ||
+        ('reconnectRequired' in item && item.reconnectRequired === true),
+    ).length;
 
     return {
       organizationId,
-      items: INTEGRATION_CARDS.map((card) => {
-        if (card.provider === IntegrationProvider.TWILIO) {
-          return this.twilioCard(
-            card,
-            twilioAccount,
-            twilioSetting,
-            twilioPhoneNumber,
-          );
-        }
+      summary: {
+        total: items.length,
+        connected,
+        attentionRequired,
+        notConfigured: items.length - connected - attentionRequired,
+      },
+      items: items.map(({ connectPath: _connectPath, ...item }) => ({
+        ...item,
+        canManage: false,
+      })),
+    };
+  }
 
-        if (
-          card.provider === IntegrationProvider.GMAIL ||
-          card.provider === 'OUTLOOK_EMAIL'
-        ) {
-          const provider =
-            card.provider === IntegrationProvider.GMAIL
-              ? EmailProvider.GOOGLE
-              : EmailProvider.OUTLOOK;
-          const connection = emailConnections.find(
-            (item) => item.provider === provider,
-          );
-          return {
-            provider: card.provider,
-            label: card.label,
-            connected: connection?.connected === true,
-            status: connection?.connected ? 'CONNECTED' : 'NOT_CONFIGURED',
-            isDefault: false,
-            connectPath: card.connectPath,
-            account: { email: connection?.email },
-            connectedByUserId: connection?.connected ? userId : undefined,
-            expiresAt: connection?.expiresAt,
-          };
-        }
+  private async buildCards(
+    organizationId: string,
+    emailConnections: EmailConnectionCardState[],
+  ) {
+    const [integrations, twilioAccount, twilioSetting, twilioPhoneNumber] =
+      await Promise.all([
+        this.repository.findByOrganization(organizationId),
+        this.repository.findTwilioAccount(organizationId),
+        this.repository.findTwilioSetting(organizationId),
+        this.repository.findActiveTwilioPhoneNumber(organizationId),
+      ]);
 
-        const connection = integrations.find((item) =>
-          card.lookup.some((provider) => item.provider === provider),
+    return INTEGRATION_CARDS.map((card) => {
+      if (card.provider === IntegrationProvider.TWILIO) {
+        return this.twilioCard(
+          card,
+          twilioAccount,
+          twilioSetting,
+          twilioPhoneNumber,
         );
-        const metadata = (connection?.metadata || {}) as Record<
-          string,
-          unknown
-        >;
-        const status = connection?.status || 'NOT_CONFIGURED';
+      }
 
+      if (
+        card.provider === IntegrationProvider.GMAIL ||
+        card.provider === 'OUTLOOK_EMAIL'
+      ) {
+        const provider =
+          card.provider === IntegrationProvider.GMAIL
+            ? EmailProvider.GOOGLE
+            : EmailProvider.OUTLOOK;
+        const connection = emailConnections.find(
+          (item) => item.provider === provider,
+        );
         return {
           provider: card.provider,
           label: card.label,
-          connected: status === 'CONNECTED',
-          status,
-          isDefault: Boolean(connection?.isDefaultCalendar),
+          connected: connection?.connected === true,
+          status: connection?.connected ? 'CONNECTED' : 'NOT_CONFIGURED',
+          isDefault: false,
           connectPath: card.connectPath,
-          account: {
-            id: metadata.providerAccountId,
-            email: metadata.providerEmail,
-            name: metadata.providerName,
-          },
-          connectedByUserId: metadata.connectedByUserId,
+          account: { email: connection?.email },
+          connectedByUserId: connection?.connectedByUserId,
+          connectedAccounts: connection?.connectedAccounts ?? 0,
           expiresAt: connection?.expiresAt,
-          isDefaultCrm: Boolean(connection?.isDefaultCrm),
-          lastSyncedAt: metadata.lastSyncedAt,
-          syncStatus: metadata.syncStatus,
-          lastSyncError: metadata.lastSyncError,
-          reconnectRequired: metadata.reconnectRequired === true,
         };
-      }),
-    };
+      }
+
+      const connection = integrations.find((item) =>
+        card.lookup.some((provider) => item.provider === provider),
+      );
+      const metadata = (connection?.metadata || {}) as Record<string, unknown>;
+      const status = connection?.status || 'NOT_CONFIGURED';
+
+      return {
+        provider: card.provider,
+        label: card.label,
+        connected: status === 'CONNECTED',
+        status,
+        isDefault: Boolean(connection?.isDefaultCalendar),
+        connectPath: card.connectPath,
+        account: {
+          id: metadata.providerAccountId,
+          email: metadata.providerEmail,
+          name: metadata.providerName,
+        },
+        connectedByUserId: metadata.connectedByUserId,
+        expiresAt: connection?.expiresAt,
+        isDefaultCrm: Boolean(connection?.isDefaultCrm),
+        lastSyncedAt: metadata.lastSyncedAt,
+        syncStatus: metadata.syncStatus,
+        lastSyncError: metadata.lastSyncError,
+        reconnectRequired: metadata.reconnectRequired === true,
+      };
+    });
   }
 
   private twilioCard(

@@ -119,3 +119,5 @@ export class OrganizationSubscription {
 export const OrganizationSubscriptionSchema = SchemaFactory.createForClass(
   OrganizationSubscription,
 );
+OrganizationSubscriptionSchema.index({ planId: 1, status: 1 });
+OrganizationSubscriptionSchema.index({ pausedUntil: 1 });
