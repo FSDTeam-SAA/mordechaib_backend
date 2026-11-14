@@ -5,6 +5,7 @@ import {
 } from '../../common/enums/admin-meeting-status.enum';
 import { CalendarProviderType } from '../../common/enums/calendar-provider.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { AdminMeetingCalendarRepository } from './admin-meeting-calendar.repository';
 import { AdminMeetingCalendarService } from './admin-meeting-calendar.service';
 import { AdminMeetingCalendarQueryDto } from './dto/admin-meeting-calendar-query.dto';
@@ -41,6 +42,7 @@ describe('AdminMeetingCalendarService', () => {
       timezone: 'Asia/Dhaka',
       participantEmails: ['customer@example.com'],
       status: AdminMeetingStatus.CONFIRMED,
+      rawStatus: PlatformMeetingStatus.SCHEDULED,
       meetingType: MeetingType.GOOGLE_MEET,
       calendarProvider: CalendarProviderType.GOOGLE_CALENDAR,
       meetingPlatform: 'GOOGLE_MEET',
@@ -77,7 +79,7 @@ describe('AdminMeetingCalendarService', () => {
       expect.objectContaining({
         startsAt: '2026-11-20T09:00:00.000Z',
         canComplete: false,
-        canCancel: false,
+        canCancel: true,
         canDelete: false,
       }),
     );
