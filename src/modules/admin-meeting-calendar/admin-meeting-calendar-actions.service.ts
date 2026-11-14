@@ -13,6 +13,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { PlatformMeetingsService } from '../meeting-bots/platform-meetings.service';
 import { adminMeetingCapabilities } from './admin-meeting-capabilities';
 import { AdminMeetingCalendarRepository } from './admin-meeting-calendar.repository';
+import { AdminMeetingOperationLeaseService } from './admin-meeting-operation-lease.service';
 
 type AdminMeetingAction = 'COMPLETE' | 'CANCEL' | 'DELETE';
 
@@ -23,6 +24,7 @@ export class AdminMeetingCalendarActionsService {
     private readonly platformMeetings: PlatformMeetingsService,
     private readonly calendar: CalendarService,
     private readonly audits: AuditLogsService,
+    private readonly leases: AdminMeetingOperationLeaseService,
   ) {}
 
   async complete(
@@ -31,21 +33,28 @@ export class AdminMeetingCalendarActionsService {
     id: string,
     now = new Date(),
   ) {
-    const target = await this.requireTarget(sourceType, id, now);
-    this.assertCapability(target.capabilities.canComplete, 'completed');
-    if (sourceType !== AdminMeetingSourceType.PLATFORM_MEETING) {
-      throw new ConflictException(
-        'Synchronized calendar events are completed from provider state',
-      );
-    }
+    return this.leases.run({
+      key: this.leaseKey(sourceType, id),
+      operation: 'COMPLETE',
+      actorUserId: actor.id,
+      execute: async () => {
+        const target = await this.requireTarget(sourceType, id, now);
+        this.assertCapability(target.capabilities.canComplete, 'completed');
+        if (sourceType !== AdminMeetingSourceType.PLATFORM_MEETING) {
+          throw new ConflictException(
+            'Synchronized calendar events are completed from provider state',
+          );
+        }
 
-    await this.platformMeetings.completeAsPlatformAdmin(
-      target.organizationId,
-      id,
-      now,
-    );
-    await this.audit(actor, target, 'COMPLETE');
-    return this.response(target, 'COMPLETE', AdminMeetingStatus.COMPLETED);
+        await this.platformMeetings.completeAsPlatformAdmin(
+          target.organizationId,
+          id,
+          now,
+        );
+        await this.audit(actor, target, 'COMPLETE');
+        return this.response(target, 'COMPLETE', AdminMeetingStatus.COMPLETED);
+      },
+    });
   }
 
   async cancel(
@@ -54,19 +63,26 @@ export class AdminMeetingCalendarActionsService {
     id: string,
     now = new Date(),
   ) {
-    const target = await this.requireTarget(sourceType, id, now);
-    this.assertCapability(target.capabilities.canCancel, 'cancelled');
+    return this.leases.run({
+      key: this.leaseKey(sourceType, id),
+      operation: 'CANCEL',
+      actorUserId: actor.id,
+      execute: async () => {
+        const target = await this.requireTarget(sourceType, id, now);
+        this.assertCapability(target.capabilities.canCancel, 'cancelled');
 
-    if (sourceType === AdminMeetingSourceType.PLATFORM_MEETING) {
-      await this.platformMeetings.cancelAsPlatformAdmin(
-        target.organizationId,
-        id,
-      );
-    } else {
-      await this.calendar.cancelEvent(target.organizationId, id);
-    }
-    await this.audit(actor, target, 'CANCEL');
-    return this.response(target, 'CANCEL', AdminMeetingStatus.CANCELLED);
+        if (sourceType === AdminMeetingSourceType.PLATFORM_MEETING) {
+          await this.platformMeetings.cancelAsPlatformAdmin(
+            target.organizationId,
+            id,
+          );
+        } else {
+          await this.calendar.cancelEvent(target.organizationId, id);
+        }
+        await this.audit(actor, target, 'CANCEL');
+        return this.response(target, 'CANCEL', AdminMeetingStatus.CANCELLED);
+      },
+    });
   }
 
   async delete(
@@ -75,23 +91,30 @@ export class AdminMeetingCalendarActionsService {
     id: string,
     now = new Date(),
   ) {
-    const target = await this.requireTarget(sourceType, id, now);
-    this.assertCapability(target.capabilities.canDelete, 'deleted');
-    if (sourceType !== AdminMeetingSourceType.PLATFORM_MEETING) {
-      throw new ConflictException(
-        'Synchronized calendar events cannot be permanently deleted',
-      );
-    }
+    return this.leases.run({
+      key: this.leaseKey(sourceType, id),
+      operation: 'DELETE',
+      actorUserId: actor.id,
+      execute: async () => {
+        const target = await this.requireTarget(sourceType, id, now);
+        this.assertCapability(target.capabilities.canDelete, 'deleted');
+        if (sourceType !== AdminMeetingSourceType.PLATFORM_MEETING) {
+          throw new ConflictException(
+            'Synchronized calendar events cannot be permanently deleted',
+          );
+        }
 
-    await this.platformMeetings.deletePermanentAsPlatformAdmin(
-      target.organizationId,
-      id,
-    );
-    await this.audit(actor, target, 'DELETE');
-    return {
-      ...this.response(target, 'DELETE', target.status),
-      deleted: true,
-    };
+        await this.platformMeetings.deletePermanentAsPlatformAdmin(
+          target.organizationId,
+          id,
+        );
+        await this.audit(actor, target, 'DELETE');
+        return {
+          ...this.response(target, 'DELETE', target.status),
+          deleted: true,
+        };
+      },
+    });
   }
 
   private async requireTarget(
@@ -108,6 +131,10 @@ export class AdminMeetingCalendarActionsService {
     if (!allowed) {
       throw new ConflictException(`This meeting cannot be ${action}`);
     }
+  }
+
+  private leaseKey(sourceType: AdminMeetingSourceType, id: string) {
+    return `calendar-item:${sourceType}:${id}`;
   }
 
   private response(

@@ -23,6 +23,7 @@ describe('EmailConnectionsService owner consent', () => {
       find: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
       updateTokens: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      listByOrganization: jest.fn().mockResolvedValue([]),
     };
     provider = {
       exchangeCode: jest.fn().mockResolvedValue({
@@ -30,22 +31,18 @@ describe('EmailConnectionsService owner consent', () => {
         refresh_token: 'refresh-token',
         scope: 'openid email https://www.googleapis.com/auth/gmail.send',
       }),
-      profile: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'google-account-1',
-          email: 'owner@example.com',
-        }),
+      profile: jest.fn().mockResolvedValue({
+        id: 'google-account-1',
+        email: 'owner@example.com',
+      }),
       refreshToken: jest
         .fn()
         .mockResolvedValue({ access_token: 'new-token', expires_in: 3600 }),
     };
     users = {
-      findOne: jest
-        .fn()
-        .mockReturnValue({
-          lean: () => ({ exec: async () => ({ _id: 'owner-1' }) }),
-        }),
+      findOne: jest.fn().mockReturnValue({
+        lean: () => ({ exec: async () => ({ _id: 'owner-1' }) }),
+      }),
     };
     const config = {
       getOrThrow: jest.fn().mockReturnValue(encryptionKey),
@@ -101,5 +98,49 @@ describe('EmailConnectionsService owner consent', () => {
     await expect(
       service.accessToken('org-1', 'owner-1', EmailProvider.GOOGLE),
     ).rejects.toThrow('disconnected');
+  });
+
+  it('summarizes all connected email accounts for an organization', async () => {
+    repository.listByOrganization.mockResolvedValue([
+      {
+        userId: 'member-2',
+        provider: EmailProvider.GOOGLE,
+        status: 'CONNECTED',
+        email: 'newest@example.com',
+        expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+      },
+      {
+        userId: 'owner-1',
+        provider: EmailProvider.GOOGLE,
+        status: 'CONNECTED',
+        email: 'owner@example.com',
+      },
+      {
+        userId: 'owner-1',
+        provider: EmailProvider.OUTLOOK,
+        status: 'DISCONNECTED',
+        email: 'old@example.com',
+      },
+    ]);
+
+    await expect(service.listForOrganization('org-1')).resolves.toEqual([
+      {
+        provider: EmailProvider.GOOGLE,
+        connected: true,
+        email: 'newest@example.com',
+        expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+        connectedByUserId: 'member-2',
+        connectedAccounts: 2,
+      },
+      {
+        provider: EmailProvider.OUTLOOK,
+        connected: false,
+        email: undefined,
+        expiresAt: undefined,
+        connectedByUserId: undefined,
+        connectedAccounts: 0,
+      },
+    ]);
+    expect(repository.listByOrganization).toHaveBeenCalledWith('org-1');
   });
 });

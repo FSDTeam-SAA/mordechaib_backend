@@ -27,4 +27,27 @@ export class AuditLogsRepository {
       .lean()
       .exec();
   }
+
+  async countByActions(
+    actions: string[],
+    range: { from: Date; to: Date },
+  ): Promise<Record<string, number>> {
+    if (!actions.length) return {};
+    const rows = await this.auditLogModel
+      .aggregate<{ _id: string; count: number }>([
+        {
+          $match: {
+            action: { $in: actions },
+            createdAt: { $gte: range.from, $lt: range.to },
+          },
+        },
+        { $group: { _id: '$action', count: { $sum: 1 } } },
+      ])
+      .exec();
+    return Object.fromEntries(rows.map((row) => [row._id, row.count]));
+  }
+
+  countByOrganizationAndAction(organizationId: string, action: string) {
+    return this.auditLogModel.countDocuments({ organizationId, action }).exec();
+  }
 }

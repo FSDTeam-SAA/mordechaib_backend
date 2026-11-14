@@ -11,6 +11,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { PlatformMeetingsService } from '../meeting-bots/platform-meetings.service';
 import { AdminMeetingCalendarActionsService } from './admin-meeting-calendar-actions.service';
 import { AdminMeetingCalendarRepository } from './admin-meeting-calendar.repository';
+import { AdminMeetingOperationLeaseService } from './admin-meeting-operation-lease.service';
 
 describe('AdminMeetingCalendarActionsService', () => {
   const actor: RequestUser = {
@@ -42,6 +43,7 @@ describe('AdminMeetingCalendarActionsService', () => {
   let platformMeetings: Record<string, jest.Mock>;
   let calendar: Record<string, jest.Mock>;
   let audits: Record<string, jest.Mock>;
+  let leases: Record<string, jest.Mock>;
   let service: AdminMeetingCalendarActionsService;
 
   beforeEach(() => {
@@ -55,11 +57,15 @@ describe('AdminMeetingCalendarActionsService', () => {
     };
     calendar = { cancelEvent: jest.fn().mockResolvedValue({}) };
     audits = { create: jest.fn().mockResolvedValue(undefined) };
+    leases = {
+      run: jest.fn().mockImplementation(({ execute }) => execute()),
+    };
     service = new AdminMeetingCalendarActionsService(
       repository as unknown as AdminMeetingCalendarRepository,
       platformMeetings as unknown as PlatformMeetingsService,
       calendar as unknown as CalendarService,
       audits as unknown as AuditLogsService,
+      leases as unknown as AdminMeetingOperationLeaseService,
     );
   });
 
@@ -88,6 +94,13 @@ describe('AdminMeetingCalendarActionsService', () => {
         organizationId: 'customer-org',
         userId: actor.id,
         action: 'PLATFORM_ADMIN_MEETING_COMPLETE',
+      }),
+    );
+    expect(leases.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: `calendar-item:PLATFORM_MEETING:${baseTarget.id}`,
+        operation: 'COMPLETE',
+        actorUserId: actor.id,
       }),
     );
   });

@@ -540,4 +540,36 @@ export class AiActionsRepository {
       .lean()
       .exec();
   }
+
+  restorePendingAfterRecoverableFailure(
+    organizationId: string,
+    id: string,
+    message: string,
+    expectedStatus:
+      AiActionProposalStatus.APPROVED | AiActionProposalStatus.EXECUTING,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          status: expectedStatus,
+        },
+        {
+          $set: {
+            status: AiActionProposalStatus.PENDING,
+            executionError: message,
+          },
+          $unset: {
+            approvedByUserId: 1,
+            approvedByUserName: 1,
+            approvedAt: 1,
+            executionStartedAt: 1,
+          },
+        },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
+  }
 }

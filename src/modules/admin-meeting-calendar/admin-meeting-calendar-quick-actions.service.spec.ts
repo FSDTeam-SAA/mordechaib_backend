@@ -8,6 +8,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { PlatformMeetingsService } from '../meeting-bots/platform-meetings.service';
 import { UsersService } from '../users/users.service';
 import { AdminMeetingCalendarQuickActionsService } from './admin-meeting-calendar-quick-actions.service';
+import { AdminMeetingOperationLeaseService } from './admin-meeting-operation-lease.service';
 
 describe('AdminMeetingCalendarQuickActionsService', () => {
   const organizationId = '66cc9bdfa847ea856c7b4101';
@@ -26,6 +27,7 @@ describe('AdminMeetingCalendarQuickActionsService', () => {
   let meetings: Record<string, jest.Mock>;
   let calendar: Record<string, jest.Mock>;
   let audits: Record<string, jest.Mock>;
+  let leases: Record<string, jest.Mock>;
   let service: AdminMeetingCalendarQuickActionsService;
 
   beforeEach(() => {
@@ -50,11 +52,15 @@ describe('AdminMeetingCalendarQuickActionsService', () => {
       }),
     };
     audits = { create: jest.fn().mockResolvedValue(undefined) };
+    leases = {
+      run: jest.fn().mockImplementation(({ execute }) => execute()),
+    };
     service = new AdminMeetingCalendarQuickActionsService(
       users as unknown as UsersService,
       meetings as unknown as PlatformMeetingsService,
       calendar as unknown as CalendarService,
       audits as unknown as AuditLogsService,
+      leases as unknown as AdminMeetingOperationLeaseService,
     );
   });
 
@@ -66,6 +72,7 @@ describe('AdminMeetingCalendarQuickActionsService', () => {
       title: 'Customer review',
       startsAt: '2026-11-20T09:00:00.000Z',
       timezone: 'Asia/Dhaka',
+      idempotencyKey: 'admin-meeting-request-001',
     };
 
     await expect(service.schedule(actor, input)).resolves.toEqual({
@@ -93,6 +100,11 @@ describe('AdminMeetingCalendarQuickActionsService', () => {
         action: 'PLATFORM_ADMIN_MEETING_CALENDAR_SCHEDULE',
       }),
     );
+    expect(leases.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: `meeting-create:${organizationId}:admin-meeting-request-001`,
+      }),
+    );
   });
 
   it('synchronizes through the standard calendar workflow', async () => {
@@ -116,6 +128,9 @@ describe('AdminMeetingCalendarQuickActionsService', () => {
         action: 'PLATFORM_ADMIN_MEETING_CALENDAR_SYNC',
         metadata: expect.objectContaining({ totalSynchronized: 4 }),
       }),
+    );
+    expect(leases.run).toHaveBeenCalledWith(
+      expect.objectContaining({ key: `calendar-sync:${organizationId}` }),
     );
   });
 

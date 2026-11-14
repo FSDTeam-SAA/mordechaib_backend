@@ -114,3 +114,5 @@ export class Organization {
 }
 
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);
+OrganizationSchema.index({ isInternal: 1, status: 1, createdAt: -1 });
+OrganizationSchema.index({ isInternal: 1, suspendedAt: -1 });

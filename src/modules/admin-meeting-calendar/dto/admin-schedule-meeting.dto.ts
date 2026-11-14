@@ -1,8 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsMongoId } from 'class-validator';
+import { ApiProperty, OmitType } from '@nestjs/swagger';
+import { IsMongoId, IsString, MaxLength, MinLength } from 'class-validator';
 import { CreateConnectedMeetingDto } from '../../meeting-bots/dto/create-connected-meeting.dto';
 
-export class AdminScheduleMeetingDto extends CreateConnectedMeetingDto {
+export class AdminScheduleMeetingDto extends OmitType(
+  CreateConnectedMeetingDto,
+  ['idempotencyKey'] as const,
+) {
   @ApiProperty({
     description: 'Organization that owns the meeting and provider connection.',
   })
@@ -15,4 +18,14 @@ export class AdminScheduleMeetingDto extends CreateConnectedMeetingDto {
   })
   @IsMongoId()
   organizerUserId!: string;
+
+  @ApiProperty({
+    description:
+      'Required retry-safe key. Reuse it only when retrying the same meeting creation request.',
+    maxLength: 128,
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
 }
