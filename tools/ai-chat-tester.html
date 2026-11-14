@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noltra AI Tester</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2330; --muted: #6b7385; --border: #dfe3ea;
+    --accent: #3b5bdb; --accent-text: #ffffff; --user: #3b5bdb; --ai: #eef1f6;
+    --ok: #1f8a4c; --warn: #b7791f; --bad: #c92a2a; --code: #f0f2f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1e26; --text: #e4e7ee; --muted: #9098aa; --border: #2b313c;
+      --accent: #5c7cfa; --accent-text: #ffffff; --user: #4263eb; --ai: #232833;
+      --ok: #40c074; --warn: #e0a83a; --bad: #ff6b6b; --code: #20252f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  button { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.warn { color: var(--warn); border-color: var(--warn); }
+  main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 380px; gap: 12px; padding: 12px; height: calc(100vh - 58px); }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; height: auto; } }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
+  section > .head { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  .scroll { overflow: auto; flex: 1; min-height: 120px; }
+  #conversations button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 8px 12px; }
+  #conversations button.active { background: var(--ai); font-weight: 600; }
+  #conversations small { color: var(--muted); display: block; font-weight: 400; }
+  #transcript { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 80%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.USER { align-self: flex-end; background: var(--user); color: #fff; }
+  .msg.AI, .msg.live { align-self: flex-start; background: var(--ai); }
+  .msg.live { border: 1px dashed var(--accent); }
+  .msg .meta { font-size: 11px; opacity: .75; margin-bottom: 2px; }
+  .msg .rich { white-space: normal; }
+  .rich p { margin: 0 0 6px; } .rich ul, .rich ol { margin: 0 0 6px; padding-left: 20px; } .rich > :last-child { margin-bottom: 0; }
+  .composer { border-top: 1px solid var(--border); padding: 10px; display: grid; gap: 8px; }
+  .composer textarea { width: 100%; min-height: 64px; resize: vertical; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .quick button { font-size: 12px; padding: 3px 8px; }
+  .tabs { display: flex; gap: 4px; padding: 8px 8px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tabs button { border-bottom: 0; border-radius: 6px 6px 0 0; }
+  .tabs button.active { background: var(--ai); font-weight: 600; }
+  .tab { display: none; padding: 10px 12px; }
+  .tab.active { display: block; }
+  pre { background: var(--code); padding: 8px; border-radius: 6px; overflow: auto; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  .card .row { margin-top: 6px; }
+  .muted { color: var(--muted); }
+  .log { font: 12px/1.4 ui-monospace, Consolas, monospace; }
+  .log div { border-bottom: 1px solid var(--border); padding: 3px 0; overflow-wrap: anywhere; }
+  .e-activity { color: var(--accent); } .e-result { color: var(--ok); } .e-error { color: var(--bad); } .e-text_reset { color: var(--warn); }
+  .checks div { padding: 3px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Noltra AI Tester</h1>
+  <input id="base" size="26" value="http://localhost:5000" title="Main Backend URL">
+  <span id="health" class="pill">backend: ?</span>
+  <span id="aiState" class="pill">AI: not tested</span>
+  <span style="flex:1"></span>
+  <span id="who" class="muted"></span>
+  <input id="email" type="email" placeholder="email" size="22">
+  <input id="password" type="password" placeholder="password" size="12">
+  <button id="loginBtn" class="primary">Log in</button>
+  <button id="logoutBtn" hidden>Log out</button>
+</header>
+
+<main>
+  <section>
+    <div class="head">Conversations <span class="row"><button id="refreshConvs" title="Refresh">↻</button><button id="newChat">New</button></span></div>
+    <div id="conversations" class="scroll"></div>
+  </section>
+
+  <section>
+    <div class="head"><span id="convTitle">New conversation</span><span id="turnState" class="pill">idle</span></div>
+    <div id="transcript" class="scroll"></div>
+    <div class="composer">
+      <div class="row quick" id="quick"></div>
+      <textarea id="content" placeholder="Message Laura… (Ctrl+Enter to send)"></textarea>
+      <div class="row">
+        <input id="files" type="file" multiple accept=".pdf,.docx,image/png,image/jpeg,image/webp,image/gif">
+        <label><input id="sse" type="checkbox" checked> Stream (SSE)</label>
+        <span style="flex:1"></span>
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="sendBtn" class="primary">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="tabs" id="tabs">
+      <button data-tab="result" class="active">Result</button>
+      <button data-tab="checks">Checks</button>
+      <button data-tab="proposals">Proposals</button>
+      <button data-tab="memory">Memory</button>
+      <button data-tab="events">Events</button>
+    </div>
+    <div class="scroll">
+      <div class="tab active" id="tab-result"><p class="muted">Send a message to see the structured AI result.</p></div>
+      <div class="tab" id="tab-checks"><p class="muted">Automatic checks of the last turn appear here.</p></div>
+      <div class="tab" id="tab-proposals"><p class="muted">Proposals for the selected conversation (view only - approving executes them for real).</p><div id="proposals"></div></div>
+      <div class="tab" id="tab-memory">
+        <div class="row">
+          <select id="memStatus"><option value="PENDING_REVIEW">Pending review</option><option value="ACTIVE">Active</option><option value="REJECTED">Rejected</option><option value="ARCHIVED">Archived</option></select>
+          <button id="memRefresh">↻</button>
+        </div>
+        <div id="memories" style="margin-top:8px"></div>
+        <details style="margin-top:8px"><summary>Add a memory (active immediately)</summary>
+          <div class="row" style="margin-top:6px">
+            <select id="memKind"></select>
+            <input id="memDue" placeholder="due YYYY-MM-DD" size="13">
+          </div>
+          <textarea id="memContent" style="width:100%;margin-top:6px" placeholder="e.g. Our revenue target for 2027 is $2M."></textarea>
+          <button id="memAdd" class="primary">Add</button>
+        </details>
+      </div>
+      <div class="tab log" id="tab-events"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KINDS = ['CUSTOMER', 'PREFERENCE', 'MEETING', 'COMMITMENT', 'RESPONSIBILITY', 'GOAL', 'FINANCIAL_TARGET', 'DECISION', 'OPEN_ITEM'];
+  const QUICK = [
+    ['Greeting', 'Good morning Laura!'],
+    ['Incomplete meeting', 'Schedule a Google Meet with Tauhid tomorrow'],
+    ['Relative date', 'Schedule a Zoom meeting with amit@example.com the Saturday after next at 2pm'],
+    ['Date then time', 'Schedule a meeting with Monir Hossain on November 16'],
+    ['Task', 'Create a high-priority sales task: prepare the Q4 pipeline report, due next Friday at 5 PM'],
+    ['CRM edit', "In HubSpot, change Maria Johnson's job title to Head of Partnerships"],
+    ['Teach memory', 'Our revenue target for 2027 is $2M, and Rafiq is responsible for the Dhaka sales team.'],
+    ['Recall memory', 'What is our revenue target, and who handles Dhaka sales?'],
+  ];
+
+  const state = { token: null, user: null, conversationId: null, controller: null, events: [] };
+  const store = {
+    get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+  };
+
+  // ---------------------------------------------------------------- helpers
+  const api = () => $('base').value.replace(/\/+$/, '') + '/api/v1';
+  const el = (tag, attrs = {}, ...children) => {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') node.className = v; else if (k.startsWith('on')) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+    }
+    for (const child of children.flat()) if (child != null) node.append(child.nodeType ? child : String(child));
+    return node;
+  };
+  const json = (value) => el('pre', {}, JSON.stringify(value, null, 2));
+
+  // AI replies arrive as a small HTML fragment. Rebuild it from an allow-list of
+  // tags (never innerHTML of the raw string), so nothing else can render.
+  const ALLOWED = new Set(['P', 'BR', 'UL', 'OL', 'LI', 'STRONG', 'EM', 'B', 'I']);
+  function safeHtml(content) {
+    const box = document.createElement('div');
+    if (!/<\/?(p|br|ul|ol|li|strong)\b/i.test(content || '')) { box.textContent = content || ''; return box; }
+    const doc = new DOMParser().parseFromString(content, 'text/html');
+    const copy = (from, to) => {
+      for (const node of from.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) to.append(node.textContent);
+        else if (node.nodeType === Node.ELEMENT_NODE) {
+          if (ALLOWED.has(node.tagName)) copy(node, to.appendChild(document.createElement(node.tagName)));
+          else copy(node, to);
+        }
+      }
+    };
+    copy(doc.body, box);
+    box.className = 'rich';
+    return box;
+  }
+  const time = (iso) => iso ? new Date(iso).toLocaleString() : '';
+
+  async function call(path, { method = 'GET', body, headers = {} } = {}) {
+    const response = await fetch(api() + path, {
+      method,
+      headers: { ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}), ...(body && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      body: body == null ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!response.ok) {
+      const message = data && typeof data === 'object' ? [].concat(data.message || data.error || '').join('; ') : String(data);
+      throw new Error(`${response.status} ${message || response.statusText}`);
+    }
+    return data && typeof data === 'object' && 'data' in data ? data.data : data;
+  }
+  const items = (data) => Array.isArray(data) ? data : (data && data.items) || [];
+
+  function setPill(id, text, kind) { const p = $(id); p.textContent = text; p.className = 'pill' + (kind ? ' ' + kind : ''); }
+  function showTab(name) {
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
+  }
+  function logEvent(name, data) {
+    const line = el('div', { class: 'e-' + name }, `${new Date().toLocaleTimeString()}  ${name}  `, typeof data === 'string' ? data : JSON.stringify(data));
+    $('tab-events').prepend(line);
+  }
+
+  // ---------------------------------------------------------------- health + auth
+  async function checkHealth() {
+    try { await call('/health'); setPill('health', 'backend: up', 'ok'); }
+    catch (e) { setPill('health', 'backend: down', 'bad'); }
+  }
+
+  async function login() {
+    try {
+      const data = await call('/auth/login', { method: 'POST', body: { email: $('email').value.trim(), password: $('password').value } });
+      setSession(data.accessToken, data.user);
+      $('password').value = '';
+    } catch (e) { alert('Login failed: ' + e.message); }
+  }
+  function setSession(token, user) {
+    state.token = token; state.user = user;
+    store.set('noltra.token', token); store.set('noltra.user', user ? JSON.stringify(user) : null);
+    const inside = Boolean(token);
+    $('who').textContent = inside ? `${user.firstName || ''} ${user.lastName || ''} · ${user.role} · org ${user.organizationId}` : '';
+    for (const id of ['email', 'password', 'loginBtn']) $(id).hidden = inside;
+    $('logoutBtn').hidden = !inside;
+    if (inside) { loadConversations(); loadMemories(); }
+    else { $('conversations').replaceChildren(); $('transcript').replaceChildren(); }
+  }
+
+  // ---------------------------------------------------------------- conversations
+  async function loadConversations() {
+    try {
+      const list = items(await call('/messages/conversations?limit=30'));
+      $('conversations').replaceChildren(...list.map((c) => {
+        const id = c.id || c._id;
+        return el('button', { class: id === state.conversationId ? 'active' : '', onclick: () => openConversation(id, c.title) },
+          c.title || 'New Chat', el('small', {}, `${c.totalMessageCount ?? '?'} messages · ${time(c.lastMessageAt || c.updatedAt)}`));
+      }));
+    } catch (e) { $('conversations').replaceChildren(el('p', { class: 'muted', style: 'padding:8px' }, e.message)); }
+  }
+
+  async function openConversation(id, title) {
+    state.conversationId = id;
+    $('convTitle').textContent = title || 'Conversation';
+    await loadTranscript();
+    loadConversations();
+    loadProposals();
+  }
+
+  async function loadTranscript() {
+    if (!state.conversationId) { $('transcript').replaceChildren(); return []; }
+    const list = items(await call(`/messages?conversationId=${state.conversationId}&limit=50`))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    $('transcript').replaceChildren(...list.map(renderMessage));
+    $('transcript').scrollTop = $('transcript').scrollHeight;
+    return list;
+  }
+  function renderMessage(m) {
+    const who = m.senderType === 'AI' ? (m.agentName || m.agent?.name || 'AI') : m.senderType === 'USER' ? 'You' : m.senderType;
+    const status = m.processingStatus && m.senderType === 'USER' ? ` · ${m.processingStatus}` : '';
+    const files = (m.attachments || []).map((a) => a.originalName).filter(Boolean);
+    return el('div', { class: 'msg ' + m.senderType },
+      el('div', { class: 'meta' }, `${who} · ${time(m.createdAt)}${status}${files.length ? ' · 📎 ' + files.join(', ') : ''}`),
+      m.senderType === 'AI' ? safeHtml(m.content) : (m.content || ''));
+  }
+
+  // ---------------------------------------------------------------- sending
+  async function send() {
+    const content = $('content').value.trim();
+    const files = [...$('files').files];
+    if (!state.token) return alert('Log in first.');
+    if (!content && !files.length) return;
+    const fields = { startNewConversation: !state.conversationId, clientMessageId: crypto.randomUUID(), content };
+    if (state.conversationId) fields.conversationId = state.conversationId;
+
+    $('transcript').append(el('div', { class: 'msg USER' }, el('div', { class: 'meta' }, 'You · sending'), content || '(files only)'));
+    const live = el('div', { class: 'msg live' }, el('div', { class: 'meta' }, 'Laura · thinking…'), el('span'));
+    $('transcript').append(live);
+    $('transcript').scrollTop = $('transcript').scrollHeight;
+    $('content').value = ''; $('files').value = '';
+    busy(true);
+    const started = performance.now();
+    try {
+      const outcome = $('sse').checked ? await sendStreaming(fields, files, live) : await sendPolling(fields, files, live);
+      await afterTurn(outcome, performance.now() - started);
+    } catch (e) {
+      live.querySelector('.meta').textContent = 'Error';
+      live.lastChild.textContent = e.name === 'AbortError' ? 'Stopped.' : e.message;
+      setPill('aiState', 'AI: error', 'bad');
+      renderChecks({ error: e.message });
+    } finally { busy(false); }
+  }
+
+  function body(fields, files) {
+    if (!files.length) return fields;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
+    for (const f of files) form.append('files', f);
+    return form; // the browser adds the multipart boundary
+  }
+
+  async function sendStreaming(fields, files, live) {
+    state.controller = new AbortController();
+    const payload = body(fields, files);
+    const response = await fetch(api() + '/messages', {
+      method: 'POST',
+      signal: state.controller.signal,
+      headers: { Authorization: 'Bearer ' + state.token, Accept: 'text/event-stream', ...(payload instanceof FormData ? {} : { 'Content-Type': 'application/json' }) },
+      body: payload instanceof FormData ? payload : JSON.stringify(payload),
+    });
+    if (!response.ok || !(response.headers.get('content-type') || '').includes('text/event-stream')) {
+      const text = await response.text();
+      let message = text; try { message = [].concat(JSON.parse(text).message).join('; '); } catch { /* not JSON */ }
+      throw new Error(`HTTP ${response.status}: ${message}`);
+    }
+    const outcome = { events: [], created: null, result: null, error: null, shown: '', firstDeltaMs: null, started: performance.now() };
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const text = live.lastChild;
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      let cut;
+      while ((cut = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, cut); buffer = buffer.slice(cut + 2);
+        let name = 'message', data = '';
+        for (const line of block.split('\n')) {
+          if (line.startsWith(':')) { logEvent('ping', ''); continue; }
+          if (line.startsWith('event:')) name = line.slice(6).trim();
+          else if (line.startsWith('data:')) data += line.slice(5).trimStart();
+        }
+        if (!data) continue;
+        let parsed; try { parsed = JSON.parse(data); } catch { parsed = data; }
+        outcome.events.push(name);
+        logEvent(name, parsed);
+        if (name === 'message_created') { outcome.created = parsed; state.conversationId = parsed.conversationId || state.conversationId; }
+        else if (name === 'activity') live.querySelector('.meta').textContent = `Laura · ${parsed.message || parsed.stage}`;
+        else if (name === 'text_delta') { outcome.firstDeltaMs ??= performance.now() - outcome.started; outcome.shown += parsed.text || ''; text.textContent = outcome.shown; }
+        else if (name === 'text_reset') { outcome.shown = ''; text.textContent = ''; }
+        else if (name === 'result') outcome.result = parsed;
+        else if (name === 'error') outcome.error = parsed;
+      }
+      if (done) break;
+    }
+    return outcome;
+  }
+
+  async function sendPolling(fields, files, live) {
+    const ack = await call('/messages', { method: 'POST', body: body(fields, files), headers: { Accept: 'application/json' } });
+    state.conversationId = ack.conversationId || state.conversationId;
+    const sourceId = ack.id || ack._id;
+    const outcome = { events: ['201 acknowledged'], created: ack, result: null, error: null, polled: true };
+    logEvent('ack', ack);
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      live.querySelector('.meta').textContent = `Laura · queued turn, polling (${(i + 1) * 2}s)`;
+      const list = items(await call(`/messages?conversationId=${state.conversationId}&limit=50`));
+      const source = list.find((m) => (m.id || m._id) === sourceId);
+      if (source && ['COMPLETED', 'FAILED'].includes(source.processingStatus)) {
+        const reply = list.find((m) => m.senderType === 'AI' && String(m.sourceMessageId) === String(sourceId));
+        if (source.processingStatus === 'FAILED') outcome.error = { message: source.processingError || 'Processing failed' };
+        else outcome.result = { reply: { content: reply ? reply.content : '' }, result: { type: '(see Proposals tab)' } };
+        return outcome;
+      }
+    }
+    throw new Error('Timed out waiting for the queued turn.');
+  }
+
+  async function afterTurn(outcome, ms) {
+    const list = await loadTranscript();
+    loadConversations();
+    renderResult(outcome);
+    let proposals = [];
+    const sourceId = outcome.created && (outcome.created.id || outcome.created._id);
+    if (sourceId) {
+      try { proposals = items(await call(`/ai-actions/proposals?sourceId=${sourceId}`)); } catch { /* shown in tab */ }
+    }
+    loadProposals();
+    const pendingBefore = state.pendingMemories;
+    await loadMemories();
+    renderChecks({ outcome, ms, list, sourceId, proposals, newMemories: state.pendingMemories - (pendingBefore ?? state.pendingMemories) });
+    setPill('aiState', outcome.error ? 'AI: error' : 'AI: working', outcome.error ? 'bad' : 'ok');
+  }
+
+  // ---------------------------------------------------------------- panels
+  function renderResult(outcome) {
+    const box = $('tab-result');
+    if (outcome.error) { box.replaceChildren(el('p', { class: 'e-error' }, 'Error event'), json(outcome.error)); showTab('result'); return; }
+    const r = outcome.result || {};
+    const result = r.result || {};
+    const parts = [el('div', { class: 'row' }, el('span', { class: 'pill ok' }, result.type || '?'), outcome.polled ? el('span', { class: 'pill' }, 'JSON / polling') : el('span', { class: 'pill' }, 'SSE'))];
+    if (r.reply) parts.push(safeHtml(r.reply.content), el('details', {}, el('summary', {}, 'reply.content as sent'), el('pre', {}, r.reply.content)));
+    if (result.type === 'CLARIFICATION') {
+      parts.push(el('b', {}, `Draft ${result.draft?.id} (${result.draft?.kind})`), json(result.draft?.payload),
+        el('b', {}, 'Questions'), el('ul', {}, ...(result.questions || []).map((q) => el('li', {}, `${q.question}  `, el('span', { class: 'muted' }, `[${q.field} · ${q.id}]`)))));
+    } else if (result.proposal) {
+      parts.push(el('b', {}, `Draft ${result.draftId}`), json(result.proposal));
+      if (result.proposal.startsAt || result.proposal.dueDate) {
+        const iso = result.proposal.startsAt || result.proposal.dueDate;
+        parts.push(el('p', { class: 'muted' }, `In your browser's time: ${new Date(iso).toLocaleString()}${result.proposal.timezone ? ' · proposal timezone ' + result.proposal.timezone : ''}`));
+      }
+    }
+    parts.push(el('details', {}, el('summary', {}, 'Full result JSON'), json(r)));
+    box.replaceChildren(...parts);
+    showTab('result');
+  }
+
+  function renderChecks({ outcome, ms, list, sourceId, proposals, newMemories, error }) {
+    const rows = [];
+    const check = (ok, label, detail = '') => rows.push(el('div', {}, ok === null ? 'ℹ️ ' : ok ? '✅ ' : '❌ ', label, detail ? el('span', { class: 'muted' }, '  ' + detail) : null));
+    if (error) { check(false, 'Request failed', error); $('tab-checks').replaceChildren(...rows); showTab('checks'); return; }
+    const ev = outcome.events;
+    const terminal = ev.filter((e) => e === 'result' || e === 'error');
+    check(true, 'Turn finished', `${(ms / 1000).toFixed(1)}s`);
+    if (!outcome.polled) {
+      check(ev[0] === 'message_created', 'message_created came first');
+      check(terminal.length === 1 && ev[ev.length - 1] === terminal[0], 'Exactly one terminal event, last', terminal.join(', '));
+      check(ev.includes('activity'), 'Progress (activity) events streamed', `${ev.filter((e) => e === 'activity').length}`);
+      check(ev.includes('text_delta'), 'Answer text streamed live', `${ev.filter((e) => e === 'text_delta').length} deltas, first after ${outcome.firstDeltaMs ? (outcome.firstDeltaMs / 1000).toFixed(1) + 's' : '-'}`);
+      if (outcome.result) {
+        // The preview is plain text, the final reply HTML: compare their words.
+        const words = (text) => text.replace(/(^|\s)(-|\d+[.)])\s/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+        const finalText = new DOMParser().parseFromString(outcome.result.reply.content.replace(/<[^>]+>/g, ' '), 'text/html').body.textContent;
+        check(words(outcome.shown) === words(finalText), 'Streamed preview matches the final reply');
+      }
+    }
+    check(!outcome.error, 'No error', outcome.error ? JSON.stringify(outcome.error) : '');
+    const source = list.find((m) => (m.id || m._id) === sourceId);
+    if (source) check(source.processingStatus === 'COMPLETED', 'Your message saved and COMPLETED', source.processingStatus);
+    const reply = list.find((m) => m.senderType === 'AI' && String(m.sourceMessageId) === String(sourceId));
+    check(Boolean(reply), 'AI reply saved in the conversation');
+    const type = outcome.result?.result?.type;
+    if (type && type !== 'MESSAGE' && !outcome.polled) check(proposals.length > 0, 'Proposal / draft saved', proposals.map((p) => `${p.actionType} ${p.status}`).join(', '));
+    if (outcome.result && !outcome.polled) {
+      const text = (outcome.result.reply?.content || '').toLowerCase();
+      check(!/(i have|i've|has been|was) (created|scheduled|updated|sent)/.test(text), 'Reply does not claim it executed anything');
+    }
+    if (newMemories > 0) check(null, `Laura proposed ${newMemories} new memor${newMemories === 1 ? 'y' : 'ies'} - see Memory tab`);
+    $('tab-checks').replaceChildren(...rows);
+  }
+
+  async function loadProposals() {
+    const box = $('proposals');
+    if (!state.conversationId) { box.replaceChildren(); return; }
+    try {
+      const messages = items(await call(`/messages?conversationId=${state.conversationId}&limit=50`)).filter((m) => m.senderType === 'USER');
+      const seen = new Set();
+      const cards = [];
+      for (const m of messages.reverse()) {
+        const props = items(await call(`/ai-actions/proposals?sourceId=${m.id || m._id}`));
+        for (const p of props) {
+          const id = p.id || p._id;
+          if (seen.has(id)) continue; seen.add(id);
+          cards.push(el('div', { class: 'card' },
+            el('div', { class: 'row' }, el('b', {}, p.actionType), el('span', { class: 'pill' }, p.status), el('span', { class: 'muted' }, `rev ${p.revision ?? '?'}`)),
+            json(p.payload),
+            (p.clarificationQuestions || []).length ? el('div', { class: 'muted' }, 'Open questions: ' + p.clarificationQuestions.map((q) => q.question).join(' | ')) : null));
+        }
+      }
+      box.replaceChildren(...(cards.length ? cards : [el('p', { class: 'muted' }, 'No proposals in this conversation.')]));
+    } catch (e) { box.replaceChildren(el('p', { class: 'e-error' }, e.message)); }
+  }
+
+  async function loadMemories() {
+    const box = $('memories');
+    try {
+      const status = $('memStatus').value;
+      const list = items(await call(`/business-memory?status=${status}&limit=50`));
+      if (status === 'PENDING_REVIEW') state.pendingMemories = list.length;
+      box.replaceChildren(...(list.length ? list.map((m) => el('div', { class: 'card' },
+        el('div', { class: 'row' }, el('b', {}, m.kind), el('span', { class: 'pill' }, m.status), m.dueOn ? el('span', { class: 'muted' }, 'due ' + m.dueOn) : null),
+        el('div', {}, m.content),
+        el('div', { class: 'muted' }, `${m.source?.type === 'MANUAL' ? 'added by owner' : 'learned by ' + (m.proposedByAgent?.name || 'AI')} · ${time(m.createdAt)}${m.contactIds?.length ? ' · customers: ' + m.contactIds.join(', ') : ''}`),
+        el('div', { class: 'row' },
+          m.status !== 'ACTIVE' && m.status !== 'ARCHIVED' ? el('button', { onclick: () => memoryAction(m.id, 'approve') }, 'Approve') : null,
+          m.status === 'PENDING_REVIEW' || m.status === 'ACTIVE' ? el('button', { onclick: () => memoryAction(m.id, 'reject') }, 'Reject') : null,
+          m.status !== 'ARCHIVED' ? el('button', { onclick: () => memoryAction(m.id, 'archive') }, 'Archive') : null)))
+        : [el('p', { class: 'muted' }, 'Nothing here.')]));
+    } catch (e) {
+      box.replaceChildren(el('p', { class: 'e-error' }, e.message.startsWith('404') ? 'Business memory routes not found - rebuild and restart the backend (npm run build, then npm run start:prod).' : e.message));
+    }
+  }
+  async function memoryAction(id, action) {
+    try {
+      if (action === 'archive') await call(`/business-memory/${id}`, { method: 'DELETE' });
+      else await call(`/business-memory/${id}/${action}`, { method: 'POST' });
+      loadMemories();
+    } catch (e) { alert(e.message); }
+  }
+  async function addMemory() {
+    const content = $('memContent').value.trim();
+    if (!content) return;
+    try {
+      await call('/business-memory', { method: 'POST', body: { kind: $('memKind').value, content, ...($('memDue').value.trim() ? { dueOn: $('memDue').value.trim() } : {}) } });
+      $('memContent').value = ''; $('memDue').value = '';
+      $('memStatus').value = 'ACTIVE'; loadMemories();
+    } catch (e) { alert(e.message); }
+  }
+
+  function busy(on) {
+    $('sendBtn').disabled = on; $('stopBtn').disabled = !on;
+    setPill('turnState', on ? 'working…' : 'idle', on ? 'warn' : '');
+  }
+
+  // ---------------------------------------------------------------- wiring
+  $('loginBtn').onclick = login;
+  $('password').onkeydown = (e) => { if (e.key === 'Enter') login(); };
+  $('logoutBtn').onclick = () => setSession(null, null);
+  $('newChat').onclick = () => { state.conversationId = null; $('convTitle').textContent = 'New conversation'; $('transcript').replaceChildren(); $('proposals').replaceChildren(); loadConversations(); };
+  $('refreshConvs').onclick = loadConversations;
+  $('sendBtn').onclick = send;
+  $('stopBtn').onclick = () => state.controller && state.controller.abort();
+  $('content').onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); };
+  $('memStatus').onchange = loadMemories;
+  $('memRefresh').onclick = loadMemories;
+  $('memAdd').onclick = addMemory;
+  $('base').onchange = () => { store.set('noltra.base', $('base').value); checkHealth(); };
+  document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+  $('memKind').replaceChildren(...KINDS.map((k) => el('option', { value: k }, k)));
+  $('quick').replaceChildren(el('span', { class: 'muted' }, 'Try:'), ...QUICK.map(([label, text]) => el('button', { title: text, onclick: () => { $('content').value = text; $('content').focus(); } }, label)));
+
+  $('base').value = store.get('noltra.base') || $('base').value;
+  checkHealth();
+  setInterval(checkHealth, 15000);
+  const saved = store.get('noltra.token');
+  if (saved) { try { setSession(saved, JSON.parse(store.get('noltra.user'))); } catch { setSession(null, null); } }
+})();
+</script>
+</body>
+</html>

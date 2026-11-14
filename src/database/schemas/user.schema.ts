@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 
@@ -40,6 +40,18 @@ export class User {
 
   @Prop({ default: UserRole.OWNER, enum: Object.values(UserRole) })
   role!: UserRole;
+
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  permissions!: string[];
+
+  @Prop({ default: false })
+  mustResetPassword?: boolean;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  invitedBy?: Types.ObjectId;
 
   @Prop({
     default: UserStatus.ACTIVE,

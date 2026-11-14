@@ -155,7 +155,11 @@ data: {"schemaVersion":"1.0","turnId":"...","reply":{...},"result":{"type":"MEET
 
 ```
 
-`result` is authoritative for final UI text. Refreshing the conversation or
+`result` is authoritative for final UI text. Its `reply.content` - and the
+persisted AI message `content` - is a small HTML fragment (`<p> <br> <ul> <ol>
+<li> <strong>` only, all text escaped): render it as HTML through an allow-list
+sanitizer, and strip tags for one-line previews. `text_delta` is plain text.
+Refreshing the conversation or
 proposal list after it arrives returns the persisted records.
 
 If AI emits `event: error`, Main Backend marks the source message `FAILED`,

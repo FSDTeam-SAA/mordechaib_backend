@@ -47,6 +47,8 @@ import { RoiDashboardModule } from './modules/roi-dashboard/roi-dashboard.module
 import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module';
 import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enquiries.module';
 import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/admin-meeting-calendar.module';
+import { BusinessMemoryModule } from './modules/business-memory/business-memory.module';
+import { OrgTeamModule } from './modules/org-team/org-team.module';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/adm
     HealthModule,
     AuthModule,
     UsersModule,
+    OrgTeamModule,
     OrganizationsModule,
     IntegrationsModule,
     TwilioModule,
@@ -96,6 +99,7 @@ import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/adm
     CrmDashboardModule,
     ContactEnquiriesModule,
     AdminMeetingCalendarModule,
+    BusinessMemoryModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
