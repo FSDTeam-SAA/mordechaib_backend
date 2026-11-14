@@ -28,6 +28,19 @@ export class GoogleMeetAuthService {
     private readonly calendarRepository: CalendarRepository,
   ) {}
 
+  async assertConnected(organizationId: string) {
+    if (
+      !(await this.repository.findConnected(
+        organizationId,
+        MeetingPlatform.GOOGLE_MEET,
+      ))
+    ) {
+      throw new ServiceUnavailableException(
+        'The organization Google account is not connected',
+      );
+    }
+  }
+
   async createAuthorizationUrl(organizationId: string, userId: string) {
     const state = await this.oauthState.create(
       MeetingPlatform.GOOGLE_MEET,

@@ -62,6 +62,7 @@ describe('PlatformMeetingsService', () => {
     };
     googleAuth = {
       getAccessToken: jest.fn().mockResolvedValue('google-token'),
+      assertConnected: jest.fn().mockResolvedValue(undefined),
     };
     googleProvider = {
       createMeeting: jest.fn().mockResolvedValue({
@@ -111,6 +112,21 @@ describe('PlatformMeetingsService', () => {
       config as unknown as ConfigService,
       contacts as unknown as ContactsService,
     );
+  });
+
+  it('preflights calendar and meeting-platform connections without creating anything', async () => {
+    await service.assertAiProposalExecutable('org-1', {
+      platform: MeetingPlatform.GOOGLE_MEET,
+      title: 'Project review',
+      startsAt: '2099-09-01T10:00:00.000Z',
+      timezone: 'Asia/Dhaka',
+      invitees: ['customer@example.com'],
+    });
+
+    expect(calendar.getDefaultProvider).toHaveBeenCalledWith('org-1');
+    expect(googleAuth.assertConnected).toHaveBeenCalledWith('org-1');
+    expect(repository.reserve).not.toHaveBeenCalled();
+    expect(googleProvider.createMeeting).not.toHaveBeenCalled();
   });
 
   it('resolves selected contacts into meeting invitees', async () => {
