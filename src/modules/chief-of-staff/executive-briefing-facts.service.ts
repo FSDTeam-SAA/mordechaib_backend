@@ -32,6 +32,8 @@ import { StrategicNote } from '../../database/schemas/strategic-note.schema';
 import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
+import { RoiBriefingFactsService } from '../roi-dashboard/roi-briefing-facts.service';
+import { CustomerHealthBriefingFactsService } from '../contacts/customer-health-briefing-facts.service';
 import { executiveBriefingPeriod } from './executive-briefing-period';
 import {
   BriefingFact,
@@ -50,6 +52,17 @@ const FACT_LIMITS = {
   activities: 100,
   strategicNotes: 20,
 } as const;
+
+type BriefingTaskRow = Record<string, unknown> & {
+  department?: TaskDepartment;
+  status?: TaskStatus;
+  title?: string;
+  description?: string;
+  assignedToUserId?: string;
+  priority?: string;
+  dueDate?: Date | string;
+  completedAt?: Date | string;
+};
 
 @Injectable()
 export class ExecutiveBriefingFactsService {
@@ -75,6 +88,8 @@ export class ExecutiveBriefingFactsService {
     private readonly activities: AgentActivityService,
     private readonly crmFacts: CrmBriefingFactsService,
     private readonly agentSettings: OrganizationAgentSettingsService,
+    private readonly roiFacts: RoiBriefingFactsService,
+    private readonly customerHealthFacts: CustomerHealthBriefingFactsService,
   ) {}
 
   async prepare(
@@ -113,6 +128,8 @@ export class ExecutiveBriefingFactsService {
       strategicNoteRows,
       crmFacts,
       agentPolicy,
+      roiFacts,
+      customerHealthFacts,
     ] = await Promise.all([
       this.tasks
         .find({
@@ -216,6 +233,18 @@ export class ExecutiveBriefingFactsService {
         .exec(),
       this.crmFacts.prepare({ organizationId, from: start, to: end }),
       this.agentSettings.policyContract(organizationId),
+      this.roiFacts.prepare({
+        organizationId,
+        from: start,
+        to: end,
+        capturedAt: activityEnd,
+        organizationCurrency: organization.defaultCurrency,
+      }),
+      this.customerHealthFacts.prepare({
+        organizationId,
+        from: start,
+        to: activityEnd,
+      }),
     ]);
 
     const boundedTasks = boundedRows(taskRows, FACT_LIMITS.tasks);
@@ -476,26 +505,38 @@ export class ExecutiveBriefingFactsService {
         },
       ),
     );
-    const marketingFacts = boundedTasks.items
-      .filter((task) => task.department === TaskDepartment.MARKETING)
-      .map((task) =>
-        createAiFact('marketing-task', 'TASK', task, {
-          title: task.title,
-          status: task.status,
-          priority: task.priority,
-          dueDate: aiIsoTimestamp(task.dueDate),
-        }),
-      );
-    const productDesignFacts = boundedTasks.items
-      .filter((task) => task.department === TaskDepartment.DESIGN)
-      .map((task) =>
-        createAiFact('design-task', 'TASK', task, {
-          title: task.title,
-          status: task.status,
-          priority: task.priority,
-          dueDate: aiIsoTimestamp(task.dueDate),
-        }),
-      );
+    const marketingTaskFacts = this.departmentTaskFacts(
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      TaskDepartment.MARKETING,
+      'marketing',
+      activityEnd,
+      period,
+    );
+    const marketingLeadFacts = crmFacts.customers.items
+      .filter((fact) => {
+        const objectType = fact.data.objectType;
+        return (
+          typeof objectType === 'string' &&
+          ['lead', 'leads'].includes(objectType.toLowerCase())
+        );
+      })
+      .map((fact) => ({
+        ...fact,
+        id: `marketing-lead-${fact.id}`,
+        sourceType: 'CRM_MARKETING_LEAD',
+        data: {
+          ...fact.data,
+          scope:
+            'Synchronized CRM lead record; campaign spend, impressions, conversion rate, and ROAS are not inferred.',
+        },
+      }));
+    const productDesignFacts = this.departmentTaskFacts(
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      TaskDepartment.DESIGN,
+      'product-design',
+      activityEnd,
+      period,
+    );
     const unavailable = (): BriefingFactGroup => ({
       availability: BriefingFactAvailability.UNAVAILABLE,
       items: [],
@@ -510,27 +551,29 @@ export class ExecutiveBriefingFactsService {
         proposalFacts,
         boundedProposals.truncated,
       ),
-      sourceAnalyses: {
-        availability: BriefingFactAvailability.PARTIAL,
-        items: analysisFacts,
-      },
+      sourceAnalyses: this.available(analysisFacts, boundedAnalyses.truncated),
       agentActivity: this.available(activityFacts, boundedActivities.truncated),
       sales: crmFacts.sales,
-      customers: crmFacts.customers,
+      customers: this.mergeCoverageGroups(
+        crmFacts.customers,
+        customerHealthFacts,
+      ),
       support: unavailable(),
       finance: unavailable(),
       vendors: unavailable(),
       marketing: {
         availability: BriefingFactAvailability.PARTIAL,
-        items: marketingFacts,
+        items: [...marketingTaskFacts, ...marketingLeadFacts],
       },
       productDesign: {
         availability: BriefingFactAvailability.PARTIAL,
         items: productDesignFacts,
       },
-      roi: unavailable(),
+      roi: roiFacts,
       aiQuality: {
-        availability: BriefingFactAvailability.PARTIAL,
+        availability: aiHealth.truncated
+          ? BriefingFactAvailability.PARTIAL
+          : BriefingFactAvailability.AVAILABLE,
         items: aiHealthFacts,
       },
       strategicNotes: this.available(
@@ -610,6 +653,83 @@ export class ExecutiveBriefingFactsService {
         : BriefingFactAvailability.AVAILABLE,
       items,
     };
+  }
+
+  private mergeCoverageGroups(
+    first: BriefingFactGroup,
+    second: BriefingFactGroup,
+  ): BriefingFactGroup {
+    const items = [...first.items, ...second.items];
+    if (
+      first.availability === BriefingFactAvailability.UNAVAILABLE &&
+      second.availability === BriefingFactAvailability.UNAVAILABLE
+    ) {
+      return { availability: BriefingFactAvailability.UNAVAILABLE, items };
+    }
+    // A complete CRM sync plus some interaction snapshots still does not prove
+    // health coverage for every customer. Keep the combined domain partial
+    // until a persisted population-coverage model exists.
+    return { availability: BriefingFactAvailability.PARTIAL, items };
+  }
+
+  private departmentTaskFacts(
+    tasks: BriefingTaskRow[],
+    department: TaskDepartment,
+    prefix: string,
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    const scoped = tasks.filter((task) => task.department === department);
+    if (!scoped.length) return [];
+    const completed = scoped.filter(
+      (task) => task.status === TaskStatus.COMPLETED,
+    ).length;
+    const overdue = scoped.filter((task) => {
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return (
+        task.status !== TaskStatus.COMPLETED &&
+        !!dueDate &&
+        new Date(dueDate).getTime() < capturedAt.getTime()
+      );
+    }).length;
+    const blocked = scoped.filter(
+      (task) =>
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.WAITING,
+    ).length;
+    const taskFacts = scoped.map((task) =>
+      createAiFact(`${prefix}-task`, 'TASK', task, {
+        title: task.title,
+        description: boundedAiText(task.description, 2_000),
+        assignedToUserId: task.assignedToUserId,
+        status: task.status,
+        priority: task.priority,
+        dueDate: aiIsoTimestamp(task.dueDate),
+        completedAt: aiIsoTimestamp(task.completedAt),
+        scope: `${department} task-management data only; domain outcome metrics are not inferred.`,
+      }),
+    );
+    return [
+      {
+        id: `${prefix}-task-summary-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_TASK_METRIC',
+        sourceId: `${prefix}:tasks:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: `${department} task progress`,
+          totalTasks: scoped.length,
+          completedTasks: completed,
+          openTasks: scoped.length - completed,
+          overdueTasks: overdue,
+          blockedOrWaitingTasks: blocked,
+          completionRatePercent: Number(
+            ((completed / scoped.length) * 100).toFixed(2),
+          ),
+          scope: `${department} task-management coverage only; campaign, asset-readiness, creative-approval, and brand-consistency outcomes are not inferred.`,
+        },
+      },
+      ...taskFacts,
+    ];
   }
 
   private stableStringify(value: unknown): string {

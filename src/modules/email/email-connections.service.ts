@@ -33,7 +33,10 @@ export class EmailConnectionsService {
     provider: EmailProvider,
   ) {
     const state = crypto.randomBytes(32).toString('base64url');
-    const authorizationUrl = this.providerClient.authorizationUrl(provider, state);
+    const authorizationUrl = this.providerClient.authorizationUrl(
+      provider,
+      state,
+    );
     await this.repository.createState({
       nonceHash: this.hash(state),
       provider,
@@ -135,6 +138,34 @@ export class EmailConnectionsService {
         email:
           connection?.status === 'CONNECTED' ? connection.email : undefined,
         expiresAt: connection?.expiresAt,
+        connectedByUserId:
+          connection?.status === 'CONNECTED' ? userId : undefined,
+        connectedAccounts: connection?.status === 'CONNECTED' ? 1 : 0,
+      };
+    });
+  }
+
+  async listForOrganization(organizationId: string) {
+    const connections =
+      await this.repository.listByOrganization(organizationId);
+    return Object.values(EmailProvider).map((provider) => {
+      const providerConnections = connections.filter(
+        (connection) => connection.provider === provider,
+      );
+      const connectedConnections = providerConnections.filter(
+        (connection) => connection.status === 'CONNECTED',
+      );
+      const primary = connectedConnections[0] ?? providerConnections[0];
+
+      return {
+        provider,
+        connected: connectedConnections.length > 0,
+        email: primary?.status === 'CONNECTED' ? primary.email : undefined,
+        expiresAt:
+          primary?.status === 'CONNECTED' ? primary.expiresAt : undefined,
+        connectedByUserId:
+          primary?.status === 'CONNECTED' ? primary.userId : undefined,
+        connectedAccounts: connectedConnections.length,
       };
     });
   }

@@ -113,6 +113,7 @@ export class StripeProvider {
   async upgradeSubscriptionPrice(
     stripeSubscriptionId: string,
     newPriceId: string,
+    idempotencyKey?: string,
   ): Promise<Stripe.Response<Stripe.Subscription>> {
     const subscription =
       await this.client.subscriptions.retrieve(stripeSubscriptionId);
@@ -122,10 +123,14 @@ export class StripeProvider {
         `Stripe subscription ${stripeSubscriptionId} has no items to update`,
       );
     }
-    return this.client.subscriptions.update(stripeSubscriptionId, {
-      items: [{ id: itemId, price: newPriceId }],
-      proration_behavior: 'create_prorations',
-    });
+    return this.client.subscriptions.update(
+      stripeSubscriptionId,
+      {
+        items: [{ id: itemId, price: newPriceId }],
+        proration_behavior: 'create_prorations',
+      },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
   }
 
   constructWebhookEvent(
