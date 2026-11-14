@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AdminMeetingStatus } from '../../common/enums/admin-meeting-status.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
+import { CalendarEventStatus } from '../../common/enums/calendar-event-status.enum';
+import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
+import { adminMeetingCapabilities } from './admin-meeting-capabilities';
 import {
   AdminMeetingCalendarItem,
   AdminMeetingCalendarResponse,
@@ -49,8 +52,8 @@ export class AdminMeetingCalendarService {
           ? Math.round((row.count / meetingTypeTotal) * 10_000) / 100
           : 0,
       })),
-      items: result.items.map((item) => this.toItem(item)),
-      upcoming: result.upcoming.map((item) => this.toItem(item)),
+      items: result.items.map((item) => this.toItem(item, now)),
+      upcoming: result.upcoming.map((item) => this.toItem(item, now)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -71,16 +74,28 @@ export class AdminMeetingCalendarService {
     }
   }
 
-  private toItem(row: Record<string, unknown>): AdminMeetingCalendarItem {
+  private toItem(
+    row: Record<string, unknown>,
+    now: Date,
+  ): AdminMeetingCalendarItem {
     const status = row.status as AdminMeetingStatus;
+    const sourceType = row.sourceType as AdminMeetingCalendarItem['sourceType'];
+    const startsAt = this.date(row.startsAt);
+    const capabilities = adminMeetingCapabilities({
+      sourceType,
+      rawStatus: row.rawStatus as PlatformMeetingStatus | CalendarEventStatus,
+      status,
+      startsAt,
+      now,
+    });
     return {
       id: String(row.id),
-      sourceType: row.sourceType as AdminMeetingCalendarItem['sourceType'],
+      sourceType,
       organization:
         row.organization as AdminMeetingCalendarItem['organization'],
       title: String(row.title),
       description: typeof row.description === 'string' ? row.description : null,
-      startsAt: this.isoDate(row.startsAt),
+      startsAt: startsAt.toISOString(),
       endsAt: this.isoDate(row.endsAt),
       durationMinutes: Number(row.durationMinutes) || 0,
       timezone: String(row.timezone),
@@ -95,16 +110,18 @@ export class AdminMeetingCalendarService {
       meetingPlatform:
         typeof row.meetingPlatform === 'string' ? row.meetingPlatform : null,
       eventUrl: typeof row.eventUrl === 'string' ? row.eventUrl : null,
-      canComplete: false,
-      canCancel: false,
-      canDelete: false,
+      ...capabilities,
     };
   }
 
   private isoDate(value: unknown) {
+    return this.date(value).toISOString();
+  }
+
+  private date(value: unknown) {
     if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
       throw new BadRequestException('Stored meeting date is invalid');
     }
-    return value.toISOString();
+    return value;
   }
 }
