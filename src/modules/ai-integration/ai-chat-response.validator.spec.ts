@@ -137,4 +137,35 @@ describe('AiChatResponseValidator', () => {
       ),
     ).toThrow(BadRequestException);
   });
+
+  it('reads proposed memories leniently, dropping invalid items', () => {
+    expect(
+      validator.memories({
+        memories: [
+          {
+            kind: 'COMMITMENT',
+            content: ' Send Kongkon the proposal by 2026-11-20. ',
+            contactIds: ['6af40fef9ff07abe4d79f244', 'not-an-id'],
+            dueOn: '2026-11-20',
+          },
+          { kind: 'GOSSIP', content: 'unknown kind' },
+          { kind: 'GOAL', content: '' },
+          { kind: 'DECISION', content: 'x'.repeat(1_001) },
+          'not an object',
+          { kind: 'GOAL', content: 'Reach $1M ARR by Q4.', dueOn: 'Friday' },
+        ],
+      }),
+    ).toEqual([
+      {
+        kind: 'COMMITMENT',
+        content: 'Send Kongkon the proposal by 2026-11-20.',
+        contactIds: ['6af40fef9ff07abe4d79f244'],
+        dueOn: '2026-11-20',
+      },
+      { kind: 'GOAL', content: 'Reach $1M ARR by Q4.' },
+    ]);
+    expect(validator.memories({})).toEqual([]);
+    expect(validator.memories({ memories: 'nope' })).toEqual([]);
+    expect(validator.memories(null)).toEqual([]);
+  });
 });

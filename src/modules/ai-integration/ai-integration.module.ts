@@ -34,6 +34,7 @@ import { AiChatTurnService } from './ai-chat-turn.service';
 import { SystemServicesModule } from '../system-services/system-services.module';
 import { AiStreamingClient } from './ai-streaming.client';
 import { AiChatStreamingService } from './ai-chat-streaming.service';
+import { BusinessMemoryModule } from '../business-memory/business-memory.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -55,6 +56,7 @@ function redisConnection(urlValue: string) {
     forwardRef(() => AiActionsModule),
     AiSourceContextModule,
     AiTelemetryModule,
+    BusinessMemoryModule,
     EmailModule,
     OrganizationAgentSettingsModule,
     SystemServicesModule,
