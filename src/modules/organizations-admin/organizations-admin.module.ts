@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { OrgTeamModule } from '../org-team/org-team.module';
 import { StripeModule } from '../stripe/stripe.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { OrganizationsAdminController } from './organizations-admin.controller';
@@ -10,6 +11,7 @@ import { OrganizationsAdminService } from './organizations-admin.service';
   imports: [
     AuditLogsModule,
     IntegrationsModule,
+    OrgTeamModule,
     StripeModule,
     SubscriptionsModule,
   ],
