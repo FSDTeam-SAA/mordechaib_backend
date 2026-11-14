@@ -11,6 +11,8 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { AuthTokenType } from '../../common/enums/auth-token-type.enum';
+import { ALL_ORG_PERMISSIONS } from '../../common/enums/org-permission.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { parseDurationToSeconds } from '../../common/helpers/duration.helper';
 import { sendEmail } from '../../common/helpers/mailer.helper';
@@ -31,7 +33,6 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileAvatarStorageService } from './profile-avatar-storage.service';
 import { AccountDeletionService } from './account-deletion.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
-import { UserRole } from '../../common/enums/user-role.enum';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
 import { SessionMetadata } from '../../common/types/session-metadata.type';
 
@@ -616,6 +617,13 @@ export class AuthService {
   }
 
   private toUserResponse(user: UserDocument) {
+    const permissions =
+      user.role === UserRole.OWNER
+        ? ALL_ORG_PERMISSIONS
+        : user.permissions && user.permissions.length > 0
+        ? user.permissions
+        : [];
+
     return {
       id: String(user._id),
       organizationId: user.organizationId,
@@ -627,6 +635,8 @@ export class AuthService {
       language: user.language || 'en',
       avatarUrl: user.avatarUrl,
       role: user.role,
+      permissions,
+      mustResetPassword: user.mustResetPassword ?? false,
       status: user.status,
       isPlatformAdmin: user.isPlatformAdmin,
       emailVerified: Boolean(user.emailVerifiedAt),
