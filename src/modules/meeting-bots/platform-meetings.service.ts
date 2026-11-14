@@ -321,6 +321,25 @@ export class PlatformMeetingsService {
     );
   }
 
+  /**
+   * Performs read-only connection checks before an AI proposal is approved.
+   * Remote meeting creation remains inside create() so this method cannot
+   * produce provider side effects.
+   */
+  async assertAiProposalExecutable(
+    organizationId: string,
+    input: CreateConnectedMeetingDto,
+  ) {
+    if (input.startsAt) {
+      await this.calendar.getDefaultProvider(organizationId);
+    }
+    if (input.platform === MeetingPlatform.ZOOM) {
+      await this.zoomAuth.assertConnected(organizationId);
+    } else {
+      await this.googleAuth.assertConnected(organizationId);
+    }
+  }
+
   async list(
     organizationId: string,
     actor: { id: string; role: UserRole },
