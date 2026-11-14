@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { AgentType } from '../../common/enums/agent-type.enum';
 import { AiActionType } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
+import { BusinessMemoryService } from '../business-memory/business-memory.service';
 import { AiChatContextService } from './ai-chat-context.service';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiChatResponseValidator } from './ai-chat-response.validator';
@@ -48,7 +49,8 @@ describe('AiChatTurnService', () => {
   };
   const context = { build: jest.fn() };
   const aiService = { request: jest.fn() };
-  const validator = { validate: jest.fn() };
+  const validator = { validate: jest.fn(), memories: jest.fn() };
+  const memory = { ingestFromChat: jest.fn() };
   const replies = { persist: jest.fn() };
   const actions = { ingestChatDraft: jest.fn() };
   let service: AiChatTurnService;
@@ -70,6 +72,8 @@ describe('AiChatTurnService', () => {
       },
     });
     actions.ingestChatDraft.mockResolvedValue({ id: 'proposal-1' });
+    validator.memories.mockReturnValue([]);
+    memory.ingestFromChat.mockResolvedValue(0);
     replies.persist.mockResolvedValue({
       created: true,
       message: { _id: 'ai-message-1' },
@@ -81,6 +85,7 @@ describe('AiChatTurnService', () => {
       replies as unknown as AiChatReplyService,
       actions as unknown as AiActionsService,
       { get: jest.fn().mockReturnValue(45_000) } as unknown as ConfigService,
+      memory as unknown as BusinessMemoryService,
     );
   });
 
@@ -139,6 +144,29 @@ describe('AiChatTurnService', () => {
         draftId: 'crm-product-1',
         actionType: AiActionType.UPDATE_CRM_RECORD,
       }),
+    );
+  });
+
+  it('stores the memories the agent proposed for the owner to review', async () => {
+    const proposed = [
+      {
+        kind: 'COMMITMENT',
+        content: 'Send Kongkon the proposal by 2026-11-20.',
+      },
+    ];
+    validator.memories.mockReturnValue(proposed);
+
+    await service.process(organizationId, messageId);
+
+    expect(validator.memories).toHaveBeenCalledWith({ raw: true });
+    expect(memory.ingestFromChat).toHaveBeenCalledWith(
+      organizationId,
+      proposed,
+      {
+        messageId,
+        conversationId: request.conversation.id,
+        agent,
+      },
     );
   });
 });

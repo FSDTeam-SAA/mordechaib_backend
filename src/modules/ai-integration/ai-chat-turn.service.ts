@@ -5,6 +5,7 @@ import {
   AiProposalSourceType,
 } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionsService } from '../ai-actions/ai-actions.service';
+import { BusinessMemoryService } from '../business-memory/business-memory.service';
 import { AiChatContextService } from './ai-chat-context.service';
 import { AiChatReplyService } from './ai-chat-reply.service';
 import { AiChatResponseValidator } from './ai-chat-response.validator';
@@ -22,6 +23,7 @@ export class AiChatTurnService {
     private readonly replies: AiChatReplyService,
     private readonly actions: AiActionsService,
     private readonly config: ConfigService,
+    private readonly memory: BusinessMemoryService,
   ) {}
 
   async process(organizationId: string, sourceMessageId: string) {
@@ -80,6 +82,16 @@ export class AiChatTurnService {
         effectiveTimezone: prepared.request.context.effectiveTimezone,
       });
     }
+    // What the agent learned waits for the owner's review; never fails the turn.
+    await this.memory.ingestFromChat(
+      organizationId,
+      this.validator.memories(raw),
+      {
+        messageId: sourceMessageId,
+        conversationId: prepared.request.conversation.id,
+        agent: response.reply.agent,
+      },
+    );
     const assistantReply = await this.replies.persist({
       organizationId,
       conversationId: prepared.request.conversation.id,
