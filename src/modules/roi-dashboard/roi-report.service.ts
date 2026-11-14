@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+// @ts-ignore
 import PDFDocument from 'pdfkit';
 import { RoiDashboardSnapshot } from './roi-dashboard.types';
 
@@ -141,7 +142,7 @@ export class RoiReportService {
     });
   }
 
-  private section(document: PDFKit.PDFDocument, title: string) {
+  private section(document: any, title: string) {
     document
       .moveDown(1.2)
       .fontSize(14)
@@ -150,7 +151,7 @@ export class RoiReportService {
       .moveDown(0.4);
   }
 
-  private metric(document: PDFKit.PDFDocument, label: string, value: string) {
+  private metric(document: any, label: string, value: string) {
     document
       .fontSize(10)
       .fillColor('#667085')
