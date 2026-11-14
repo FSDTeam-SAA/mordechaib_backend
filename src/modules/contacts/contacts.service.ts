@@ -318,6 +318,16 @@ export class ContactsService {
     }));
   }
 
+  async findActiveByPhone(organizationId: string, phone: string) {
+    const normalized = normalizePhoneNumber(phone);
+    if (!isE164(normalized)) return null;
+    const contact = await this.repository.findActiveByPhone(
+      organizationId,
+      normalized,
+    );
+    return contact ? this.toResponse(contact) : null;
+  }
+
   private async requireActive(organizationId: string, id: string) {
     this.assertId(id);
     const contact = await this.repository.findById(organizationId, id);

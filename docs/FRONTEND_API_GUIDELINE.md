@@ -2719,7 +2719,13 @@ Details response shape:
 ```json
 {
   "source": { "type": "CALL_TRANSCRIPT", "id": "SOURCE_ID" },
-  "metadata": { "kind": "CALL", "status": "COMPLETED", "durationSeconds": 180 },
+  "metadata": {
+    "kind": "CALL",
+    "status": "COMPLETED",
+    "durationSeconds": 180,
+    "contactId": "CUSTOMER_CONTACT_ID",
+    "phoneNumber": "+15551234567"
+  },
   "audio": {
     "available": true,
     "downloadPath": "/api/v1/call-intelligence/SOURCE_ID/audio?sourceType=CALL_TRANSCRIPT"
@@ -2732,9 +2738,42 @@ Details response shape:
   },
   "analysis": { "id": "ANALYSIS_ID" },
   "actions": { "tasks": [], "meetings": [] },
-  "extensions": { "crm": null }
+  "extensions": {
+    "crm": {
+      "availability": "AVAILABLE",
+      "reason": null,
+      "customer": {
+        "id": "CUSTOMER_CONTACT_ID",
+        "name": "Mike Johnson",
+        "company": "Acme Ltd"
+      },
+      "resolution": "SOURCE_CONTACT_ID",
+      "linkedDealCount": 1,
+      "revenue": {
+        "availability": "AVAILABLE",
+        "aggregateAvailable": true,
+        "value": 6300,
+        "currency": "USD",
+        "dealCount": 1,
+        "semantic": "OPEN_PIPELINE_VALUE",
+        "attribution": "CUSTOMER_LINKED_CRM_DEALS",
+        "attributedToSource": false
+      },
+      "commercial": {}
+    }
+  }
 }
 ```
+
+`extensions.crm.revenue` is customer-linked open CRM pipeline context; it is
+not booked revenue and is never claimed as revenue caused by the call. The
+extension resolves from the source's explicit `contactId`. For historical call
+records without that field, the backend may use an exact active-customer phone
+match. If no customer or directly linked CRM deal exists, the same object is
+returned with `availability: "UNAVAILABLE"` and a bounded `reason`; the
+frontend must not display a zero value. Multiple currencies are returned in
+the existing deal-value `breakdown` with `aggregateAvailable: false` instead
+of being summed.
 
 For meeting-source audio, use `GET /meeting-bots/:meetingBotId/audio`, not the call audio endpoint. Request `includeTranscript=true` only when the user opens the transcript panel.
 

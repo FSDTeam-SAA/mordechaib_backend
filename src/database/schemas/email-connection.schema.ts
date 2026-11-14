@@ -46,3 +46,9 @@ EmailConnectionSchema.index(
   { organizationId: 1, userId: 1, provider: 1 },
   { unique: true },
 );
+EmailConnectionSchema.index({
+  organizationId: 1,
+  provider: 1,
+  status: 1,
+  updatedAt: -1,
+});

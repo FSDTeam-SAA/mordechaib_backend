@@ -19,4 +19,12 @@ export class AuditLogsService {
   findByOrganization(organizationId: string) {
     return this.repository.findByOrganization(organizationId);
   }
+
+  countByActions(actions: string[], range: { from: Date; to: Date }) {
+    return this.repository.countByActions(actions, range);
+  }
+
+  countByOrganizationAndAction(organizationId: string, action: string) {
+    return this.repository.countByOrganizationAndAction(organizationId, action);
+  }
 }

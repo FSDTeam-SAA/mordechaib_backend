@@ -54,6 +54,8 @@ import { CrmDeal, CrmDealSchema } from '../../database/schemas/crm-deal.schema';
 import { ContactCommercialSummaryService } from './contact-commercial-summary.service';
 import { ContactWorkspaceActionsService } from './contact-workspace-actions.service';
 import { ContactCrmRecordsReader } from './contact-crm-records.reader';
+import { ContactCommercialContextService } from './contact-commercial-context.service';
+import { CustomerHealthBriefingFactsService } from './customer-health-briefing-facts.service';
 
 @Module({
   imports: [
@@ -94,6 +96,8 @@ import { ContactCrmRecordsReader } from './contact-crm-records.reader';
     ContactCommercialSummaryService,
     ContactWorkspaceActionsService,
     ContactCrmRecordsReader,
+    ContactCommercialContextService,
+    CustomerHealthBriefingFactsService,
   ],
   exports: [
     ContactsService,
@@ -102,6 +106,8 @@ import { ContactCrmRecordsReader } from './contact-crm-records.reader';
     ContactActivityService,
     ContactNotesService,
     ContactFilesService,
+    ContactCommercialContextService,
+    CustomerHealthBriefingFactsService,
   ],
 })
 export class ContactsModule {}

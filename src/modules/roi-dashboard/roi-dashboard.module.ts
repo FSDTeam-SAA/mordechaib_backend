@@ -21,6 +21,7 @@ import { RoiDashboardService } from './roi-dashboard.service';
 import { RoiReportService } from './roi-report.service';
 import { RoiSettingsRepository } from './roi-settings.repository';
 import { RoiSettingsService } from './roi-settings.service';
+import { RoiBriefingFactsService } from './roi-briefing-facts.service';
 
 @Module({
   imports: [
@@ -40,7 +41,8 @@ import { RoiSettingsService } from './roi-settings.service';
     RoiSettingsService,
     RoiDashboardService,
     RoiReportService,
+    RoiBriefingFactsService,
   ],
-  exports: [RoiDashboardService, RoiSettingsService],
+  exports: [RoiDashboardService, RoiSettingsService, RoiBriefingFactsService],
 })
 export class RoiDashboardModule {}

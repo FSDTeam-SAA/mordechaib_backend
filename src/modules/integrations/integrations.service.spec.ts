@@ -10,7 +10,10 @@ describe('IntegrationsService', () => {
     findTwilioSetting: jest.fn(),
     findActiveTwilioPhoneNumber: jest.fn(),
   };
-  const emailConnections = { list: jest.fn() };
+  const emailConnections = {
+    list: jest.fn(),
+    listForOrganization: jest.fn(),
+  };
   const service = new IntegrationsService(
     repository as unknown as IntegrationsRepository,
     emailConnections as unknown as EmailConnectionsService,
@@ -22,6 +25,7 @@ describe('IntegrationsService', () => {
     repository.findTwilioSetting.mockResolvedValue(null);
     repository.findActiveTwilioPhoneNumber.mockResolvedValue(null);
     emailConnections.list.mockResolvedValue([]);
+    emailConnections.listForOrganization.mockResolvedValue([]);
   });
 
   it('returns the organization Zoom connection as an integration card', async () => {
@@ -106,5 +110,59 @@ describe('IntegrationsService', () => {
         },
       }),
     );
+  });
+
+  it('returns an organization-scoped read-only integration overview', async () => {
+    repository.findByOrganization.mockResolvedValue([
+      {
+        provider: IntegrationProvider.HUBSPOT,
+        status: 'CONNECTED',
+        isDefaultCrm: true,
+        metadata: { lastSyncedAt: '2026-11-14T04:00:00.000Z' },
+      },
+      {
+        provider: IntegrationProvider.SALESFORCE,
+        status: 'FAILED',
+        metadata: { reconnectRequired: true },
+      },
+    ]);
+    emailConnections.listForOrganization.mockResolvedValue([
+      {
+        provider: 'GOOGLE',
+        connected: true,
+        email: 'team@example.com',
+        connectedByUserId: 'member-2',
+        connectedAccounts: 2,
+      },
+    ]);
+
+    const result = await service.findOrganizationOverview('org-1');
+
+    expect(emailConnections.list).not.toHaveBeenCalled();
+    expect(emailConnections.listForOrganization).toHaveBeenCalledWith('org-1');
+    expect(result.summary).toEqual({
+      total: 11,
+      connected: 2,
+      attentionRequired: 1,
+      notConfigured: 8,
+    });
+    expect(result.items).toContainEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.GMAIL,
+        connected: true,
+        connectedAccounts: 2,
+        connectedByUserId: 'member-2',
+        canManage: false,
+      }),
+    );
+    expect(result.items).toContainEqual(
+      expect.objectContaining({
+        provider: IntegrationProvider.HUBSPOT,
+        connected: true,
+        isDefaultCrm: true,
+        canManage: false,
+      }),
+    );
+    expect(result.items.every((item) => !('connectPath' in item))).toBe(true);
   });
 });

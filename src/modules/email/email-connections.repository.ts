@@ -57,6 +57,15 @@ export class EmailConnectionsRepository {
       .exec();
   }
 
+  listByOrganization(organizationId: string) {
+    return this.connections
+      .find({ organizationId })
+      .select('-accessToken -refreshToken')
+      .sort({ updatedAt: -1, _id: -1 })
+      .lean()
+      .exec();
+  }
+
   upsert(
     organizationId: string,
     userId: string,

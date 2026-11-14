@@ -23,6 +23,8 @@ import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { ExecutiveBriefingFactsService } from './executive-briefing-facts.service';
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
+import { RoiBriefingFactsService } from '../roi-dashboard/roi-briefing-facts.service';
+import { CustomerHealthBriefingFactsService } from '../contacts/customer-health-briefing-facts.service';
 
 describe('ExecutiveBriefingFactsService', () => {
   const organizationId = '507f1f77bcf86cd799439011';
@@ -155,6 +157,26 @@ describe('ExecutiveBriefingFactsService', () => {
           overrides: [],
         }),
       } as unknown as OrganizationAgentSettingsService,
+      {
+        prepare: jest.fn().mockResolvedValue({
+          availability: BriefingFactAvailability.AVAILABLE,
+          items: [
+            {
+              id: 'roi-summary',
+              sourceType: 'DERIVED_ROI_METRIC',
+              sourceId: 'roi:summary',
+              capturedAt: capturedAt.toISOString(),
+              data: { title: 'ROI summary', hoursSaved: 1 },
+            },
+          ],
+        }),
+      } as unknown as RoiBriefingFactsService,
+      {
+        prepare: jest.fn().mockResolvedValue({
+          availability: BriefingFactAvailability.UNAVAILABLE,
+          items: [],
+        }),
+      } as unknown as CustomerHealthBriefingFactsService,
     );
     const asOf = new Date('2026-09-18T06:00:00.000Z');
 
@@ -189,7 +211,10 @@ describe('ExecutiveBriefingFactsService', () => {
     expect(first.input.facts.marketing).toEqual(
       expect.objectContaining({
         availability: BriefingFactAvailability.PARTIAL,
-        items: [expect.objectContaining({ sourceType: 'TASK' })],
+        items: expect.arrayContaining([
+          expect.objectContaining({ sourceType: 'DERIVED_TASK_METRIC' }),
+          expect.objectContaining({ sourceType: 'TASK' }),
+        ]),
       }),
     );
     expect(first.input.facts.finance).toEqual({
@@ -198,7 +223,10 @@ describe('ExecutiveBriefingFactsService', () => {
     });
     expect(first.input.facts.agentActivity.items).toHaveLength(1);
     expect(first.input.facts.aiQuality.availability).toBe(
-      BriefingFactAvailability.PARTIAL,
+      BriefingFactAvailability.AVAILABLE,
+    );
+    expect(first.input.facts.roi.availability).toBe(
+      BriefingFactAvailability.AVAILABLE,
     );
     expect(first.input.facts.aiQuality.items).toEqual(
       expect.arrayContaining([
