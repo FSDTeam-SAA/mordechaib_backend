@@ -1,0 +1,1195 @@
+{
+  "info": {
+    "_postman_id": "ac8091ea-0ff8-4f2b-81ed-2ff8c3770fdc",
+    "name": "mordy",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "48160838",
+    "_collection_link": "https://go.postman.co/collection/48160838-ac8091ea-0ff8-4f2b-81ed-2ff8c3770fdc?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "auth",
+      "item": [
+        {
+          "name": "registration",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\" : \"jishad khan\",\r\n  \"email\": \"user4@gmail.com\",\r\n  \"password\": \"123456\",\r\n  \"preferredGenres\":[\"6a2b968ec22fc9b01e66202d\",\"6a2b96afc22fc9b01e662031\"]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/register",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"email\": \"jahidulislamjishad2024@gmail.com\",\r\n    \"password\": \"6efELfxv*#5U\"\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/login",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "refresh-access-token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODcxZjUwZTlkMjFiOTI3YWI4YWY2NTEiLCJyb2xlIjoiVVNFUiIsImlhdCI6MTc1MjI5ODgxMywiZXhwIjoxNzUzMTYyODEzfQ.euGbixrtaH4lISfo4sU3ZDVU3LUvV-scS2N65M7kQ_0\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/refresh-access-token",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "refresh-access-token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "forget-password",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n   \"email\" : \"bdcallingjahidul@gmail.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/forget-password",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "forget-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "verify-code",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"otp\" : \"949321\",\r\n    \"email\": \"bdcallingjahidul@gmail.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/verify-code",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "verify-code"
+              ]
+            }
+          }
+        },
+        {
+          "name": "reset-passwoerd",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"bdcallingjahidul@gmail.com\",\r\n  \"newPassword\": \"jishad123\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/reset-password",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "change-password",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODcxZjUwZTlkMjFiOTI3YWI4YWY2NTEiLCJyb2xlIjoiVVNFUiIsImlhdCI6MTc1MjI5OTEyOCwiZXhwIjoxNzUyOTAzOTI4fQ.rXz9P1_cLzWqVucUpLZ6Akq0Z6tiPVzhG0QP0NS00Og",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"oldPassword\":\"jishad123\",\r\n  \"newPassword\":\"jishad12345\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/auth/change-password",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/auth/logout",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile",
+      "item": [
+        {
+          "name": "get User by Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/user/me",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "update user",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"name\" : \"jishad shikdar\"\r\n}\r\n"
+            },
+            "url": {
+              "raw": "{{baseURL}}/user/me",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "delete user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/user/me",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "upload avatar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profileImage",
+                  "type": "file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseURL}}/user/upload-avatar",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "upload-avatar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "update avatar",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profileImage",
+                  "type": "file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseURL}}/user/upload-avatar",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "upload-avatar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "delete avatar",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/user/upload-avatar",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "upload-avatar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "admin all user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/user/all-users",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "all-users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "view user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/user/6a3378f71a3dc9d7d8604f7c",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "user",
+                "6a3378f71a3dc9d7d8604f7c"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "team",
+      "item": [
+        {
+          "name": "Invite team member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sam Support\",\n  \"email\": \"jahidulislamjishad2024@gmail.com\",\n  \"permissions\": [\"Dashborad\", \"Help & Support\"],\n  \"role\": \"SUB_ADMIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseURL}}/team",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List team members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/team?page=1&limit=20",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get team member by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update permissions / status / role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [\"Dashborad\", \"All Access\"],\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseURL}}/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resend invite email",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/team/6a9122ce08a762bba30a713e/resend-invite",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team",
+                "6a9122ce08a762bba30a713e",
+                "resend-invite"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete team member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            }
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{accessToken}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "organization-team",
+      "item": [
+        {
+          "name": "Get tab permissions (User Dashboard)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organization/team/permissions",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team",
+                "permissions"
+              ]
+            },
+            "description": "Fetch all available sidebar tabs and module permissions for the user dashboard to populate permission checkboxes."
+          },
+          "response": [
+            {
+              "name": "Get tab permissions success",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n    \"success\": true,\n    \"data\": {\n        \"permissions\": [\n            \"Dashboard\",\n            \"Call Intelligence\",\n            \"Customer\",\n            \"AI Chief of Staff\",\n            \"AI Agents\",\n            \"CRM\",\n            \"ROI Dashboard\",\n            \"Task\",\n            \"Calendar\",\n            \"Operational Diagnostic\",\n            \"Settings\",\n            \"Help & Support\",\n            \"All Access\"\n        ],\n        \"defaults\": [\n            \"Dashboard\",\n            \"Call Intelligence\",\n            \"Customer\",\n            \"AI Chief of Staff\",\n            \"AI Agents\",\n            \"CRM\",\n            \"ROI Dashboard\",\n            \"Task\",\n            \"Calendar\",\n            \"Operational Diagnostic\",\n            \"Settings\",\n            \"Help & Support\"\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Invite organization team member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sarah Jenkins\",\n  \"email\": \"sarah.jenkins@example.com\",\n  \"role\": \"MEMBER\",\n  \"permissions\": [\n    \"Dashboard\",\n    \"Call Intelligence\",\n    \"Customer\",\n    \"AI Agents\",\n    \"Task\",\n    \"Calendar\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/organization/team",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team"
+              ]
+            },
+            "description": "Invites a member to the current organization, creates login user account, hashes temporary password, and sends invite email."
+          },
+          "response": [
+            {
+              "name": "Invite organization team member success",
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n    \"success\": true,\n    \"data\": {\n        \"_id\": \"6a9122ce08a762bba30a713e\",\n        \"organizationId\": \"6a71a90167f3504f792355ba\",\n        \"name\": \"Sarah Jenkins\",\n        \"firstName\": \"Sarah\",\n        \"lastName\": \"Jenkins\",\n        \"email\": \"sarah.jenkins@example.com\",\n        \"role\": \"MEMBER\",\n        \"permissions\": [\n            \"Dashboard\",\n            \"Call Intelligence\",\n            \"Customer\",\n            \"AI Agents\",\n            \"Task\",\n            \"Calendar\"\n        ],\n        \"status\": \"ACTIVE\",\n        \"invitedBy\": {\n            \"_id\": \"6a71a90167f3504f792355bb\",\n            \"firstName\": \"Mahabur\",\n            \"lastName\": \"rahman\",\n            \"email\": \"mahabur1814031@gmail.com\"\n        },\n        \"createdAt\": \"2026-11-14T09:15:00.000Z\",\n        \"invitationEmailSent\": true\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List organization team members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organization/team?page=1&limit=20&search=",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "MEMBER",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List members belonging to the authenticated user's organization."
+          },
+          "response": [
+            {
+              "name": "List organization team members success",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n    \"success\": true,\n    \"data\": {\n        \"items\": [\n            {\n                \"_id\": \"6a9122ce08a762bba30a713e\",\n                \"organizationId\": \"6a71a90167f3504f792355ba\",\n                \"firstName\": \"Sarah\",\n                \"lastName\": \"Jenkins\",\n                \"email\": \"sarah.jenkins@example.com\",\n                \"role\": \"MEMBER\",\n                \"permissions\": [\n                    \"Dashboard\",\n                    \"Call Intelligence\",\n                    \"Customer\",\n                    \"AI Agents\",\n                    \"Task\",\n                    \"Calendar\"\n                ],\n                \"status\": \"ACTIVE\",\n                \"mustResetPassword\": true,\n                \"invitedBy\": {\n                    \"_id\": \"6a71a90167f3504f792355bb\",\n                    \"firstName\": \"Mahabur\",\n                    \"lastName\": \"rahman\",\n                    \"email\": \"mahabur1814031@gmail.com\"\n                },\n                \"createdAt\": \"2026-11-14T09:15:00.000Z\",\n                \"updatedAt\": \"2026-11-14T09:15:00.000Z\"\n            }\n        ],\n        \"total\": 1,\n        \"page\": 1,\n        \"limit\": 20,\n        \"pages\": 1\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get organization member by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organization/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            },
+            "description": "Get detailed profile and granted permissions of a specific organization team member."
+          },
+          "response": []
+        },
+        {
+          "name": "Update member role, permissions, status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\",\n  \"permissions\": [\n    \"Dashboard\",\n    \"Call Intelligence\",\n    \"Customer\",\n    \"AI Chief of Staff\",\n    \"AI Agents\",\n    \"CRM\",\n    \"ROI Dashboard\",\n    \"Task\",\n    \"Calendar\",\n    \"Operational Diagnostic\",\n    \"Settings\",\n    \"Help & Support\"\n  ],\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/organization/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            },
+            "description": "Updates role, tab permissions, or status of an existing organization team member."
+          },
+          "response": []
+        },
+        {
+          "name": "Resend member invitation email",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organization/team/6a9122ce08a762bba30a713e/resend-invite",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team",
+                "6a9122ce08a762bba30a713e",
+                "resend-invite"
+              ]
+            },
+            "description": "Regenerates temporary password, hashes it, and resends the invitation email to the member."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove organization team member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organization/team/6a9122ce08a762bba30a713e",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organization",
+                "team",
+                "6a9122ce08a762bba30a713e"
+              ]
+            },
+            "description": "Permanently removes a team member from the organization."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin: List all customer organization members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organizations-admin/team-members?page=1&limit=20",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organizations-admin",
+                "team-members"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "MEMBER",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Platform admin endpoint to list and search customer organization members across all organizations."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin: List members of specific organization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/organizations-admin/6a71a90167f3504f792355ba/members?page=1&limit=20",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "organizations-admin",
+                "6a71a90167f3504f792355ba",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Platform admin endpoint to inspect all team members of a particular customer organization."
+          },
+          "response": []
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{accessToken}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "subscription",
+      "item": [
+        {
+          "name": "add subscription",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"planType\": \"STARTER\",\r\n  \"name\": \"Starter Plan\",\r\n  \"tagline\": \"Essential AI automation tools for growing teams\",\r\n  \"priceUsd\": 49,\r\n  \"isInquiryOnly\": false,\r\n  \"aiActionsPerMonth\": 1000,\r\n  \"crmContactsLimit\": 2500,\r\n  \"callMinutesPerMonth\": 300,\r\n  \"meetingHoursPerMonth\": 10,\r\n  \"usersIncluded\": 3,\r\n  \"aiAgentsIncluded\": 2,\r\n  \"trialDays\": 14,\r\n  \"extraAiActionPriceUsd\": 0.05,\r\n  \"extraCallMinutePriceUsd\": 0.10,\r\n  \"features\": [\r\n    \"Core CRM Integration\",\r\n    \"Up to 3 Team Members\",\r\n    \"1,000 Monthly AI Actions\",\r\n    \"10 Hours Meeting Capture\",\r\n    \"Standard Email Support\"\r\n  ],\r\n  \"isMostPopular\": false,\r\n  \"customizationIncluded\": false,\r\n  \"isActive\": true,\r\n  \"sortOrder\": 1\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/v1/subscription-plans",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "subscription-plans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "get all plans admin",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "get all plans",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "get, update, delete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/v1/subscription-plans",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "subscription-plans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "add-ons create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5001/api/v1/addon-products",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "v1",
+                "addon-products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "get all add-ons",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "get, update, delete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/v1/addon-products",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "addon-products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "buy subscription",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/v1/billing/checkout-session-with-addons",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "checkout-session-with-addons"
+              ]
+            }
+          }
+        },
+        {
+          "name": "overview-cards",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "revenue overview",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "plan distribution",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "subscription purchased by user",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "subscription purchased by id",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "invoices list",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "invoices by id",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "invoices download",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "New Request",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "estimate",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "diagonistic",
+      "item": [
+        {
+          "name": "create categories",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/diagnostic-admin/categories",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "diagnostic-admin",
+                "categories"
+              ]
+            }
+          }
+        },
+        {
+          "name": "get categories",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "get, edit, delete",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/diagnostic-admin/categories/6ac9e114311e571044a9bfa2",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "diagnostic-admin",
+                "categories",
+                "6ac9e114311e571044a9bfa2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "create question",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/diagnostic-admin/questions/bulk",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "diagnostic-admin",
+                "questions",
+                "bulk"
+              ]
+            }
+          }
+        },
+        {
+          "name": "get all question",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "get, edit, delete",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "start diagonistic",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "diagonistic assessments",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseURL}}/diagnostic/assessments",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "diagnostic",
+                "assessments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "all assessments history",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "fetch reports latest submission",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "user detail report",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        },
+        {
+          "name": "diagonstic admin",
+          "request": {
+            "method": "GET",
+            "header": []
+          }
+        }
+      ]
+    }
+  ]
+}

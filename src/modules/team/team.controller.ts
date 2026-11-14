@@ -9,10 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RequestUser } from '../../common/types/request-context.type';
+import { ListOrgTeamMembersQueryDto } from '../org-team/dto/list-org-team-members-query.dto';
+import { OrgTeamService } from '../org-team/org-team.service';
 import { CreateTeamMemberDto } from './dto/create-team-member.dto';
 import { ListTeamMembersQueryDto } from './dto/list-team-members-query.dto';
 import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
@@ -23,7 +25,10 @@ import { TeamService } from './team.service';
 @Controller('team')
 @UseGuards(PlatformAdminGuard)
 export class TeamController {
-  constructor(private readonly team: TeamService) {}
+  constructor(
+    private readonly team: TeamService,
+    private readonly orgTeam: OrgTeamService,
+  ) {}
 
   @Post()
   invite(@CurrentUser() actor: RequestUser, @Body() dto: CreateTeamMemberDto) {
@@ -33,6 +38,14 @@ export class TeamController {
   @Get()
   list(@Query() query: ListTeamMembersQueryDto) {
     return this.team.list(query);
+  }
+
+  @Get('organization-members')
+  @ApiOperation({
+    summary: 'List customer organization team members across all organizations',
+  })
+  listOrganizationMembers(@Query() query: ListOrgTeamMembersQueryDto) {
+    return this.orgTeam.listAllForAdmin(query);
   }
 
   @Get(':id')

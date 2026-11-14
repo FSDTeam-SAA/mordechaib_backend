@@ -48,6 +48,7 @@ import { CrmDashboardModule } from './modules/crm-dashboard/crm-dashboard.module
 import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enquiries.module';
 import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/admin-meeting-calendar.module';
 import { BusinessMemoryModule } from './modules/business-memory/business-memory.module';
+import { OrgTeamModule } from './modules/org-team/org-team.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { BusinessMemoryModule } from './modules/business-memory/business-memory.
     HealthModule,
     AuthModule,
     UsersModule,
+    OrgTeamModule,
     OrganizationsModule,
     IntegrationsModule,
     TwilioModule,
