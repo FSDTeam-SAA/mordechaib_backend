@@ -587,6 +587,42 @@ export class PlatformMeetingsService {
   ) {
     const meeting = await this.getInternal(organizationId, id);
     this.assertCanManage(meeting, actor.id, actor.role);
+    return this.cancelMeeting(organizationId, id, meeting);
+  }
+
+  async cancelAsPlatformAdmin(organizationId: string, id: string) {
+    const meeting = await this.getInternal(organizationId, id);
+    return this.cancelMeeting(organizationId, id, meeting);
+  }
+
+  async completeAsPlatformAdmin(
+    organizationId: string,
+    id: string,
+    now = new Date(),
+  ) {
+    const meeting = await this.getInternal(organizationId, id);
+    if (
+      ![PlatformMeetingStatus.READY, PlatformMeetingStatus.SCHEDULED].includes(
+        meeting.status,
+      ) ||
+      meeting.startsAt.getTime() > now.getTime()
+    ) {
+      throw new ConflictException('This meeting cannot be completed');
+    }
+    const completed = await this.repository.markCompleted(id, organizationId);
+    if (!completed) {
+      throw new ConflictException(
+        'The meeting status changed before it could be completed',
+      );
+    }
+    return this.toResponse(completed, true);
+  }
+
+  private async cancelMeeting(
+    organizationId: string,
+    id: string,
+    meeting: StoredPlatformMeeting,
+  ) {
     if (
       ![PlatformMeetingStatus.READY, PlatformMeetingStatus.SCHEDULED].includes(
         meeting.status,
@@ -655,6 +691,19 @@ export class PlatformMeetingsService {
   ) {
     const meeting = await this.getInternal(organizationId, id);
     this.assertCanManage(meeting, actor.id, actor.role);
+    return this.deleteTerminalMeeting(organizationId, id, meeting);
+  }
+
+  async deletePermanentAsPlatformAdmin(organizationId: string, id: string) {
+    const meeting = await this.getInternal(organizationId, id);
+    return this.deleteTerminalMeeting(organizationId, id, meeting);
+  }
+
+  private async deleteTerminalMeeting(
+    organizationId: string,
+    id: string,
+    meeting: StoredPlatformMeeting,
+  ) {
     if (
       ![
         PlatformMeetingStatus.COMPLETED,

@@ -52,6 +52,7 @@ describe('PlatformMeetingsService', () => {
       findInternalById: jest.fn(),
       restartFailedAiProposal: jest.fn(),
       deleteTerminal: jest.fn(),
+      markCompleted: jest.fn(),
       list: jest.fn(),
     };
     meetingBots = {
@@ -363,6 +364,48 @@ describe('PlatformMeetingsService', () => {
     expect(meetingBots.cancel).not.toHaveBeenCalled();
     expect(calendar.cancelMeetingEvent).not.toHaveBeenCalled();
     expect(googleProvider.deleteMeeting).not.toHaveBeenCalled();
+  });
+
+  it('allows a platform admin path to complete a started meeting', async () => {
+    const meeting = {
+      ...stored,
+      status: PlatformMeetingStatus.SCHEDULED,
+      startsAt: new Date('2099-09-01T10:00:00.000Z'),
+    };
+    const completed = {
+      ...meeting,
+      status: PlatformMeetingStatus.COMPLETED,
+    };
+    repository.findInternalById.mockResolvedValue(meeting);
+    repository.markCompleted.mockResolvedValue(completed);
+
+    await expect(
+      service.completeAsPlatformAdmin(
+        'org-1',
+        meetingId,
+        new Date('2099-09-01T10:01:00.000Z'),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ status: PlatformMeetingStatus.COMPLETED }),
+    );
+    expect(repository.markCompleted).toHaveBeenCalledWith(meetingId, 'org-1');
+  });
+
+  it('does not allow a platform admin path to complete a future meeting', async () => {
+    repository.findInternalById.mockResolvedValue({
+      ...stored,
+      status: PlatformMeetingStatus.SCHEDULED,
+      startsAt: new Date('2099-09-01T10:00:00.000Z'),
+    });
+
+    await expect(
+      service.completeAsPlatformAdmin(
+        'org-1',
+        meetingId,
+        new Date('2099-09-01T09:59:00.000Z'),
+      ),
+    ).rejects.toThrow('This meeting cannot be completed');
+    expect(repository.markCompleted).not.toHaveBeenCalled();
   });
 
   it('requires an active meeting to be cancelled before permanent deletion', async () => {

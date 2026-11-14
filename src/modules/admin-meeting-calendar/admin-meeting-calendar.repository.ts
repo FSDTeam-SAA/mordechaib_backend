@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage } from 'mongoose';
+import { isValidObjectId, Model, PipelineStage } from 'mongoose';
 import {
   AdminMeetingSourceType,
   AdminMeetingStatus,
@@ -10,6 +10,8 @@ import { MeetingPlatform } from '../../common/enums/meeting-platform.enum';
 import { MeetingType } from '../../common/enums/meeting-type.enum';
 import { PlatformMeetingStatus } from '../../common/enums/platform-meeting-status.enum';
 import { PlatformMeeting } from '../../database/schemas/platform-meeting.schema';
+import { ManagedCalendarEvent } from '../../database/schemas/managed-calendar-event.schema';
+import { adminMeetingCapabilities } from './admin-meeting-capabilities';
 import { AdminMeetingCalendarQueryDto } from './dto/admin-meeting-calendar-query.dto';
 
 type AggregateResult = {
@@ -32,7 +34,63 @@ export class AdminMeetingCalendarRepository {
   constructor(
     @InjectModel(PlatformMeeting.name)
     private readonly platformMeetings: Model<PlatformMeeting>,
+    @InjectModel(ManagedCalendarEvent.name)
+    private readonly calendarEvents: Model<ManagedCalendarEvent>,
   ) {}
+
+  async findActionTarget(
+    sourceType: AdminMeetingSourceType,
+    id: string,
+    now: Date,
+  ) {
+    if (!isValidObjectId(id)) return undefined;
+    const row =
+      sourceType === AdminMeetingSourceType.PLATFORM_MEETING
+        ? await this.platformMeetings
+            .findById(id)
+            .select('organizationId status startsAt endsAt')
+            .lean()
+            .exec()
+        : await this.calendarEvents
+            .findById(id)
+            .select('organizationId status startsAt endsAt')
+            .lean()
+            .exec();
+    if (!row) return undefined;
+
+    const rawStatus = row.status;
+    const status =
+      rawStatus === PlatformMeetingStatus.CANCELLED ||
+      rawStatus === CalendarEventStatus.CANCELLED
+        ? AdminMeetingStatus.CANCELLED
+        : rawStatus === PlatformMeetingStatus.FAILED ||
+            rawStatus === CalendarEventStatus.FAILED
+          ? AdminMeetingStatus.FAILED
+          : rawStatus === PlatformMeetingStatus.COMPLETED ||
+              row.endsAt.getTime() <= now.getTime()
+            ? AdminMeetingStatus.COMPLETED
+            : rawStatus === PlatformMeetingStatus.CREATING ||
+                rawStatus === CalendarEventStatus.CREATING
+              ? AdminMeetingStatus.PENDING
+              : AdminMeetingStatus.CONFIRMED;
+
+    return {
+      id: String(row._id),
+      sourceType,
+      organizationId: row.organizationId,
+      rawStatus,
+      status,
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+      capabilities: adminMeetingCapabilities({
+        sourceType,
+        rawStatus,
+        status,
+        startsAt: row.startsAt,
+        now,
+      }),
+    };
+  }
 
   async dashboard(query: AdminMeetingCalendarQueryDto, now: Date) {
     const overlapMatch = this.overlapMatch(query);
@@ -350,6 +408,7 @@ export class AdminMeetingCalendarRepository {
       timezone: 1,
       participantEmails: 1,
       status: 1,
+      rawStatus: 1,
       meetingType: 1,
       calendarProvider: 1,
       meetingPlatform: 1,

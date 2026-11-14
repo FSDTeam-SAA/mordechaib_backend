@@ -166,6 +166,24 @@ export class PlatformMeetingsRepository {
       .exec();
   }
 
+  markCompleted(id: string, organizationId: string) {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          organizationId,
+          status: {
+            $in: [PlatformMeetingStatus.READY, PlatformMeetingStatus.SCHEDULED],
+          },
+        },
+        { $set: { status: PlatformMeetingStatus.COMPLETED } },
+        { new: true, runValidators: true },
+      )
+      .select('+joinUrlEncrypted +startUrlEncrypted')
+      .lean()
+      .exec();
+  }
+
   async list(
     organizationId: string,
     page: number,

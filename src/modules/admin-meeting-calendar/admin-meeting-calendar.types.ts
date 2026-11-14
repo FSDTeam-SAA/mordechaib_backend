@@ -145,3 +145,26 @@ export class AdminMeetingCalendarResponse {
   @ApiProperty({ type: AdminMeetingCalendarPagination })
   pagination!: AdminMeetingCalendarPagination;
 }
+
+export class AdminMeetingCalendarActionResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ enum: AdminMeetingSourceType })
+  sourceType!: AdminMeetingSourceType;
+
+  @ApiProperty()
+  organizationId!: string;
+
+  @ApiProperty({ enum: ['COMPLETE', 'CANCEL', 'DELETE'] })
+  action!: 'COMPLETE' | 'CANCEL' | 'DELETE';
+
+  @ApiProperty({ enum: AdminMeetingStatus })
+  status!: AdminMeetingStatus;
+
+  @ApiProperty({ format: 'date-time' })
+  changedAt!: string;
+
+  @ApiProperty({ required: false })
+  deleted?: boolean;
+}
