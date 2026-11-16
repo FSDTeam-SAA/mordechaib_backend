@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { extractAiUsageTelemetry } from '../../common/helpers/ai-usage-telemetry.helper';
 import {
   AiActionType,
   AiProposalSourceType,
@@ -108,6 +109,7 @@ export class AiChatTurnService {
       ...(proposal ? { proposal } : {}),
       assistantMessageId: String(assistantReply.message._id),
       assistantMessageCreated: assistantReply.created,
+      usageTelemetry: extractAiUsageTelemetry(raw),
     };
   }
 }

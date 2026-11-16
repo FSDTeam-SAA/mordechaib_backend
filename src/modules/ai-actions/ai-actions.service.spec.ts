@@ -57,7 +57,7 @@ describe('AiActionsService analysis ingestion', () => {
     claimApprovedForExecution: jest.fn(),
     markExecuted: jest.fn(),
     markFailed: jest.fn(),
-    restorePendingAfterRecoverableFailure: jest.fn(),
+    rollbackExecutionToPending: jest.fn(),
   };
   const organizations = { findCurrent: jest.fn() };
   const sourceAnalyses = { upsert: jest.fn() };
@@ -265,7 +265,7 @@ describe('AiActionsService analysis ingestion', () => {
     repository.findById.mockResolvedValue(pending);
     repository.approvePending.mockResolvedValue(approved);
     repository.claimApprovedForExecution.mockResolvedValue(executing);
-    repository.restorePendingAfterRecoverableFailure.mockResolvedValue({
+    repository.rollbackExecutionToPending.mockResolvedValue({
       ...pending,
       executionError: 'Calendar provider temporarily unavailable',
     });
@@ -279,15 +279,69 @@ describe('AiActionsService analysis ingestion', () => {
       service.approve(organizationId, owner, proposalId),
     ).rejects.toThrow('Calendar provider temporarily unavailable');
 
-    expect(
-      repository.restorePendingAfterRecoverableFailure,
-    ).toHaveBeenCalledWith(
+    expect(repository.rollbackExecutionToPending).toHaveBeenCalledWith(
       organizationId,
       proposalId,
       'Calendar provider temporarily unavailable',
       AiActionProposalStatus.EXECUTING,
     );
     expect(repository.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('rolls any technical task execution failure back to pending', async () => {
+    const proposalId = '66cc9bdfa847ea856c7b41d5';
+    const pending = {
+      _id: proposalId,
+      organizationId,
+      proposalId: 'chat:conversation:task-provider-failure',
+      actionType: AiActionType.CREATE_TASK,
+      status: AiActionProposalStatus.PENDING,
+      payload: { title: 'Follow up with customer' },
+      proposedByAgent: {
+        id: salesAgentId,
+        name: 'Sales Agent',
+        type: AgentType.SALES,
+      },
+    };
+    const approved = {
+      ...pending,
+      status: AiActionProposalStatus.APPROVED,
+      approvedByUserId: owner.id,
+    };
+    const executing = {
+      ...approved,
+      status: AiActionProposalStatus.EXECUTING,
+    };
+    repository.findById.mockResolvedValue(pending);
+    repository.approvePending.mockResolvedValue(approved);
+    repository.claimApprovedForExecution.mockResolvedValue(executing);
+    repository.rollbackExecutionToPending.mockResolvedValue({
+      ...pending,
+      executionError: 'Task dependency temporarily unavailable',
+    });
+    tasks.createFromAiProposal.mockRejectedValue(
+      new Error('Task dependency temporarily unavailable'),
+    );
+
+    await expect(
+      service.approve(organizationId, owner, proposalId),
+    ).rejects.toThrow('Task dependency temporarily unavailable');
+
+    expect(repository.rollbackExecutionToPending).toHaveBeenCalledWith(
+      organizationId,
+      proposalId,
+      'Task dependency temporarily unavailable',
+      AiActionProposalStatus.EXECUTING,
+    );
+    expect(repository.markFailed).not.toHaveBeenCalled();
+    expect(auditLogs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AI_ACTION_PROPOSAL_EXECUTION_ROLLED_BACK',
+        metadata: expect.objectContaining({
+          restoredStatus: AiActionProposalStatus.PENDING,
+        }),
+      }),
+    );
   });
 
   it('creates a stable chat clarification draft without fabricated analysis', async () => {

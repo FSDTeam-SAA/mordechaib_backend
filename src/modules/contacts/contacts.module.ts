@@ -56,6 +56,8 @@ import { ContactWorkspaceActionsService } from './contact-workspace-actions.serv
 import { ContactCrmRecordsReader } from './contact-crm-records.reader';
 import { ContactCommercialContextService } from './contact-commercial-context.service';
 import { CustomerHealthBriefingFactsService } from './customer-health-briefing-facts.service';
+import { CloudinaryImageStorageService } from '../../common/storage/cloudinary-image-storage.service';
+import { ContactAvatarStorageService } from './contact-avatar-storage.service';
 
 @Module({
   imports: [
@@ -98,6 +100,8 @@ import { CustomerHealthBriefingFactsService } from './customer-health-briefing-f
     ContactCrmRecordsReader,
     ContactCommercialContextService,
     CustomerHealthBriefingFactsService,
+    CloudinaryImageStorageService,
+    ContactAvatarStorageService,
   ],
   exports: [
     ContactsService,

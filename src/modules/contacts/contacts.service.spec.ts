@@ -3,9 +3,12 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { ContactsRepository } from './contacts.repository';
 import { ContactsService } from './contacts.service';
 import { CustomerLeadStatus } from '../../common/enums/customer-lead-status.enum';
+import { ContactAvatarStorageService } from './contact-avatar-storage.service';
+import { CustomerContactStatus } from '../../common/enums/customer-contact-status.enum';
 
 describe('ContactsService', () => {
   let repository: Record<string, jest.Mock>;
+  let avatarStorage: Record<string, jest.Mock>;
   let service: ContactsService;
 
   beforeEach(() => {
@@ -21,16 +24,21 @@ describe('ContactsService', () => {
       update: jest.fn(),
       archive: jest.fn(),
     };
+    avatarStorage = {
+      upload: jest.fn(),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
     service = new ContactsService(
       repository as unknown as ContactsRepository,
       { create: jest.fn() } as unknown as AuditLogsService,
+      avatarStorage as unknown as ContactAvatarStorageService,
     );
   });
 
   it('creates an organization-scoped contact with a normalized phone', async () => {
     repository.create.mockImplementation(async (input) => ({
-      _id: '66cc9bdfa847ea856c7b41d2',
       ...input,
+      _id: '66cc9bdfa847ea856c7b41d2',
     }));
 
     const result = await service.create('org-1', 'user-1', {
@@ -67,8 +75,8 @@ describe('ContactsService', () => {
 
   it('preserves extended customer profile fields and supplies a legacy lead-status default', async () => {
     repository.create.mockImplementation(async (input) => ({
-      _id: '66cc9bdfa847ea856c7b41d2',
       ...input,
+      _id: '66cc9bdfa847ea856c7b41d2',
     }));
 
     const result = await service.create('org-1', 'user-1', {
@@ -102,6 +110,92 @@ describe('ContactsService', () => {
         email: 'duplicate@example.com',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('uploads and persists an avatar while creating a contact', async () => {
+    const avatarUrl =
+      'https://res.cloudinary.com/demo/image/upload/customer.png';
+    avatarStorage.upload.mockResolvedValue(avatarUrl);
+    repository.create.mockImplementation(async (input) => ({ ...input }));
+    const avatar = imageUpload();
+
+    const result = await service.create(
+      'org-1',
+      'user-1',
+      { name: 'Avatar Customer', email: 'avatar@example.com' },
+      avatar,
+    );
+
+    const contactId = String(repository.create.mock.calls[0][0]._id);
+    expect(avatarStorage.upload).toHaveBeenCalledWith(
+      'org-1',
+      contactId,
+      avatar,
+    );
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ avatarUrl }),
+    );
+    expect(result).toEqual(expect.objectContaining({ avatarUrl }));
+  });
+
+  it('removes a newly uploaded avatar if contact creation fails', async () => {
+    avatarStorage.upload.mockResolvedValue(
+      'https://res.cloudinary.com/demo/image/upload/customer.png',
+    );
+    repository.create.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(
+      service.create(
+        'org-1',
+        'user-1',
+        { name: 'Avatar Customer', email: 'avatar@example.com' },
+        imageUpload(),
+      ),
+    ).rejects.toThrow('database unavailable');
+
+    const contactId = String(repository.create.mock.calls[0][0]._id);
+    expect(avatarStorage.delete).toHaveBeenCalledWith('org-1', contactId);
+  });
+
+  it('uploads and persists a replacement avatar while updating a contact', async () => {
+    const contactId = '66cc9bdfa847ea856c7b41d2';
+    const avatarUrl =
+      'https://res.cloudinary.com/demo/image/upload/customer-v2.png';
+    const avatar = imageUpload();
+    repository.findById.mockResolvedValue({
+      _id: contactId,
+      name: 'Customer',
+      email: 'customer@example.com',
+      status: CustomerContactStatus.ACTIVE,
+    });
+    avatarStorage.upload.mockResolvedValue(avatarUrl);
+    repository.update.mockImplementation(
+      async (_organizationId, _id, update) => ({
+        _id: contactId,
+        name: 'Customer',
+        email: 'customer@example.com',
+        status: CustomerContactStatus.ACTIVE,
+        ...update,
+      }),
+    );
+
+    const result = await service.update(
+      'org-1',
+      'user-1',
+      contactId,
+      {},
+      avatar,
+    );
+
+    expect(avatarStorage.upload).toHaveBeenCalledWith(
+      'org-1',
+      contactId,
+      avatar,
+    );
+    expect(repository.update).toHaveBeenCalledWith('org-1', contactId, {
+      avatarUrl,
+    });
+    expect(result).toEqual(expect.objectContaining({ avatarUrl }));
   });
 
   it('returns bounded public contact fields for bulk list enrichment', async () => {
@@ -187,3 +281,18 @@ describe('ContactsService', () => {
     );
   });
 });
+
+function imageUpload(): Express.Multer.File {
+  return {
+    fieldname: 'avatar',
+    originalname: 'customer.png',
+    encoding: '7bit',
+    mimetype: 'image/png',
+    size: 4,
+    destination: '',
+    filename: '',
+    path: '',
+    buffer: Buffer.from('image'),
+    stream: undefined as never,
+  };
+}

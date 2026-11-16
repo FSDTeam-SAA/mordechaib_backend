@@ -3,7 +3,6 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate, ValidationError } from 'class-validator';
@@ -532,14 +531,12 @@ export class AiActionsService {
         await this.assertExecutionPreconditions(beforeApproval);
       } catch (error) {
         if (beforeApproval.status === AiActionProposalStatus.APPROVED) {
-          await this.repository
-            .restorePendingAfterRecoverableFailure(
-              organizationId,
-              id,
-              this.errorMessage(error),
-              AiActionProposalStatus.APPROVED,
-            )
-            .catch(() => undefined);
+          await this.repository.rollbackExecutionToPending(
+            organizationId,
+            id,
+            this.errorMessage(error),
+            AiActionProposalStatus.APPROVED,
+          );
         }
         throw error;
       }
@@ -738,31 +735,28 @@ export class AiActionsService {
       };
     } catch (error) {
       const message = this.errorMessage(error);
-      const recoverable = this.isRecoverableMeetingFailure(proposal, error);
-      if (recoverable) {
-        await this.repository
-          .restorePendingAfterRecoverableFailure(
-            proposal.organizationId,
-            proposalId,
-            message,
-            AiActionProposalStatus.EXECUTING,
-          )
-          .catch(() => undefined);
-      } else {
-        await this.repository
-          .markFailed(proposal.organizationId, proposalId, message)
-          .catch(() => undefined);
-      }
+      // Provider operations cannot participate in a MongoDB transaction. Use
+      // an atomic compare-and-set compensation instead: an execution error
+      // returns the proposal to an editable/re-approvable state and clears the
+      // stale approval lease. The provider error is retained for the UI.
+      await this.repository.rollbackExecutionToPending(
+        proposal.organizationId,
+        proposalId,
+        message,
+        AiActionProposalStatus.EXECUTING,
+      );
       await this.auditLogs
         .create({
           organizationId: proposal.organizationId,
           userId: creatorUserId,
-          action: recoverable
-            ? 'AI_ACTION_PROPOSAL_EXECUTION_ROLLED_BACK'
-            : 'AI_ACTION_PROPOSAL_EXECUTION_FAILED',
+          action: 'AI_ACTION_PROPOSAL_EXECUTION_ROLLED_BACK',
           resourceType: 'AiActionProposal',
           resourceId: proposalId,
-          metadata: { actionType: proposal.actionType, error: message },
+          metadata: {
+            actionType: proposal.actionType,
+            error: message,
+            restoredStatus: AiActionProposalStatus.PENDING,
+          },
         })
         .catch(() => undefined);
       throw error;
@@ -770,28 +764,28 @@ export class AiActionsService {
   }
 
   private async assertExecutionPreconditions(proposal: StoredProposal) {
-    if (proposal.actionType !== AiActionType.SCHEDULE_MEETING) return;
     const payload = await this.validatePayload(
       proposal.actionType,
       proposal.payload,
       undefined,
       proposal.organizationId,
     );
-    await this.meetings.assertAiProposalExecutable(
-      proposal.organizationId,
-      this.withCustomerContact(payload as AiMeetingActionPayloadDto),
-    );
-  }
-
-  private isRecoverableMeetingFailure(
-    proposal: StoredProposal,
-    error: unknown,
-  ) {
-    return (
-      proposal.actionType === AiActionType.SCHEDULE_MEETING &&
-      (error instanceof BadRequestException ||
-        error instanceof ServiceUnavailableException)
-    );
+    if (proposal.actionType === AiActionType.CREATE_TASK) {
+      const taskPayload = this.withCustomerContact(
+        payload as AiTaskActionPayloadDto,
+      );
+      await this.assertValidAssignee(
+        proposal.organizationId,
+        taskPayload.assignedToUserId,
+      );
+      return;
+    }
+    if (proposal.actionType === AiActionType.SCHEDULE_MEETING) {
+      await this.meetings.assertAiProposalExecutable(
+        proposal.organizationId,
+        this.withCustomerContact(payload as AiMeetingActionPayloadDto),
+      );
+    }
   }
 
   private async storeAnalysisAction(

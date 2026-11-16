@@ -27,6 +27,15 @@ function positiveNumber(
   return parsed;
 }
 
+function optionalNonNegativeNumber(value: string | undefined, name: string) {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative number`);
+  }
+  return parsed;
+}
+
 export default () => {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const accessSecret =
@@ -552,6 +561,21 @@ export default () => {
       chatStreamTimeoutMs: aiChatStreamTimeoutMs,
       chatStreamPath: aiChatStreamPath,
       briefingPollAfterMs: aiBriefingPollAfterMs,
+    },
+
+    revenueAnalytics: {
+      aiFallbackCostPerOperationUsd: optionalNonNegativeNumber(
+        process.env.REVENUE_AI_FALLBACK_COST_PER_OPERATION_USD,
+        'REVENUE_AI_FALLBACK_COST_PER_OPERATION_USD',
+      ),
+      twilioFallbackCostPerMinuteUsd: optionalNonNegativeNumber(
+        process.env.REVENUE_TWILIO_FALLBACK_COST_PER_MINUTE_USD,
+        'REVENUE_TWILIO_FALLBACK_COST_PER_MINUTE_USD',
+      ),
+      recallFallbackCostPerMinuteUsd: optionalNonNegativeNumber(
+        process.env.REVENUE_RECALL_FALLBACK_COST_PER_MINUTE_USD,
+        'REVENUE_RECALL_FALLBACK_COST_PER_MINUTE_USD',
+      ),
     },
 
     stripe: {
