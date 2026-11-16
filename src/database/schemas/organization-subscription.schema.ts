@@ -67,6 +67,9 @@ export class OrganizationSubscription {
       aiAgentsIncluded: Number,
       extraAiActionPriceUsd: Number,
       extraCallMinutePriceUsd: Number,
+      extraMeetingHourPriceUsd: Number,
+      extraAiCallMinute: Number,
+      extraAiCallMinutePriceUsd: Number,
     },
     _id: false,
   })
@@ -80,6 +83,9 @@ export class OrganizationSubscription {
     aiAgentsIncluded?: number;
     extraAiActionPriceUsd?: number;
     extraCallMinutePriceUsd?: number;
+    extraMeetingHourPriceUsd?: number;
+    extraAiCallMinute?: number;
+    extraAiCallMinutePriceUsd?: number;
   };
 
   // Active add-on tiers purchased by this organization. One entry per

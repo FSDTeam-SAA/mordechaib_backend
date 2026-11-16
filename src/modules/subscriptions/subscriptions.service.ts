@@ -6,6 +6,7 @@ import { SubscriptionStatus } from '../../common/enums/subscription-status.enum'
 import { OrganizationSubscription } from '../../database/schemas/organization-subscription.schema';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { PackageInquiriesService } from '../package-inquiries/package-inquiries.service';
+import { ContactSalesDto } from './dto/contact-sales.dto';
 import { DowngradeRequestDto } from './dto/downgrade-request.dto';
 import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { SpecialistRequestDto } from './dto/specialist-request.dto';
@@ -180,6 +181,9 @@ export class SubscriptionsService {
       aiAgentsIncluded: plan.aiAgentsIncluded,
       extraAiActionPriceUsd: plan.extraAiActionPriceUsd,
       extraCallMinutePriceUsd: plan.extraCallMinutePriceUsd,
+      extraMeetingHourPriceUsd: plan.extraMeetingHourPriceUsd,
+      extraAiCallMinute: plan.extraAiCallMinute ?? plan.extraMeetingHourPriceUsd,
+      extraAiCallMinutePriceUsd: plan.extraAiCallMinutePriceUsd ?? plan.extraMeetingHourPriceUsd,
     };
   }
 
@@ -234,6 +238,34 @@ export class SubscriptionsService {
     });
 
     return { message: 'A specialist will reach out to schedule your call' };
+  }
+
+  // Contact Sales — user submits a sales inquiry from the user dashboard.
+  async contactSales(
+    organizationId: string,
+    requester: Requester,
+    dto: ContactSalesDto,
+  ) {
+    const organization =
+      await this.organizationsService.findCurrent(organizationId);
+
+    await this.packageInquiriesService.create({
+      packageType: PackageType.CONTACT_SALES,
+      organizationId,
+      fullName: requester.fullName,
+      email: requester.email,
+      message: [
+        `Organization "${organization.name}" submitted a Contact Sales request.`,
+        `Subject: ${dto.subject}`,
+        `Message: ${dto.message}`,
+        dto.note ? `Additional note: ${dto.note}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      acceptContactConsent: true,
+    });
+
+    return { message: 'Your inquiry has been submitted. Our sales team will reach out shortly.' };
   }
 
   // Backs the admin "Subscriptions" table: search by org name, filter by

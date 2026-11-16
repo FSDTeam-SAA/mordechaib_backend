@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
@@ -9,6 +9,7 @@ import {
 } from '../../common/types/request-context.type';
 import { CancellationsService } from './cancellations.service';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
+import { ContactSalesDto } from './dto/contact-sales.dto';
 import { DowngradeRequestDto } from './dto/downgrade-request.dto';
 import { SpecialistRequestDto } from './dto/specialist-request.dto';
 import { SubscriptionsService } from './subscriptions.service';
@@ -86,6 +87,25 @@ export class SubscriptionsController {
     @Body() dto: SpecialistRequestDto,
   ) {
     return this.service.requestSpecialistCall(
+      organization.id,
+      {
+        fullName: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+      },
+      dto,
+    );
+  }
+
+  // Contact Sales — authenticated user submits a sales inquiry.
+  // Admin can view/resolve at GET /subscriptions-admin/sales-queries.
+  @Post('me/contact-sales')
+  @ApiOperation({ summary: 'Submit a contact-sales inquiry to the sales team' })
+  contactSales(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ContactSalesDto,
+  ) {
+    return this.service.contactSales(
       organization.id,
       {
         fullName: `${user.firstName} ${user.lastName}`.trim(),
