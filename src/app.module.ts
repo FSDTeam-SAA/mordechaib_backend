@@ -49,6 +49,7 @@ import { ContactEnquiriesModule } from './modules/contact-enquiries/contact-enqu
 import { AdminMeetingCalendarModule } from './modules/admin-meeting-calendar/admin-meeting-calendar.module';
 import { BusinessMemoryModule } from './modules/business-memory/business-memory.module';
 import { OrgTeamModule } from './modules/org-team/org-team.module';
+import { RevenueAnalyticsModule } from './modules/revenue-analytics/revenue-analytics.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { OrgTeamModule } from './modules/org-team/org-team.module';
     ContactEnquiriesModule,
     AdminMeetingCalendarModule,
     BusinessMemoryModule,
+    RevenueAnalyticsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

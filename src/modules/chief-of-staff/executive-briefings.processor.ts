@@ -12,6 +12,7 @@ import {
 import { ExecutiveBriefingAiRequest } from './executive-briefing.types';
 import { ExecutiveBriefingResponseValidator } from './executive-briefing-response.validator';
 import { ExecutiveBriefingsRepository } from './executive-briefings.repository';
+import { extractAiUsageTelemetry } from '../../common/helpers/ai-usage-telemetry.helper';
 import {
   EXECUTIVE_BRIEFINGS_QUEUE,
   GENERATE_EXECUTIVE_BRIEFING_JOB,
@@ -90,8 +91,12 @@ export class ExecutiveBriefingsProcessor extends WorkerHost {
         content,
       );
       if (!ready) throw new Error('Executive briefing could not be saved');
+      const usageTelemetry = extractAiUsageTelemetry(raw);
       await this.activity.succeed(activityId, {
-        metadata: { briefingType: input.briefingType },
+        metadata: {
+          briefingType: input.briefingType,
+          ...(usageTelemetry ? { aiUsage: usageTelemetry } : {}),
+        },
       });
       this.logger.log(`Executive briefing ready: id=${briefingId}`);
       return { briefingId, status: 'READY' };

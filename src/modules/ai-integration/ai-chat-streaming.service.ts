@@ -180,6 +180,9 @@ export class AiChatStreamingService {
           resultType: persisted.response.result.type,
           proposalCreated: Boolean(persisted.proposal),
           assistantMessageCreated: persisted.assistantMessageCreated,
+          ...(persisted.usageTelemetry
+            ? { aiUsage: persisted.usageTelemetry }
+            : {}),
         },
       });
       opened.settled = true;
