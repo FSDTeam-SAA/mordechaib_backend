@@ -22,6 +22,7 @@ import { UpdateContactDto } from './dto/update-contact.dto';
 import { ListContactHealthQueryDto } from './dto/list-contact-health-query.dto';
 import { BulkCreateContactsDto } from './dto/bulk-create-contacts.dto';
 import { parseContactCsv } from './contact-csv.parser';
+import { ContactAvatarStorageService } from './contact-avatar-storage.service';
 
 @Injectable()
 export class ContactsService {
@@ -30,22 +31,58 @@ export class ContactsService {
   constructor(
     private readonly repository: ContactsRepository,
     private readonly audits: AuditLogsService,
+    private readonly avatarStorage: ContactAvatarStorageService,
   ) {}
 
-  async create(organizationId: string, userId: string, dto: CreateContactDto) {
+  async create(
+    organizationId: string,
+    userId: string,
+    dto: CreateContactDto,
+    avatar?: Express.Multer.File,
+  ) {
+    this.assertSingleAvatarSource(dto, avatar);
     const input = this.normalized(dto);
     this.assertContactMethod(input);
     await this.assertNotDuplicate(organizationId, input);
-    const contact = await this.withDuplicateConflict(() =>
-      this.repository.create({
-        ...input,
-        organizationId,
-        createdByUserId: userId,
-        status: CustomerContactStatus.ACTIVE,
-      }),
-    );
-    await this.audit(organizationId, userId, 'CONTACT_CREATED', contact);
-    return this.toResponse(contact);
+    const contactId = new Types.ObjectId();
+    let uploadedAvatar = false;
+    try {
+      const avatarUrl = avatar
+        ? await this.avatarStorage.upload(
+            organizationId,
+            String(contactId),
+            avatar,
+          )
+        : input.avatarUrl;
+      uploadedAvatar = Boolean(avatar);
+      const contact = await this.withDuplicateConflict(() =>
+        this.repository.create({
+          ...input,
+          _id: contactId,
+          ...(avatarUrl ? { avatarUrl } : {}),
+          organizationId,
+          createdByUserId: userId,
+          status: CustomerContactStatus.ACTIVE,
+        }),
+      );
+      await this.audit(organizationId, userId, 'CONTACT_CREATED', contact);
+      return this.toResponse(contact);
+    } catch (error) {
+      if (uploadedAvatar) {
+        await this.avatarStorage
+          .delete(organizationId, String(contactId))
+          .catch((cleanupError) => {
+            this.logger.warn(
+              `Unable to roll back avatar for contact ${String(contactId)}: ${
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : 'unknown error'
+              }`,
+            );
+          });
+      }
+      throw error;
+    }
   }
 
   async bulkCreate(
@@ -246,9 +283,11 @@ export class ContactsService {
     userId: string,
     id: string,
     dto: UpdateContactDto,
+    avatar?: Express.Multer.File,
   ) {
     this.assertId(id);
-    if (Object.values(dto).every((value) => value === undefined)) {
+    this.assertSingleAvatarSource(dto, avatar);
+    if (Object.values(dto).every((value) => value === undefined) && !avatar) {
       throw new BadRequestException('No contact changes were provided');
     }
     const current = await this.repository.findById(organizationId, id);
@@ -263,6 +302,13 @@ export class ContactsService {
     };
     this.assertContactMethod(merged);
     await this.assertNotDuplicate(organizationId, merged, id);
+    if (avatar) {
+      update.avatarUrl = await this.avatarStorage.upload(
+        organizationId,
+        id,
+        avatar,
+      );
+    }
     const contact = await this.withDuplicateConflict(() =>
       this.repository.update(organizationId, id, update),
     );
@@ -390,6 +436,17 @@ export class ContactsService {
     if (!input.email && !input.phone) {
       throw new BadRequestException(
         'At least one of email or phone is required',
+      );
+    }
+  }
+
+  private assertSingleAvatarSource(
+    dto: { avatarUrl?: string },
+    avatar?: Express.Multer.File,
+  ) {
+    if (avatar && dto.avatarUrl !== undefined) {
+      throw new BadRequestException(
+        'Send either avatar or avatarUrl, not both',
       );
     }
   }
