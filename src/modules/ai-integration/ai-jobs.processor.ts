@@ -25,6 +25,7 @@ import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { AgentOperationType } from '../../common/enums/agent-activity.enum';
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 import { AiChatTurnService } from './ai-chat-turn.service';
+import { extractAiUsageTelemetry } from '../../common/helpers/ai-usage-telemetry.helper';
 
 type MessageAnalysisContext = {
   organizationId: string;
@@ -117,6 +118,7 @@ export class AiJobsProcessor extends WorkerHost {
             resultType: chat.response.result.type,
             proposalCreated: Boolean(chat.proposal),
             assistantMessageCreated: chat.assistantMessageCreated,
+            ...(chat.usageTelemetry ? { aiUsage: chat.usageTelemetry } : {}),
           },
         });
         return {
@@ -215,6 +217,7 @@ export class AiJobsProcessor extends WorkerHost {
       const telemetryAgent =
         analysisResult.assistantMessage?.agent ||
         analysisResult.actions[0]?.proposedByAgent;
+      const usageTelemetry = extractAiUsageTelemetry(rawAnalysisResult);
       await this.activity.succeed(activityId, {
         ...(telemetryAgent ? { agent: telemetryAgent } : {}),
         ...(analysisResult.assistantMessage?.runId
@@ -222,6 +225,7 @@ export class AiJobsProcessor extends WorkerHost {
           : {}),
         metadata: {
           actionCount: analysisResult.actions.length,
+          ...(usageTelemetry ? { aiUsage: usageTelemetry } : {}),
         },
       });
       return { proposals: ingested };

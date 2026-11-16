@@ -6,7 +6,7 @@ import {
 } from '../../database/schemas/ai-action-proposal.schema';
 import { AiActionsRepository } from './ai-actions.repository';
 
-describe('AiActionsRepository recoverable execution rollback', () => {
+describe('AiActionsRepository execution rollback', () => {
   it('atomically restores only the expected executing proposal to pending', async () => {
     const exec = jest.fn().mockResolvedValue({
       _id: 'proposal-1',
@@ -17,7 +17,7 @@ describe('AiActionsRepository recoverable execution rollback', () => {
     const model = { findOneAndUpdate } as unknown as Model<AiActionProposal>;
     const repository = new AiActionsRepository(model, {} as Model<Agent>);
 
-    await repository.restorePendingAfterRecoverableFailure(
+    await repository.rollbackExecutionToPending(
       'org-1',
       'proposal-1',
       'Calendar is not connected',

@@ -18,8 +18,10 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
+  ApiExtraModels,
   ApiOperation,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -54,9 +56,11 @@ import {
   MAX_CUSTOMER_FILES_PER_UPLOAD,
 } from './contact-file-upload.config';
 import { TemporaryUploadCleanupInterceptor } from '../messages/temporary-upload-cleanup.interceptor';
+import { CONTACT_AVATAR_UPLOAD_OPTIONS } from './contact-avatar-upload.config';
 
 @ApiTags('Customer Contacts')
 @ApiBearerAuth()
+@ApiExtraModels(CreateContactDto, UpdateContactDto)
 @Controller('contacts')
 @UseGuards(OrganizationGuard, RolesGuard)
 @Roles(UserRole.OWNER, UserRole.ADMIN)
@@ -71,13 +75,19 @@ export class ContactsController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a customer contact without platform login' })
+  @UseInterceptors(FileInterceptor('avatar', CONTACT_AVATAR_UPLOAD_OPTIONS))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: contactMultipartSchema(CreateContactDto, true) })
+  @ApiOperation({
+    summary: 'Create a customer contact and optionally upload an avatar',
+  })
   create(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
     @Body() input: CreateContactDto,
+    @UploadedFile() avatar: Express.Multer.File | undefined,
   ) {
-    return this.contacts.create(organization.id, user.id, input);
+    return this.contacts.create(organization.id, user.id, input, avatar);
   }
 
   @Post('bulk')
@@ -325,13 +335,30 @@ export class ContactsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a customer contact' })
-  update(
+  patch(
     @CurrentOrg() organization: RequestOrganization,
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
     @Body() input: UpdateContactDto,
   ) {
     return this.contacts.update(organization.id, user.id, id, input);
+  }
+
+  @Put(':id')
+  @UseInterceptors(FileInterceptor('avatar', CONTACT_AVATAR_UPLOAD_OPTIONS))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: contactMultipartSchema(UpdateContactDto, false) })
+  @ApiOperation({
+    summary: 'Update a customer contact and/or upload an avatar',
+  })
+  update(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() input: UpdateContactDto,
+    @UploadedFile() avatar: Express.Multer.File | undefined,
+  ) {
+    return this.contacts.update(organization.id, user.id, id, input, avatar);
   }
 
   @Delete(':id')
@@ -343,4 +370,27 @@ export class ContactsController {
   ) {
     return this.contacts.archive(organization.id, user.id, id);
   }
+}
+
+function contactMultipartSchema(
+  dto: typeof CreateContactDto | typeof UpdateContactDto,
+  requireName: boolean,
+) {
+  return {
+    allOf: [
+      { $ref: getSchemaPath(dto) },
+      {
+        type: 'object',
+        ...(requireName ? { required: ['name'] } : {}),
+        properties: {
+          avatar: {
+            type: 'string',
+            format: 'binary',
+            description:
+              'Optional JPEG, PNG, or WebP customer avatar; maximum 5 MB. Do not combine with avatarUrl.',
+          },
+        },
+      },
+    ],
+  };
 }

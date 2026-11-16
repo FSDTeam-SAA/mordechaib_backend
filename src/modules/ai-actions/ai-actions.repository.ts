@@ -541,7 +541,7 @@ export class AiActionsRepository {
       .exec();
   }
 
-  restorePendingAfterRecoverableFailure(
+  rollbackExecutionToPending(
     organizationId: string,
     id: string,
     message: string,
