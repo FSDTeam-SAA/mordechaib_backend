@@ -85,4 +85,23 @@ export class InvoicesRepository {
 
     return { items, total };
   }
+
+  async listByOrganization(
+    organizationId: string,
+    page: number,
+    limit: number,
+  ) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.invoiceModel
+        .find({ organizationId })
+        .sort({ issuedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      this.invoiceModel.countDocuments({ organizationId }).exec(),
+    ]);
+    return { items, total };
+  }
 }

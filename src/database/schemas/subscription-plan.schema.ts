@@ -57,6 +57,15 @@ export class SubscriptionPlan {
   @Prop()
   extraCallMinutePriceUsd?: number;
 
+  @Prop()
+  extraMeetingHourPriceUsd?: number;
+
+  @Prop()
+  extraAiCallMinute?: number;
+
+  @Prop()
+  extraAiCallMinutePriceUsd?: number;
+
   @Prop({ type: [String], default: [] })
   features!: string[];
 

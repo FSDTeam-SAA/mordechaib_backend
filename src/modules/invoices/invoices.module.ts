@@ -5,10 +5,11 @@ import { StripeModule } from '../stripe/stripe.module';
 import { InvoicesController } from './invoices.controller';
 import { InvoicesRepository } from './invoices.repository';
 import { InvoicesService } from './invoices.service';
+import { UserInvoicesController } from './user-invoices.controller';
 
 @Module({
   imports: [SubscriptionsModule, OrganizationsModule, StripeModule],
-  controllers: [InvoicesController],
+  controllers: [InvoicesController, UserInvoicesController],
   providers: [InvoicesService, InvoicesRepository],
   exports: [InvoicesService],
 })
