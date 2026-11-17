@@ -1,0 +1,6 @@
+name,email,phone,company,job_title,avatar_url,location,website,linkedin_url,lead_status,tags,notes
+Amit Chakraborty,amit.chakraborty@example.com,+8801711000001,Acme Bangladesh Ltd,Managing Director,,Dhaka Bangladesh,https://acme-bd.example.com,https://linkedin.com/in/amit-chakraborty,HOT_LEAD,priority|enterprise,Interested in AI workflow automation.
+Tauhid Hasan,tauhid.hasan@example.com,+8801711000002,Nexa Solutions,Operations Manager,,Chattogram Bangladesh,https://nexa.example.com,https://linkedin.com/in/tauhid-hasan,QUALIFIED,operations|follow-up,Requested a product demonstration.
+Sarah Johnson,sarah.johnson@example.com,+14155550101,Johnson Construction,Procurement Director,,New York USA,https://johnson-construction.example.com,https://linkedin.com/in/sarah-johnson,CONTACTED,construction|proposal,Proposal discussion is currently in progress.
+Michael Smith,michael.smith@example.com,+14155550123,Globex Corporation,Sales Director,,California USA,https://globex.example.com,https://linkedin.com/in/michael-smith,NEW,sales|inbound,New inbound customer inquiry.
+Maria Santos,maria.santos@example.com,+442071234567,Chen Consulting,Chief Executive Officer,,London United Kingdom,https://chen-consulting.example.com,https://linkedin.com/in/maria-santos,CLOSED_WON,consulting|vip,Customer agreement completed successfully.

@@ -452,6 +452,62 @@ export class MessagesService {
       organizationId,
       messageId,
     );
+    const cleanupComplete = await this.cleanupAttachments(candidates);
+    return { messageId, deleted: true, cleanupComplete };
+  }
+
+  async deleteConversation(
+    organizationId: string,
+    userId: string,
+    conversationId: string,
+  ) {
+    this.assertObjectId(conversationId, 'conversationId');
+    const conversation = await this.conversations.findForDeletion(
+      organizationId,
+      conversationId,
+      userId,
+    );
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    const messageIds = await this.messages.findIdsByConversation(
+      organizationId,
+      conversationId,
+    );
+    if (!conversation.deletedAt) {
+      await this.conversations.softDelete(
+        organizationId,
+        conversationId,
+        userId,
+        userId,
+      );
+    }
+    await this.messages.softDeleteByConversation(
+      organizationId,
+      conversationId,
+      userId,
+    );
+    await this.attachments.markDeletionPendingByMessages(
+      organizationId,
+      messageIds,
+    );
+    const candidates =
+      await this.attachments.findCleanupCandidatesByMessages(
+        organizationId,
+        messageIds,
+      );
+    const cleanupComplete = await this.cleanupAttachments(candidates);
+
+    return {
+      conversationId,
+      deleted: true,
+      deletedMessageCount: messageIds.length,
+      cleanupComplete,
+    };
+  }
+
+  private async cleanupAttachments(
+    candidates: Array<MessageAttachmentStorageReference & { _id: unknown }>,
+  ) {
     let cleanupComplete = true;
     for (const attachment of candidates) {
       try {
@@ -470,7 +526,7 @@ export class MessagesService {
         );
       }
     }
-    return { messageId, deleted: true, cleanupComplete };
+    return cleanupComplete;
   }
 
   private async withAttachments(

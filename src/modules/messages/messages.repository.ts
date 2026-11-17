@@ -206,6 +206,35 @@ export class MessagesRepository {
       .exec();
   }
 
+  async findIdsByConversation(
+    organizationId: string,
+    conversationId: string,
+  ): Promise<string[]> {
+    const messages = await this.messageModel
+      .find({ organizationId, conversationId })
+      .select('_id')
+      .lean()
+      .exec();
+    return messages.map((message) => String(message._id));
+  }
+
+  softDeleteByConversation(
+    organizationId: string,
+    conversationId: string,
+    deletedBy: string,
+  ) {
+    return this.messageModel
+      .updateMany(
+        {
+          organizationId,
+          conversationId,
+          deletedAt: { $exists: false },
+        },
+        { $set: { deletedAt: new Date(), deletedBy } },
+      )
+      .exec();
+  }
+
   async hardDelete(messageId: string): Promise<void> {
     await this.messageModel.deleteOne({ _id: messageId }).exec();
   }

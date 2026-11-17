@@ -35,6 +35,12 @@ export class Conversation {
 
   @Prop()
   lastMessageAt?: Date;
+
+  @Prop({ index: true })
+  deletedAt?: Date;
+
+  @Prop()
+  deletedBy?: string;
 }
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
@@ -42,6 +48,11 @@ ConversationSchema.index({
   organizationId: 1,
   createdBy: 1,
   lastMessageAt: -1,
+});
+ConversationSchema.index({
+  organizationId: 1,
+  createdBy: 1,
+  deletedAt: 1,
 });
 ConversationSchema.index(
   { organizationId: 1, createdBy: 1, isDefault: 1 },
