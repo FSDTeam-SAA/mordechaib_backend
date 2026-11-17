@@ -18,10 +18,8 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
-  ApiExtraModels,
   ApiOperation,
   ApiTags,
-  getSchemaPath,
 } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -57,10 +55,10 @@ import {
 } from './contact-file-upload.config';
 import { TemporaryUploadCleanupInterceptor } from '../messages/temporary-upload-cleanup.interceptor';
 import { CONTACT_AVATAR_UPLOAD_OPTIONS } from './contact-avatar-upload.config';
+import { CustomerLeadStatus } from '../../common/enums/customer-lead-status.enum';
 
 @ApiTags('Customer Contacts')
 @ApiBearerAuth()
-@ApiExtraModels(CreateContactDto, UpdateContactDto)
 @Controller('contacts')
 @UseGuards(OrganizationGuard, RolesGuard)
 @Roles(UserRole.OWNER, UserRole.ADMIN)
@@ -160,9 +158,9 @@ export class ContactsController {
 
   @Get(':id/workspace')
   @ApiOperation({
-    summary: 'Get an aggregated customer workspace view',
+    summary: 'Get the complete aggregated view for one customer',
     description:
-      'Returns a bounded, organization-scoped first-paint view containing the customer profile, action capabilities and endpoint contract, CRM links, grounded commercial metrics, open tasks, upcoming meetings, recent linked calls, notes, files, and persisted insights. Unsupported insight fields remain explicitly unavailable.',
+      'This is the primary customer-details endpoint. It returns a bounded, organization-scoped view containing the customer profile, action capabilities and endpoint contract, CRM links, grounded commercial metrics, open tasks, upcoming meetings, recent linked calls, notes, files, and persisted insights. Unsupported insight fields remain explicitly unavailable.',
   })
   getWorkspace(
     @CurrentOrg() organization: RequestOrganization,
@@ -373,24 +371,85 @@ export class ContactsController {
 }
 
 function contactMultipartSchema(
-  dto: typeof CreateContactDto | typeof UpdateContactDto,
+  _dto: typeof CreateContactDto | typeof UpdateContactDto,
   requireName: boolean,
 ) {
   return {
-    allOf: [
-      { $ref: getSchemaPath(dto) },
-      {
-        type: 'object',
-        ...(requireName ? { required: ['name'] } : {}),
-        properties: {
-          avatar: {
-            type: 'string',
-            format: 'binary',
-            description:
-              'Optional JPEG, PNG, or WebP customer avatar; maximum 5 MB. Do not combine with avatarUrl.',
-          },
-        },
+    type: 'object',
+    ...(requireName ? { required: ['name'] } : {}),
+    properties: {
+      name: {
+        type: 'string',
+        maxLength: 200,
+        example: 'Tahid Rahman',
       },
-    ],
+      email: {
+        type: 'string',
+        format: 'email',
+        maxLength: 320,
+        example: 'tahid@example.com',
+      },
+      phone: {
+        type: 'string',
+        maxLength: 32,
+        example: '+8801812345678',
+      },
+      company: {
+        type: 'string',
+        maxLength: 200,
+        example: 'Acme Ltd.',
+      },
+      jobTitle: {
+        type: 'string',
+        maxLength: 200,
+        example: 'Operations Director',
+      },
+      avatarUrl: {
+        type: 'string',
+        format: 'uri',
+        maxLength: 500,
+        description: 'Existing hosted avatar URL. Do not combine with avatar.',
+      },
+      location: {
+        type: 'string',
+        maxLength: 300,
+        example: 'Dhaka, Bangladesh',
+      },
+      website: {
+        type: 'string',
+        format: 'uri',
+        maxLength: 500,
+        example: 'https://example.com',
+      },
+      linkedinUrl: {
+        type: 'string',
+        format: 'uri',
+        maxLength: 500,
+        example: 'https://www.linkedin.com/in/example',
+      },
+      leadStatus: {
+        type: 'string',
+        enum: Object.values(CustomerLeadStatus),
+        example: CustomerLeadStatus.NEW,
+      },
+      notes: {
+        type: 'string',
+        maxLength: 5000,
+      },
+      tags: {
+        type: 'array',
+        maxItems: 50,
+        uniqueItems: true,
+        items: { type: 'string', maxLength: 50 },
+        example: ['priority', 'customer'],
+        description: 'The only repeatable customer field.',
+      },
+      avatar: {
+        type: 'string',
+        format: 'binary',
+        description:
+          'Optional JPEG, PNG, or WebP customer avatar; maximum 5 MB. Do not combine with avatarUrl.',
+      },
+    },
   };
 }

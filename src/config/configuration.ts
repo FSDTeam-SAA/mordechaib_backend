@@ -125,6 +125,10 @@ export default () => {
     process.env.TWILIO_SUBSCRIPTION_ENFORCEMENT_ENABLED,
     true,
   );
+  const subscriptionGateEnabled = booleanValue(
+    process.env.SUBSCRIPTION_GATE_ENABLED,
+    false,
+  );
   const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
   const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim();
   const integrationEncryptionKey =
@@ -581,6 +585,10 @@ export default () => {
     stripe: {
       secretKey: process.env.STRIPE_SECRET_KEY,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    },
+
+    subscriptions: {
+      accessGateEnabled: subscriptionGateEnabled,
     },
 
     meta: {

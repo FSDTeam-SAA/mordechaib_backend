@@ -23,6 +23,7 @@ import { SetupStatus } from '../../common/enums/setup-status.enum';
 import { SetupType } from '../../common/enums/setup-type.enum';
 import { RequestUser } from '../../common/types/request-context.type';
 import { SetupPackagesService } from '../setup-packages/setup-packages.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { AddAdminNoteDto } from './dto/add-admin-note.dto';
 import { AssignAdminDto } from './dto/assign-admin.dto';
@@ -55,6 +56,7 @@ export class OnboardingSetupsService {
     private readonly config: ConfigService,
     private readonly setupPackagesService: SetupPackagesService,
     private readonly availabilityService: OnboardingAvailabilityService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
   async create(user: RequestUser, dto: CreateOnboardingSetupDto) {
@@ -86,6 +88,8 @@ export class OnboardingSetupsService {
         'An active onboarding setup already exists for this organization',
       );
     }
+
+    await this.assertSelectedSetupPackage(user, dto.setupPackageId);
 
     const selectedPackage = await this.setupPackagesService.findActiveById(
       dto.setupPackageId,
@@ -148,6 +152,31 @@ export class OnboardingSetupsService {
     );
 
     return this.toOnboardingView(setup);
+  }
+
+  private async assertSelectedSetupPackage(
+    user: RequestUser,
+    setupPackageId: string,
+  ) {
+    if (
+      !this.config.get<boolean>('subscriptions.accessGateEnabled', false)
+    ) {
+      return;
+    }
+
+    const organization = await this.organizationsService.findCurrent(
+      user.organizationId,
+    );
+    if (!organization.setupType || !organization.setupPackageId) {
+      throw new BadRequestException(
+        'Select a setup path before starting onboarding setup',
+      );
+    }
+    if (organization.setupPackageId !== setupPackageId) {
+      throw new BadRequestException(
+        'The onboarding setup package must match the selected setup path',
+      );
+    }
   }
 
   async findMy(user: RequestUser) {

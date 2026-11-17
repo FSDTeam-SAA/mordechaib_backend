@@ -4,6 +4,7 @@ import { BusinessIndustry } from '../../common/enums/business-industry.enum';
 import { BusinessSize } from '../../common/enums/business-size.enum';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
 import { OrganizationStatus } from '../../common/enums/organization-status.enum';
+import { SetupType } from '../../common/enums/setup-type.enum';
 
 export type OrganizationDocument = HydratedDocument<Organization>;
 
@@ -109,6 +110,15 @@ export class Organization {
   @Prop()
   onboardingCompletedAt?: Date;
 
+  @Prop({ enum: Object.values(SetupType), index: true })
+  setupType?: SetupType;
+
+  @Prop({ index: true })
+  setupPackageId?: string;
+
+  @Prop()
+  setupPathSelectedAt?: Date;
+
   @Prop()
   updatedBy?: string;
 }
@@ -116,3 +126,4 @@ export class Organization {
 export const OrganizationSchema = SchemaFactory.createForClass(Organization);
 OrganizationSchema.index({ isInternal: 1, status: 1, createdAt: -1 });
 OrganizationSchema.index({ isInternal: 1, suspendedAt: -1 });
+OrganizationSchema.index({ setupType: 1, setupPathSelectedAt: -1 });

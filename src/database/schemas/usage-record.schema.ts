@@ -50,10 +50,14 @@ export class UsageRecord {
 
   @Prop()
   periodEnd?: Date;
+
+  @Prop({ type: Object, default: {} })
+  metadata?: Record<string, unknown>;
 }
 
 export const UsageRecordSchema = SchemaFactory.createForClass(UsageRecord);
 UsageRecordSchema.index({ organizationId: 1, provider: 1, metric: 1 });
+UsageRecordSchema.index({ organizationId: 1, periodStart: 1, periodEnd: 1 });
 UsageRecordSchema.index(
   { provider: 1, metric: 1, sourceId: 1 },
   {

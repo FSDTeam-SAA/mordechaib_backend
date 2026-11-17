@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SystemServicesService } from '../system-services/system-services.service';
+import { extractAiUsageTelemetry } from '../../common/helpers/ai-usage-telemetry.helper';
+import { UsageService } from '../usage/usage.service';
 
 export class AiServiceHttpError extends Error {
   constructor(
@@ -22,6 +24,7 @@ export class AiServiceClient {
   constructor(
     private readonly config: ConfigService,
     private readonly systemServices: SystemServicesService,
+    private readonly usage: UsageService,
   ) {}
 
   get enabled() {
@@ -93,7 +96,9 @@ export class AiServiceClient {
 
     if (!responseBody) return {} as T;
     try {
-      return JSON.parse(responseBody) as T;
+      const parsed = JSON.parse(responseBody) as T;
+      await this.recordUsage(path, body, parsed);
+      return parsed;
     } catch {
       this.logger.error(`AI response was not valid JSON: ${requestLabel}`);
       throw new AiServiceHttpError(
@@ -101,6 +106,39 @@ export class AiServiceClient {
         false,
       );
     }
+  }
+
+  private async recordUsage(
+    path: string,
+    body: Record<string, unknown>,
+    response: unknown,
+  ) {
+    const organizationId =
+      typeof body.organizationId === 'string' ? body.organizationId : undefined;
+    const sourceId = this.usageSourceId(path, body);
+    if (!organizationId || !sourceId) return;
+    try {
+      await this.usage.recordAiAction({
+        organizationId,
+        sourceId,
+        path,
+        telemetry: extractAiUsageTelemetry(response),
+      });
+    } catch (error) {
+      this.logger.error(
+        `AI usage metering failed: path=${path}, organization=${organizationId}, source=${sourceId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private usageSourceId(path: string, body: Record<string, unknown>) {
+    const id = [
+      body.idempotencyKey,
+      body.jobId,
+      body.requestId,
+      body.turnId,
+    ].find((value): value is string => typeof value === 'string' && !!value);
+    return id ? `${path}:${id}` : undefined;
   }
 
   private requestLabel(path: string, body: Record<string, unknown>) {

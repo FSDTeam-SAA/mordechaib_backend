@@ -8,6 +8,7 @@ export enum AttachmentDisposition {
 
 export class AttachmentDownloadQueryDto {
   @ApiPropertyOptional({
+    type: String,
     enum: AttachmentDisposition,
     default: AttachmentDisposition.INLINE,
   })
