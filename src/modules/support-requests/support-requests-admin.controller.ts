@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,8 @@ import { RequestUser } from '../../common/types/request-context.type';
 import { ListSupportRequestsAdminQueryDto } from './dto/list-support-requests-admin-query.dto';
 import { SupportAttachmentDownloadQueryDto } from './dto/support-attachment-download-query.dto';
 import { UpdateSupportRequestStatusDto } from './dto/update-support-request-status.dto';
+import { CreateSupportReplyDto } from './dto/create-support-reply.dto';
+import { ManageSupportRequestDto } from './dto/manage-support-request.dto';
 import { SupportRequestsService } from './support-requests.service';
 
 @ApiTags('Help & Support (admin)')
@@ -27,6 +30,18 @@ export class SupportRequestsAdminController {
   @ApiOperation({ summary: 'List support requests across organizations' })
   list(@Query() query: ListSupportRequestsAdminQueryDto) {
     return this.support.listForAdmin(query);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Get support ticket status summary cards' })
+  summary() {
+    return this.support.summaryForAdmin();
+  }
+
+  @Get('assignees')
+  @ApiOperation({ summary: 'List active platform admins available for assignment' })
+  assignees() {
+    return this.support.listAssignableAdmins();
   }
 
   @Get(':requestId/attachments/:attachmentId/download')
@@ -47,6 +62,28 @@ export class SupportRequestsAdminController {
   @ApiOperation({ summary: 'Get support request details for support staff' })
   get(@Param('requestId') requestId: string) {
     return this.support.getForAdmin(requestId);
+  }
+
+  @Post(':requestId/replies')
+  @ApiOperation({ summary: 'Reply to a support ticket as platform support' })
+  reply(
+    @Param('requestId') requestId: string,
+    @Body() input: CreateSupportReplyDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.support.replyForAdmin(requestId, user.id, input);
+  }
+
+  @Patch(':requestId')
+  @ApiOperation({
+    summary: 'Update ticket status, priority, or platform-admin assignment',
+  })
+  manage(
+    @Param('requestId') requestId: string,
+    @Body() input: ManageSupportRequestDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.support.manage(requestId, input, user.id);
   }
 
   @Patch(':requestId/status')

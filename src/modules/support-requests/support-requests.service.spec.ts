@@ -42,6 +42,14 @@ describe('SupportRequestsService', () => {
     findForAdmin: jest.fn(),
     findAttachmentForAdmin: jest.fn(),
     updateStatus: jest.fn(),
+    manage: jest.fn(),
+    addReplyForUser: jest.fn(),
+    addReplyForAdmin: jest.fn(),
+    summaryForAdmin: jest.fn(),
+    findAssignableAdmin: jest.fn(),
+    listAssignableAdmins: jest.fn(),
+    findUsersByIds: jest.fn().mockResolvedValue([]),
+    findOrganizationsByIds: jest.fn().mockResolvedValue([]),
   };
   const storage = {
     store: jest.fn(),
@@ -224,7 +232,7 @@ describe('SupportRequestsService', () => {
   });
 
   it('rejects status updates for a missing request', async () => {
-    repository.updateStatus.mockResolvedValue(null);
+    repository.findForAdmin.mockResolvedValue(null);
 
     await expect(
       service.updateStatus(
@@ -233,5 +241,82 @@ describe('SupportRequestsService', () => {
         'platform-admin-1',
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('allows an organizer to reply only inside their scoped open ticket', async () => {
+    repository.findForUser.mockResolvedValue(baseRequest);
+    repository.addReplyForUser.mockResolvedValue({
+      ...baseRequest,
+      replies: [
+        {
+          _id: new Types.ObjectId(),
+          authorUserId: 'user-1',
+          authorType: 'ORGANIZER',
+          content: 'The issue still happens.',
+          createdAt: new Date('2026-09-23T10:10:00.000Z'),
+        },
+      ],
+    });
+
+    const result = await service.replyForUser(
+      'org-1',
+      'user-1',
+      requestId,
+      { content: 'The issue still happens.' },
+    );
+
+    expect(repository.addReplyForUser).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      requestId,
+      'The issue still happens.',
+      SupportRequestStatus.OPEN,
+    );
+    expect(result.replies).toEqual([
+      expect.objectContaining({ content: 'The issue still happens.' }),
+    ]);
+  });
+
+  it('validates platform-admin assignment before updating a ticket', async () => {
+    repository.findForAdmin.mockResolvedValue(baseRequest);
+    repository.findAssignableAdmin.mockResolvedValue(null);
+
+    await expect(
+      service.manage(
+        requestId,
+        { assignedToUserId: new Types.ObjectId().toHexString() },
+        'platform-admin-1',
+      ),
+    ).rejects.toThrow(
+      'assignedToUserId must identify an active platform admin',
+    );
+    expect(repository.manage).not.toHaveBeenCalled();
+  });
+
+  it('returns enriched admin list rows with organization and contact', async () => {
+    repository.listForAdmin.mockResolvedValue({
+      items: [baseRequest],
+      total: 1,
+    });
+    repository.findOrganizationsByIds.mockResolvedValue([
+      { _id: 'org-1', name: 'Acme Corp' },
+    ]);
+    repository.findUsersByIds.mockResolvedValue([
+      {
+        _id: 'user-1',
+        firstName: 'John',
+        lastName: 'Smith',
+        email: 'john@example.com',
+      },
+    ]);
+
+    const result = await service.listForAdmin({ page: 1, limit: 20 });
+
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        organization: { id: 'org-1', name: 'Acme Corp' },
+        contact: expect.objectContaining({ name: 'John Smith' }),
+      }),
+    );
   });
 });
