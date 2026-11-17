@@ -12,7 +12,10 @@ import path from 'path';
 import { Types } from 'mongoose';
 import { MessageAttachmentCategory } from '../../common/enums/message-attachment-category.enum';
 import {
+  SupportRequestActorType,
   SupportAttachmentStatus,
+  SupportRequestEventType,
+  SupportRequestPriority,
   SupportRequestStatus,
 } from '../../common/enums/support-request.enum';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -20,9 +23,11 @@ import { AttachmentDisposition } from '../messages/dto/attachment-download-query
 import { CloudinaryMessageAttachmentStorage } from '../messages/storage/cloudinary-message-attachment.storage';
 import { MessageAttachmentStorageReference } from '../messages/storage/message-attachment-storage.interface';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
+import { CreateSupportReplyDto } from './dto/create-support-reply.dto';
 import { ListSupportRequestsAdminQueryDto } from './dto/list-support-requests-admin-query.dto';
 import { ListSupportRequestsQueryDto } from './dto/list-support-requests-query.dto';
 import { UpdateSupportRequestStatusDto } from './dto/update-support-request-status.dto';
+import { ManageSupportRequestDto } from './dto/manage-support-request.dto';
 import {
   isAllowedSupportAttachment,
   MAX_SUPPORT_ATTACHMENT_BYTES,
@@ -41,6 +46,12 @@ type StoredAttachment = {
   storageFormat: string;
   sizeBytes: number;
   url?: string;
+};
+
+type DetailedSupportRequest = Record<string, unknown> & {
+  attachments: Array<Record<string, unknown>>;
+  replies: Array<Record<string, unknown>>;
+  timeline: Array<Record<string, unknown>>;
 };
 
 @Injectable()
@@ -110,11 +121,20 @@ export class SupportRequestsService {
             subject: input.subject,
             description: input.description,
             status: SupportRequestStatus.OPEN,
+            priority: SupportRequestPriority.MEDIUM,
             attachmentCount: uploaded.length,
             attachments: uploaded.map((attachment) => ({
               ...attachment,
               status: SupportAttachmentStatus.ACTIVE,
             })),
+            timeline: [
+              {
+                type: SupportRequestEventType.CREATED,
+                actorUserId: userId,
+                actorType: SupportRequestActorType.ORGANIZER,
+                createdAt: new Date(),
+              },
+            ],
           });
           break;
         } catch (error) {
@@ -229,7 +249,27 @@ export class SupportRequestsService {
 
   async listForAdmin(query: ListSupportRequestsAdminQueryDto) {
     const result = await this.repository.listForAdmin(query);
-    return this.paginated(result, query.page, query.limit, false);
+    const enriched = await this.enrichDirectory(result.items);
+    return this.paginated(
+      { items: enriched, total: result.total },
+      query.page,
+      query.limit,
+      false,
+    );
+  }
+
+  summaryForAdmin() {
+    return this.repository.summaryForAdmin();
+  }
+
+  async listAssignableAdmins() {
+    const users = await this.repository.listAssignableAdmins();
+    return users.map((user) => ({
+      id: String(user._id),
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    }));
   }
 
   async getForAdmin(id: string) {
@@ -260,22 +300,131 @@ export class SupportRequestsService {
     adminUserId: string,
   ) {
     this.assertObjectId(id, 'requestId');
-    const request = await this.repository.updateStatus(
+    return this.manage(
       id,
-      input.status,
-      input.resolutionNote,
+      { status: input.status, resolutionNote: input.resolutionNote },
       adminUserId,
+    );
+  }
+
+  async manage(
+    id: string,
+    input: ManageSupportRequestDto,
+    adminUserId: string,
+  ) {
+    this.assertObjectId(id, 'requestId');
+    if (
+      input.status === undefined &&
+      input.priority === undefined &&
+      input.assignedToUserId === undefined &&
+      input.resolutionNote === undefined
+    ) {
+      throw new BadRequestException('At least one ticket field is required');
+    }
+    const current = await this.repository.findForAdmin(id);
+    if (!current) throw new NotFoundException('Support request not found');
+    const currentData = current as unknown as Record<string, unknown>;
+    if (input.status) {
+      this.assertStatusTransition(
+        currentData.status as SupportRequestStatus,
+        input.status,
+      );
+    }
+    if (typeof input.assignedToUserId === 'string') {
+      const assignee = await this.repository.findAssignableAdmin(
+        input.assignedToUserId,
+      );
+      if (!assignee) {
+        throw new BadRequestException(
+          'assignedToUserId must identify an active platform admin',
+        );
+      }
+    }
+
+    const request = await this.repository.manage(id, input, adminUserId);
+    if (!request) throw new NotFoundException('Support request not found');
+    const data = request as unknown as Record<string, unknown>;
+    await this.audit({
+      organizationId: String(data.organizationId),
+      userId: adminUserId,
+      action: 'SUPPORT_REQUEST_MANAGED',
+      resourceId: id,
+      metadata: {
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.priority ? { priority: input.priority } : {}),
+        ...(input.assignedToUserId !== undefined
+          ? { assignedToUserId: input.assignedToUserId }
+          : {}),
+      },
+    });
+    return this.detailedRequest(request);
+  }
+
+  async replyForUser(
+    organizationId: string,
+    userId: string,
+    id: string,
+    input: CreateSupportReplyDto,
+  ) {
+    this.assertObjectId(id, 'requestId');
+    const current = await this.repository.findForUser(
+      organizationId,
+      userId,
+      id,
+    );
+    if (!current) throw new NotFoundException('Support request not found');
+    if (
+      (current as unknown as Record<string, unknown>).status ===
+      SupportRequestStatus.CLOSED
+    ) {
+      throw new BadRequestException('Closed support requests cannot be replied to');
+    }
+    const request = await this.repository.addReplyForUser(
+      organizationId,
+      userId,
+      id,
+      input.content,
+      (current as unknown as Record<string, unknown>)
+        .status as SupportRequestStatus,
+    );
+    if (!request) throw new NotFoundException('Support request not found');
+    await this.audit({
+      organizationId,
+      userId,
+      action: 'SUPPORT_REQUEST_REPLIED',
+      resourceId: id,
+    });
+    return this.detailedRequest(request);
+  }
+
+  async replyForAdmin(
+    id: string,
+    adminUserId: string,
+    input: CreateSupportReplyDto,
+  ) {
+    this.assertObjectId(id, 'requestId');
+    const current = await this.repository.findForAdmin(id);
+    if (!current) throw new NotFoundException('Support request not found');
+    if (
+      (current as unknown as Record<string, unknown>).status ===
+      SupportRequestStatus.CLOSED
+    ) {
+      throw new BadRequestException('Closed support requests cannot be replied to');
+    }
+    const request = await this.repository.addReplyForAdmin(
+      id,
+      adminUserId,
+      input.content,
     );
     if (!request) throw new NotFoundException('Support request not found');
     const data = request as unknown as Record<string, unknown>;
     await this.audit({
       organizationId: String(data.organizationId),
       userId: adminUserId,
-      action: 'SUPPORT_REQUEST_STATUS_UPDATED',
+      action: 'SUPPORT_REQUEST_REPLIED',
       resourceId: id,
-      metadata: { status: input.status },
     });
-    return this.publicRequest(request, true);
+    return this.detailedRequest(request);
   }
 
   private async attachmentDownload(
@@ -301,8 +450,14 @@ export class SupportRequestsService {
     };
   }
 
-  private async detailedRequest(value: object) {
-    const response = this.publicRequest(value, true) as Record<string, unknown>;
+  private async detailedRequest(
+    value: object,
+  ): Promise<DetailedSupportRequest> {
+    const [enriched] = await this.enrichDirectory([value]);
+    const response = this.publicRequest(enriched, true) as Record<
+      string,
+      unknown
+    >;
     const source = value as unknown as Record<string, unknown>;
     const storedAttachments = (source.attachments || []) as Array<
       Record<string, unknown>
@@ -331,7 +486,7 @@ export class SupportRequestsService {
           return { ...attachment, url: download.downloadUrl };
         }),
       ),
-    };
+    } as DetailedSupportRequest;
   }
 
   private publicRequest(value: object, includeDetails: boolean) {
@@ -348,6 +503,11 @@ export class SupportRequestsService {
       subject: data.subject,
       ...(includeDetails ? { description: data.description } : {}),
       status: data.status,
+      priority: data.priority || SupportRequestPriority.MEDIUM,
+      assignedToUserId: data.assignedToUserId,
+      assignedTo: data.assignedTo,
+      organization: data.organization,
+      contact: data.contact,
       resolutionNote: data.resolutionNote,
       statusChangedAt: data.statusChangedAt,
       attachmentCount:
@@ -370,6 +530,8 @@ export class SupportRequestsService {
                   ? { url: item.url }
                   : {}),
               })),
+            replies: data.replies || [],
+            timeline: this.timelineWithCreatedFallback(data),
           }
         : {}),
       createdAt: data.createdAt,
@@ -496,6 +658,132 @@ export class SupportRequestsService {
     if (!Types.ObjectId.isValid(value)) {
       throw new BadRequestException(`${name} must be a valid MongoDB id`);
     }
+  }
+
+  private assertStatusTransition(
+    current: SupportRequestStatus,
+    next: SupportRequestStatus,
+  ) {
+    if (current === next) return;
+    const allowed: Record<SupportRequestStatus, SupportRequestStatus[]> = {
+      [SupportRequestStatus.OPEN]: [
+        SupportRequestStatus.IN_PROGRESS,
+        SupportRequestStatus.RESOLVED,
+        SupportRequestStatus.CLOSED,
+      ],
+      [SupportRequestStatus.IN_PROGRESS]: [
+        SupportRequestStatus.OPEN,
+        SupportRequestStatus.RESOLVED,
+        SupportRequestStatus.CLOSED,
+      ],
+      [SupportRequestStatus.RESOLVED]: [
+        SupportRequestStatus.OPEN,
+        SupportRequestStatus.CLOSED,
+      ],
+      [SupportRequestStatus.CLOSED]: [SupportRequestStatus.OPEN],
+    };
+    if (!allowed[current].includes(next)) {
+      throw new BadRequestException(
+        `Support request cannot transition from ${current} to ${next}`,
+      );
+    }
+  }
+
+  private timelineWithCreatedFallback(data: Record<string, unknown>) {
+    const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+    if (
+      timeline.some(
+        (item) =>
+          (item as Record<string, unknown>).type ===
+          SupportRequestEventType.CREATED,
+      )
+    ) {
+      return timeline;
+    }
+    return [
+      {
+        id: `legacy-created-${String(data._id)}`,
+        type: SupportRequestEventType.CREATED,
+        actorUserId: data.createdByUserId,
+        actorType: SupportRequestActorType.ORGANIZER,
+        actor: data.contact,
+        createdAt: data.createdAt,
+      },
+      ...timeline,
+    ];
+  }
+
+  private async enrichDirectory(items: object[]) {
+    const records = items.map(
+      (item) => item as unknown as Record<string, unknown>,
+    );
+    const organizationIds = new Set<string>();
+    const userIds = new Set<string>();
+    for (const item of records) {
+      if (item.organizationId) organizationIds.add(String(item.organizationId));
+      if (item.createdByUserId) userIds.add(String(item.createdByUserId));
+      if (item.assignedToUserId) userIds.add(String(item.assignedToUserId));
+      for (const reply of (item.replies || []) as Array<Record<string, unknown>>) {
+        if (reply.authorUserId) userIds.add(String(reply.authorUserId));
+      }
+      for (const event of (item.timeline || []) as Array<
+        Record<string, unknown>
+      >) {
+        if (event.actorUserId) userIds.add(String(event.actorUserId));
+      }
+    }
+    const [organizations, users] = await Promise.all([
+      this.repository.findOrganizationsByIds([...organizationIds]),
+      this.repository.findUsersByIds([...userIds]),
+    ]);
+    const organizationMap = new Map(
+      organizations.map((item) => [String(item._id), item]),
+    );
+    const userMap = new Map(users.map((item) => [String(item._id), item]));
+    const publicUser = (id: unknown) => {
+      const user = id ? userMap.get(String(id)) : undefined;
+      if (!user) return null;
+      return {
+        id: String(user._id),
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+      };
+    };
+
+    return records.map((item) => {
+      const organization = organizationMap.get(String(item.organizationId));
+      return {
+        ...item,
+        organization: organization
+          ? { id: String(organization._id), name: organization.name }
+          : null,
+        contact: publicUser(item.createdByUserId),
+        assignedTo: publicUser(item.assignedToUserId),
+        replies: ((item.replies || []) as Array<Record<string, unknown>>).map(
+          (reply) => ({
+            id: String(reply._id),
+            authorUserId: reply.authorUserId,
+            authorType: reply.authorType,
+            author: publicUser(reply.authorUserId),
+            content: reply.content,
+            createdAt: reply.createdAt,
+          }),
+        ),
+        timeline: ((item.timeline || []) as Array<Record<string, unknown>>).map(
+          (event) => ({
+            id: String(event._id),
+            type: event.type,
+            actorUserId: event.actorUserId,
+            actorType: event.actorType,
+            actor: publicUser(event.actorUserId),
+            fromValue: event.fromValue,
+            toValue: event.toValue,
+            createdAt: event.createdAt,
+          }),
+        ),
+      };
+    });
   }
 
   private isDuplicateKey(error: unknown) {

@@ -27,12 +27,12 @@ export class ListSupportRequestsQueryDto {
   @IsOptional()
   limit: number = 20;
 
-  @ApiPropertyOptional({ enum: SupportRequestStatus })
+  @ApiPropertyOptional({ type: String, enum: SupportRequestStatus })
   @IsEnum(SupportRequestStatus)
   @IsOptional()
   status?: SupportRequestStatus;
 
-  @ApiPropertyOptional({ enum: SupportRequestCategory })
+  @ApiPropertyOptional({ type: String, enum: SupportRequestCategory })
   @IsEnum(SupportRequestCategory)
   @IsOptional()
   category?: SupportRequestCategory;

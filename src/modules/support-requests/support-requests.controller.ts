@@ -31,6 +31,7 @@ import {
 } from '../../common/types/request-context.type';
 import { TemporaryUploadCleanupInterceptor } from '../messages/temporary-upload-cleanup.interceptor';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
+import { CreateSupportReplyDto } from './dto/create-support-reply.dto';
 import { ListSupportRequestsQueryDto } from './dto/list-support-requests-query.dto';
 import { SupportAttachmentDownloadQueryDto } from './dto/support-attachment-download-query.dto';
 import {
@@ -121,6 +122,24 @@ export class SupportRequestsController {
       requestId,
       attachmentId,
       query.disposition,
+    );
+  }
+
+  @Post(':requestId/replies')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Reply to one of the signed-in user tickets' })
+  reply(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('requestId') requestId: string,
+    @Body() input: CreateSupportReplyDto,
+  ) {
+    return this.support.replyForUser(
+      organization.id,
+      user.id,
+      requestId,
+      input,
     );
   }
 

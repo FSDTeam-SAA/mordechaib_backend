@@ -2,7 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import {
   SupportAttachmentStatus,
+  SupportRequestActorType,
   SupportRequestCategory,
+  SupportRequestEventType,
+  SupportRequestPriority,
   SupportRequestStatus,
 } from '../../common/enums/support-request.enum';
 
@@ -64,6 +67,53 @@ const SupportRequestAttachmentSchema = SchemaFactory.createForClass(
   SupportRequestAttachment,
 );
 
+@Schema({ _id: true })
+export class SupportRequestReply {
+  _id!: Types.ObjectId;
+
+  @Prop({ required: true, index: true })
+  authorUserId!: string;
+
+  @Prop({ required: true, enum: Object.values(SupportRequestActorType) })
+  authorType!: SupportRequestActorType;
+
+  @Prop({ required: true, trim: true, minlength: 1, maxlength: 5_000 })
+  content!: string;
+
+  @Prop({ required: true, default: Date.now })
+  createdAt!: Date;
+}
+
+const SupportRequestReplySchema =
+  SchemaFactory.createForClass(SupportRequestReply);
+
+@Schema({ _id: true })
+export class SupportRequestTimelineEvent {
+  _id!: Types.ObjectId;
+
+  @Prop({ required: true, enum: Object.values(SupportRequestEventType) })
+  type!: SupportRequestEventType;
+
+  @Prop({ required: true })
+  actorUserId!: string;
+
+  @Prop({ required: true, enum: Object.values(SupportRequestActorType) })
+  actorType!: SupportRequestActorType;
+
+  @Prop({ trim: true, maxlength: 200 })
+  fromValue?: string;
+
+  @Prop({ trim: true, maxlength: 200 })
+  toValue?: string;
+
+  @Prop({ required: true, default: Date.now })
+  createdAt!: Date;
+}
+
+const SupportRequestTimelineEventSchema = SchemaFactory.createForClass(
+  SupportRequestTimelineEvent,
+);
+
 export type SupportRequestDocument = HydratedDocument<SupportRequest>;
 
 @Schema({ timestamps: true, collection: 'support_requests' })
@@ -94,11 +144,28 @@ export class SupportRequest {
   })
   status!: SupportRequestStatus;
 
+  @Prop({
+    required: true,
+    enum: Object.values(SupportRequestPriority),
+    default: SupportRequestPriority.MEDIUM,
+    index: true,
+  })
+  priority!: SupportRequestPriority;
+
+  @Prop({ index: true })
+  assignedToUserId?: string;
+
   @Prop({ type: [SupportRequestAttachmentSchema], default: [] })
   attachments!: SupportRequestAttachment[];
 
   @Prop({ required: true, default: 0, min: 0, max: 5 })
   attachmentCount!: number;
+
+  @Prop({ type: [SupportRequestReplySchema], default: [] })
+  replies!: SupportRequestReply[];
+
+  @Prop({ type: [SupportRequestTimelineEventSchema], default: [] })
+  timeline!: SupportRequestTimelineEvent[];
 
   @Prop({ maxlength: 2_000 })
   resolutionNote?: string;
@@ -125,3 +192,9 @@ SupportRequestSchema.index({
   updatedAt: -1,
 });
 SupportRequestSchema.index({ status: 1, deletedAt: 1, updatedAt: -1 });
+SupportRequestSchema.index({
+  assignedToUserId: 1,
+  status: 1,
+  deletedAt: 1,
+  updatedAt: -1,
+});
