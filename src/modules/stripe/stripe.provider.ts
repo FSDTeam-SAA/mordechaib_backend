@@ -19,6 +19,7 @@ export class StripeProvider {
     cancelUrl: string;
     metadata: Record<string, string>;
     trialDays?: number;
+    paymentMethodCollection?: 'always' | 'if_required';
   }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     return this.client.checkout.sessions.create({
       mode: 'subscription',
@@ -27,6 +28,7 @@ export class StripeProvider {
       customer_email: params.customerId ? undefined : params.customerEmail,
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
+      payment_method_collection: params.paymentMethodCollection,
       subscription_data: {
         metadata: params.metadata,
         trial_period_days: params.trialDays || undefined,
@@ -163,6 +165,60 @@ export class StripeProvider {
     );
   }
 
+  createUsageInvoiceItem(params: {
+    customerId: string;
+    amountCents: number;
+    organizationId: string;
+    metric: string;
+    periodStart: Date;
+    periodEnd: Date;
+    description: string;
+    idempotencyKey: string;
+  }): Promise<Stripe.Response<Stripe.InvoiceItem>> {
+    return this.client.invoiceItems.create(
+      {
+        customer: params.customerId,
+        amount: params.amountCents,
+        currency: 'usd',
+        description: params.description,
+        metadata: {
+          organizationId: params.organizationId,
+          metric: params.metric,
+          periodStart: params.periodStart.toISOString(),
+          periodEnd: params.periodEnd.toISOString(),
+        },
+      },
+      { idempotencyKey: params.idempotencyKey },
+    );
+  }
+
+  createUsageInvoice(params: {
+    customerId: string;
+    organizationId: string;
+    stripeSubscriptionId: string;
+    periodStart: Date;
+    periodEnd: Date;
+    idempotencyKey: string;
+  }): Promise<Stripe.Response<Stripe.Invoice>> {
+    return this.client.invoices.create(
+      {
+        customer: params.customerId,
+        auto_advance: true,
+        collection_method: 'charge_automatically',
+        pending_invoice_items_behavior: 'include',
+        description: `Measured usage ${params.periodStart.toISOString()} - ${params.periodEnd.toISOString()}`,
+        metadata: {
+          organizationId: params.organizationId,
+          stripeSubscriptionId: params.stripeSubscriptionId,
+          usageInvoice: 'true',
+          periodStart: params.periodStart.toISOString(),
+          periodEnd: params.periodEnd.toISOString(),
+        },
+      },
+      { idempotencyKey: params.idempotencyKey },
+    );
+  }
+
   // --- Product/Price management, used by SubscriptionPlansService so an
   // admin never has to touch the Stripe dashboard to create a plan. ---
 
@@ -280,6 +336,7 @@ export class StripeProvider {
     cancelUrl: string;
     trialDays?: number;
     metadata: Record<string, string>;
+    paymentMethodCollection?: 'always' | 'if_required';
   }): Promise<Stripe.Response<Stripe.Checkout.Session>> {
     const lineItems = [
       { price: params.planPriceId, quantity: 1 },
@@ -290,6 +347,7 @@ export class StripeProvider {
       line_items: lineItems,
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
+      payment_method_collection: params.paymentMethodCollection,
       subscription_data: {
         metadata: params.metadata,
         trial_period_days: params.trialDays || undefined,

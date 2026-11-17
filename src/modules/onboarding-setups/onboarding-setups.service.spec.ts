@@ -7,6 +7,7 @@ import { SetupType } from '../../common/enums/setup-type.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { RequestUser } from '../../common/types/request-context.type';
 import { SetupPackagesService } from '../setup-packages/setup-packages.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { OnboardingSetupsRepository } from './onboarding-setups.repository';
 import { OnboardingSetupsService } from './onboarding-setups.service';
@@ -31,12 +32,14 @@ describe('OnboardingSetupsService package catalog integration', () => {
     getAdminAvailability: jest.fn(),
     upsertAdminAvailability: jest.fn(),
   };
+  const organizationsService = { findCurrent: jest.fn() };
   const service = new OnboardingSetupsService(
     repository as unknown as OnboardingSetupsRepository,
     stripeProvider as unknown as StripeProvider,
     config as unknown as ConfigService,
     setupPackagesService as unknown as SetupPackagesService,
     availabilityService as unknown as OnboardingAvailabilityService,
+    organizationsService as unknown as OrganizationsService,
   );
   const user: RequestUser = {
     id: 'user-1',
@@ -265,6 +268,35 @@ describe('OnboardingSetupsService package catalog integration', () => {
         startTime: '2099-10-01T03:00:00.000Z',
       }),
     ).rejects.toThrow('slot was just booked');
+  });
+
+  it('requires setup-path selection for new setup when the gate is enabled', async () => {
+    config.get.mockImplementation((key: string) =>
+      key === 'subscriptions.accessGateEnabled' ? true : undefined,
+    );
+    repository.findActiveByOrganization.mockResolvedValue(null);
+    organizationsService.findCurrent.mockResolvedValue({});
+
+    await expect(
+      service.create(user, { setupPackageId: 'package-assisted' }),
+    ).rejects.toThrow('Select a setup path');
+    expect(setupPackagesService.findActiveById).not.toHaveBeenCalled();
+  });
+
+  it('rejects a package that differs from the selected setup path', async () => {
+    config.get.mockImplementation((key: string) =>
+      key === 'subscriptions.accessGateEnabled' ? true : undefined,
+    );
+    repository.findActiveByOrganization.mockResolvedValue(null);
+    organizationsService.findCurrent.mockResolvedValue({
+      setupType: SetupType.DONE_FOR_YOU,
+      setupPackageId: 'package-selected',
+    });
+
+    await expect(
+      service.create(user, { setupPackageId: 'package-other' }),
+    ).rejects.toThrow('must match the selected setup path');
+    expect(setupPackagesService.findActiveById).not.toHaveBeenCalled();
   });
 
 });

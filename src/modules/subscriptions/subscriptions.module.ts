@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { SubscriptionAccessGuard } from '../../common/guards/subscription-access.guard';
 import { AddonsModule } from '../addons/addons.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
@@ -17,6 +19,7 @@ import { SubscriptionsAdminController } from './subscriptions-admin.controller';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsRepository } from './subscriptions.repository';
 import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionAccessPolicyService } from './subscription-access-policy.service';
 
 @Module({
   imports: [
@@ -37,13 +40,21 @@ import { SubscriptionsService } from './subscriptions.service';
     SubscriptionPlansRepository,
     SubscriptionsService,
     SubscriptionsRepository,
+    SubscriptionAccessPolicyService,
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionAccessGuard,
+    },
     SubscriptionAnalyticsService,
     SubscriptionAnalyticsRepository,
     CancellationsService,
     CancellationRequestsRepository,
     CancellationSchedulerService,
   ],
-  exports: [SubscriptionPlansService, SubscriptionsService],
+  exports: [
+    SubscriptionPlansService,
+    SubscriptionsService,
+    SubscriptionAccessPolicyService,
+  ],
 })
-
 export class SubscriptionsModule {}

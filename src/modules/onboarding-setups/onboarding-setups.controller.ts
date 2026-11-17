@@ -24,13 +24,18 @@ import { CreateOnboardingPaymentSessionDto } from './dto/create-onboarding-payme
 import { OnboardingSetupQueryDto } from './dto/onboarding-setup-query.dto';
 import { OnboardingAvailableSlotsQueryDto } from './dto/onboarding-available-slots-query.dto';
 import { UpsertOnboardingAvailabilityDto } from './dto/upsert-onboarding-availability.dto';
+import { SelectSetupPathDto } from './dto/select-setup-path.dto';
+import { OnboardingJourneyService } from './onboarding-journey.service';
 import { OnboardingSetupsService } from './onboarding-setups.service';
 
 @ApiTags('Onboarding setups')
 @ApiBearerAuth()
 @Controller('onboarding-setups')
 export class OnboardingSetupsController {
-  constructor(private readonly service: OnboardingSetupsService) {}
+  constructor(
+    private readonly service: OnboardingSetupsService,
+    private readonly journeyService: OnboardingJourneyService,
+  ) {}
 
   // ============================================================
   // Organizer routes
@@ -53,6 +58,27 @@ export class OnboardingSetupsController {
   @ApiOperation({ summary: 'Get onboarding meeting availability rules' })
   getAvailability() {
     return this.service.getAvailability();
+  }
+
+  @Get('journey')
+  @ApiOperation({
+    summary: 'Get the current organization onboarding journey decision',
+  })
+  getJourney(@CurrentUser() user: RequestUser) {
+    return this.journeyService.getJourney(user);
+  }
+
+  @Post('setup-path')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiOperation({
+    summary: 'Select the organization setup path from an active package',
+  })
+  selectSetupPath(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: SelectSetupPathDto,
+  ) {
+    return this.journeyService.selectSetupPath(user, dto);
   }
 
   @Get(':id')

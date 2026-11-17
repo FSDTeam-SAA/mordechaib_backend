@@ -14,7 +14,10 @@ import { StripeProvider } from '../stripe/stripe.provider';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoicesRepository } from './invoices.repository';
 
-const STRIPE_INVOICE_STATUS_MAP: Record<NonNullable<Stripe.Invoice.Status>, InvoiceStatus> = {
+const STRIPE_INVOICE_STATUS_MAP: Record<
+  NonNullable<Stripe.Invoice.Status>,
+  InvoiceStatus
+> = {
   draft: InvoiceStatus.DRAFT,
   open: InvoiceStatus.OPEN,
   paid: InvoiceStatus.PAID,
@@ -78,10 +81,13 @@ export class InvoicesService {
   }
 
   async syncForSubscription(subscriptionId: string) {
-    const subscription = await this.subscriptionsService.findById(subscriptionId);
+    const subscription =
+      await this.subscriptionsService.findById(subscriptionId);
     if (!subscription) throw new NotFoundException('Subscription not found');
     if (!subscription.stripeSubscriptionId) {
-      throw new BadRequestException('Subscription has no Stripe subscription ID');
+      throw new BadRequestException(
+        'Subscription has no Stripe subscription ID',
+      );
     }
 
     const stripeSubscription =
@@ -121,7 +127,8 @@ export class InvoicesService {
       return {
         subscriptionId,
         invoice: null,
-        message: 'Stripe has not generated an invoice for this subscription yet',
+        message:
+          'Stripe has not generated an invoice for this subscription yet',
       };
     }
     const stripeInvoice =
@@ -129,7 +136,9 @@ export class InvoicesService {
         ? await this.stripeProvider.client.invoices.retrieve(latestInvoice)
         : latestInvoice;
     await this.upsertFromStripeEvent(stripeInvoice);
-    const invoice = await this.repository.findByStripeInvoiceId(stripeInvoice.id);
+    const invoice = await this.repository.findByStripeInvoiceId(
+      stripeInvoice.id,
+    );
     return { subscriptionId, invoice };
   }
 
@@ -145,7 +154,7 @@ export class InvoicesService {
     const stripeSubscriptionId =
       typeof subscriptionRef === 'string'
         ? subscriptionRef
-        : subscriptionRef?.id;
+        : subscriptionRef?.id || stripeInvoice.metadata?.stripeSubscriptionId;
     if (!stripeSubscriptionId) {
       this.logger.warn('Invoice event has no linked subscription — skipped');
       return;
@@ -186,8 +195,12 @@ export class InvoicesService {
       status,
       hostedInvoiceUrl: stripeInvoice.hosted_invoice_url ?? undefined,
       invoicePdfUrl: stripeInvoice.invoice_pdf ?? undefined,
-      periodStart: new Date(stripeInvoice.period_start * 1000),
-      periodEnd: new Date(stripeInvoice.period_end * 1000),
+      periodStart: stripeInvoice.metadata?.periodStart
+        ? new Date(stripeInvoice.metadata.periodStart)
+        : new Date(stripeInvoice.period_start * 1000),
+      periodEnd: stripeInvoice.metadata?.periodEnd
+        ? new Date(stripeInvoice.metadata.periodEnd)
+        : new Date(stripeInvoice.period_end * 1000),
       issuedAt: new Date(stripeInvoice.created * 1000),
     });
   }
