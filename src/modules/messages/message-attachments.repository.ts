@@ -132,6 +132,55 @@ export class MessageAttachmentsRepository {
       .exec();
   }
 
+  markDeletionPendingByMessages(
+    organizationId: string,
+    messageIds: string[],
+  ) {
+    if (!messageIds.length) return Promise.resolve();
+    return this.attachmentModel
+      .updateMany(
+        {
+          organizationId,
+          messageId: { $in: messageIds },
+          status: {
+            $in: [
+              MessageAttachmentStatus.ACTIVE,
+              MessageAttachmentStatus.DELETE_FAILED,
+            ],
+          },
+        },
+        {
+          $set: { status: MessageAttachmentStatus.DELETION_PENDING },
+          $unset: { deletionError: 1 },
+        },
+      )
+      .exec();
+  }
+
+  findCleanupCandidatesByMessages(
+    organizationId: string,
+    messageIds: string[],
+  ) {
+    if (!messageIds.length) return Promise.resolve([]);
+    return this.attachmentModel
+      .find({
+        organizationId,
+        messageId: { $in: messageIds },
+        status: {
+          $in: [
+            MessageAttachmentStatus.ACTIVE,
+            MessageAttachmentStatus.DELETION_PENDING,
+            MessageAttachmentStatus.DELETE_FAILED,
+          ],
+        },
+      })
+      .select(
+        '+storageKey +storageAssetId +storageResourceType +storageDeliveryType +storageFormat',
+      )
+      .lean()
+      .exec();
+  }
+
   markDeleted(attachmentId: string) {
     return this.attachmentModel
       .updateOne(

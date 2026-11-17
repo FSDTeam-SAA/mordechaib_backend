@@ -98,6 +98,25 @@ export class MessagesController {
     return this.messages.listConversations(organization.id, user.id, query);
   }
 
+  @Delete('conversations/:conversationId')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER)
+  @ApiOperation({
+    summary: 'Delete one complete AI conversation',
+    description:
+      'Soft-deletes the requester-owned conversation and every message, then removes its private attachment files. Executed business actions and audit records are retained.',
+  })
+  deleteConversation(
+    @CurrentOrg() organization: RequestOrganization,
+    @CurrentUser() user: RequestUser,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.messages.deleteConversation(
+      organization.id,
+      user.id,
+      conversationId,
+    );
+  }
+
   @Post()
   @RawResponse()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
