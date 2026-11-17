@@ -8,6 +8,7 @@ import { AiChatTurnService, PreparedAiChatTurn } from './ai-chat-turn.service';
 import { AiStreamHandle, AiStreamingClient } from './ai-streaming.client';
 import { AiStreamAttachment } from './ai-stream-attachment';
 import { ParsedSseEvent, SseEventParser } from './sse-event.parser';
+import { UsageService } from '../usage/usage.service';
 
 export type OpenedAiChatStream = {
   organizationId: string;
@@ -32,6 +33,7 @@ export class AiChatStreamingService {
     private readonly sourceContext: AiSourceContextService,
     private readonly activity: AgentActivityService,
     private readonly config: ConfigService,
+    private readonly usage: UsageService,
   ) {}
 
   async open(
@@ -185,6 +187,14 @@ export class AiChatStreamingService {
             : {}),
         },
       });
+      await this.usage
+        .recordAiAction({
+          organizationId: opened.organizationId,
+          sourceId: `/api/v1/ai/chat:${opened.prepared.request.idempotencyKey}`,
+          path: '/api/v1/ai/chat',
+          telemetry: persisted.usageTelemetry,
+        })
+        .catch(() => undefined);
       opened.settled = true;
       await emit(this.sse('result', persisted.response));
       return { terminal: 'result', persisted };

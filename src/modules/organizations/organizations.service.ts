@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
+import { SetupType } from '../../common/enums/setup-type.enum';
 import { assertValidTimezone } from '../../common/helpers/timezone.helper';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
@@ -43,6 +45,62 @@ export class OrganizationsService {
 
   findByIds(ids: string[]) {
     return this.repository.findByIds(ids);
+  }
+
+  async selectSetupPath(
+    organizationId: string,
+    input: { setupType: SetupType; setupPackageId: string },
+    selectedBy: string,
+  ) {
+    const current = await this.findCurrent(organizationId);
+    if (current.setupType) {
+      if (
+        current.setupType === input.setupType &&
+        current.setupPackageId === input.setupPackageId
+      ) {
+        return current;
+      }
+      throw new ConflictException(
+        'A setup path has already been selected for this organization',
+      );
+    }
+
+    const selectedAt = new Date();
+    const updated = await this.repository.selectSetupPathIfUnset(
+      organizationId,
+      {
+        ...input,
+        selectedAt,
+        updatedBy: selectedBy,
+      },
+    );
+
+    if (!updated) {
+      const concurrentSelection = await this.findCurrent(organizationId);
+      if (
+        concurrentSelection.setupType === input.setupType &&
+        concurrentSelection.setupPackageId === input.setupPackageId
+      ) {
+        return concurrentSelection;
+      }
+      throw new ConflictException(
+        'A setup path has already been selected for this organization',
+      );
+    }
+
+    await this.auditLogs.create({
+      organizationId,
+      userId: selectedBy,
+      action: 'ORGANIZATION_SETUP_PATH_SELECTED',
+      resourceType: 'Organization',
+      resourceId: organizationId,
+      metadata: {
+        setupType: input.setupType,
+        setupPackageId: input.setupPackageId,
+      },
+    });
+
+    return updated;
   }
 
   async updateSettings(

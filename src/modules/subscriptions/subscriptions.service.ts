@@ -120,7 +120,7 @@ export class SubscriptionsService {
       currentPeriodEnd: input.currentPeriodEnd,
       billingInterval: input.billingInterval,
       cancelAtPeriodEnd: false,
-      snapshotLimits: this.buildSnapshot(plan),
+      snapshotLimits: this.buildSnapshot(plan, input.billingInterval),
     });
   }
 
@@ -170,9 +170,12 @@ export class SubscriptionsService {
     );
   }
 
-  private buildSnapshot(plan: SubscriptionPlan) {
+  private buildSnapshot(plan: SubscriptionPlan, billingInterval?: string) {
     return {
-      priceUsd: plan.priceUsd,
+      priceUsd:
+        billingInterval === 'year' && plan.annualPriceUsd !== undefined
+          ? Number((plan.annualPriceUsd / 12).toFixed(2))
+          : plan.priceUsd,
       aiActionsPerMonth: plan.aiActionsPerMonth,
       crmContactsLimit: plan.crmContactsLimit,
       callMinutesPerMonth: plan.callMinutesPerMonth,

@@ -28,13 +28,14 @@ export class ListContactsQueryDto {
   @Max(100)
   limit: number = 20;
 
-  @ApiPropertyOptional({ maxLength: 200 })
+  @ApiPropertyOptional({ type: String, maxLength: 200 })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   search?: string;
 
   @ApiPropertyOptional({
+    type: String,
     enum: CustomerContactStatus,
     default: CustomerContactStatus.ACTIVE,
   })
@@ -42,7 +43,7 @@ export class ListContactsQueryDto {
   @IsEnum(CustomerContactStatus)
   status: CustomerContactStatus = CustomerContactStatus.ACTIVE;
 
-  @ApiPropertyOptional({ enum: CustomerLeadStatus })
+  @ApiPropertyOptional({ type: String, enum: CustomerLeadStatus })
   @IsOptional()
   @IsEnum(CustomerLeadStatus)
   leadStatus?: CustomerLeadStatus;

@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { sendEmail } from '../../common/helpers/mailer.helper';
+import { resolveUsagePeriod } from '../../common/helpers/usage-period.helper';
 import { StripeProvider } from '../stripe/stripe.provider';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
@@ -261,23 +262,11 @@ export class TwilioUsageService {
       | {
           currentPeriodStart?: Date;
           currentPeriodEnd?: Date;
+          billingInterval?: string;
         }
       | undefined,
   ) {
-    if (subscription?.currentPeriodStart && subscription.currentPeriodEnd) {
-      return {
-        periodStart: new Date(subscription.currentPeriodStart),
-        periodEnd: new Date(subscription.currentPeriodEnd),
-      };
-    }
-    const now = new Date();
-    const periodStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-    );
-    const periodEnd = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-    );
-    return { periodStart, periodEnd };
+    return resolveUsagePeriod(subscription);
   }
 
   private get subscriptionEnforcementEnabled() {

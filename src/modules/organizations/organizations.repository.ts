@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { OnboardingStep } from '../../common/enums/onboarding-step.enum';
+import { SetupType } from '../../common/enums/setup-type.enum';
 import { Organization } from '../../database/schemas/organization.schema';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 
@@ -49,6 +50,32 @@ export class OrganizationsRepository {
 
   deleteById(id: string) {
     return this.organizationModel.findByIdAndDelete(id).exec();
+  }
+
+  selectSetupPathIfUnset(
+    id: string,
+    input: {
+      setupType: SetupType;
+      setupPackageId: string;
+      selectedAt: Date;
+      updatedBy: string;
+    },
+  ) {
+    return this.organizationModel
+      .findOneAndUpdate(
+        { _id: id, setupType: { $exists: false } },
+        {
+          $set: {
+            setupType: input.setupType,
+            setupPackageId: input.setupPackageId,
+            setupPathSelectedAt: input.selectedAt,
+            updatedBy: input.updatedBy,
+          },
+        },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
   }
 
   updateOnboarding(

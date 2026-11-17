@@ -3,6 +3,7 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   IsUrl,
@@ -34,6 +35,10 @@ export class CreateCheckoutSessionWithAddonsDto {
   @IsOptional()
   @IsString()
   planId?: string;
+
+  @IsOptional()
+  @IsIn(['month', 'year'])
+  billingCycle?: 'month' | 'year';
 
   @IsUrl({ require_tld: false })
   successUrl!: string;
