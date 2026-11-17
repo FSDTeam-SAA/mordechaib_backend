@@ -50,6 +50,7 @@ export class AiChatReplyService {
         _id: input.conversationId,
         organizationId: input.organizationId,
         status: ConversationStatus.ACTIVE,
+        deletedAt: { $exists: false },
       })
       .lean()
       .exec();
@@ -98,6 +99,7 @@ export class AiChatReplyService {
           _id: input.conversationId,
           organizationId: input.organizationId,
           status: ConversationStatus.ACTIVE,
+          deletedAt: { $exists: false },
         },
         {
           $inc: { totalMessageCount: 1 },
@@ -113,6 +115,12 @@ export class AiChatReplyService {
       .lean()
       .exec();
     if (!recorded) {
+      await this.messages
+        .updateOne(
+          { _id: created._id },
+          { $set: { deletedAt: new Date(), deletedBy: String(source.senderId) } },
+        )
+        .exec();
       throw new ConflictException(
         'AI reply was saved but the conversation could not be updated',
       );

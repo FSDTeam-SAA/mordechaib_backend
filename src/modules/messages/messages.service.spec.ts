@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -37,6 +41,8 @@ describe('MessagesService', () => {
       create: jest.fn().mockResolvedValue({ _id: conversationId }),
       list: jest.fn(),
       recordMessage: jest.fn().mockResolvedValue({ _id: conversationId }),
+      findForDeletion: jest.fn(),
+      softDelete: jest.fn(),
     };
     messages = {
       findByClientMessageId: jest.fn(),
@@ -58,6 +64,8 @@ describe('MessagesService', () => {
       findActiveById: jest.fn(),
       findForDeletion: jest.fn(),
       softDelete: jest.fn(),
+      findIdsByConversation: jest.fn().mockResolvedValue([]),
+      softDeleteByConversation: jest.fn(),
     };
     attachments = {
       createMany: jest.fn().mockResolvedValue([]),
@@ -69,6 +77,8 @@ describe('MessagesService', () => {
       findCleanupCandidates: jest.fn().mockResolvedValue([]),
       markDeleted: jest.fn(),
       markDeleteFailed: jest.fn(),
+      markDeletionPendingByMessages: jest.fn(),
+      findCleanupCandidatesByMessages: jest.fn().mockResolvedValue([]),
     };
     storage = {
       store: jest.fn(),
@@ -435,5 +445,69 @@ describe('MessagesService', () => {
       attachmentId,
       'provider unavailable',
     );
+  });
+
+  it('deletes a requester-owned conversation, its messages, and attachments', async () => {
+    const deletableConversationId = '507f1f77bcf86cd799439022';
+    const secondMessageId = '507f1f77bcf86cd799439023';
+    conversations.findForDeletion.mockResolvedValue({
+      _id: deletableConversationId,
+      createdBy: userId,
+    });
+    messages.findIdsByConversation.mockResolvedValue([
+      messageId,
+      secondMessageId,
+    ]);
+    attachments.findCleanupCandidatesByMessages.mockResolvedValue([
+      {
+        _id: attachmentId,
+        storageKey: 'messages/photo',
+        storageAssetId: 'asset-1',
+        storageResourceType: 'image',
+        storageDeliveryType: 'authenticated',
+        storageFormat: 'jpg',
+      },
+    ]);
+
+    await expect(
+      service.deleteConversation(
+        organizationId,
+        userId,
+        deletableConversationId,
+      ),
+    ).resolves.toEqual({
+      conversationId: deletableConversationId,
+      deleted: true,
+      deletedMessageCount: 2,
+      cleanupComplete: true,
+    });
+    expect(conversations.softDelete).toHaveBeenCalledWith(
+      organizationId,
+      deletableConversationId,
+      userId,
+      userId,
+    );
+    expect(messages.softDeleteByConversation).toHaveBeenCalledWith(
+      organizationId,
+      deletableConversationId,
+      userId,
+    );
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(attachments.markDeleted).toHaveBeenCalledWith(attachmentId);
+  });
+
+  it('does not expose or delete another user conversation', async () => {
+    const deletableConversationId = '507f1f77bcf86cd799439022';
+    conversations.findForDeletion.mockResolvedValue(null);
+
+    await expect(
+      service.deleteConversation(
+        organizationId,
+        userId,
+        deletableConversationId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(messages.findIdsByConversation).not.toHaveBeenCalled();
+    expect(conversations.softDelete).not.toHaveBeenCalled();
   });
 });
