@@ -4,6 +4,7 @@ import { AgentActivityService } from '../ai-telemetry/agent-activity.service';
 import { AiChatStreamingService } from './ai-chat-streaming.service';
 import { AiChatTurnService } from './ai-chat-turn.service';
 import { AiStreamingClient } from './ai-streaming.client';
+import { UsageService } from '../usage/usage.service';
 
 describe('AiChatStreamingService', () => {
   const organizationId = 'org-1';
@@ -51,6 +52,7 @@ describe('AiChatStreamingService', () => {
   let streaming: Record<string, jest.Mock>;
   let sourceContext: Record<string, jest.Mock>;
   let activity: Record<string, jest.Mock>;
+  let usage: Record<string, jest.Mock>;
   let service: AiChatStreamingService;
   const persistedResponse = {
     reply: {
@@ -76,6 +78,9 @@ describe('AiChatStreamingService', () => {
       succeed: jest.fn().mockResolvedValue(undefined),
       fail: jest.fn().mockResolvedValue(undefined),
     };
+    usage = {
+      recordAiAction: jest.fn().mockResolvedValue({ created: true }),
+    };
     const config = {
       get: jest.fn((_key: string, fallback: unknown) => fallback),
     } as unknown as ConfigService;
@@ -85,6 +90,7 @@ describe('AiChatStreamingService', () => {
       sourceContext as unknown as AiSourceContextService,
       activity as unknown as AgentActivityService,
       config,
+      usage as unknown as UsageService,
     );
   });
 

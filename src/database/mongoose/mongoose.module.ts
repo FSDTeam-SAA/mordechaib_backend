@@ -12,6 +12,10 @@ import { Approval, ApprovalSchema } from '../schemas/approval.schema';
 import { TaskItem, TaskItemSchema } from '../schemas/task-item.schema';
 import { UsageRecord, UsageRecordSchema } from '../schemas/usage-record.schema';
 import {
+  UsageBillingPeriod,
+  UsageBillingPeriodSchema,
+} from '../schemas/usage-billing-period.schema';
+import {
   CallUsagePeriod,
   CallUsagePeriodSchema,
 } from '../schemas/call-usage-period.schema';
@@ -165,6 +169,7 @@ import { EmailDraft, EmailDraftSchema } from '../schemas/email-draft.schema';
       { name: Approval.name, schema: ApprovalSchema },
       { name: TaskItem.name, schema: TaskItemSchema },
       { name: UsageRecord.name, schema: UsageRecordSchema },
+      { name: UsageBillingPeriod.name, schema: UsageBillingPeriodSchema },
       { name: CallUsagePeriod.name, schema: CallUsagePeriodSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: AuthSession.name, schema: AuthSessionSchema },

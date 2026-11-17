@@ -10,15 +10,16 @@ import {
 } from 'class-validator';
 
 export class ListContactActivityQueryDto {
-  @ApiPropertyOptional({ default: 30, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({ type: Number, default: 30, minimum: 1, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
-  limit = 30;
+  limit: number = 30;
 
   @ApiPropertyOptional({
+    type: String,
     description: 'Opaque cursor returned by the previous response',
   })
   @IsOptional()

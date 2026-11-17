@@ -18,6 +18,7 @@ import { TwilioProvisioningService } from '../twilio/twilio-provisioning.service
 import { AddAddonDto } from './dto/add-addon.dto';
 import { CreateCheckoutSessionWithAddonsDto } from './dto/create-checkout-session-with-addons.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { UsageBillingService } from './usage-billing.service';
 
 // Maps Stripe's own subscription statuses onto ours. Stripe has a couple of
 // extra states (`unpaid`, `paused`) that we fold into PAST_DUE/CANCELED
@@ -48,6 +49,7 @@ export class BillingService {
     private readonly twilioProvisioning: TwilioProvisioningService,
     private readonly onboardingSetupsService: OnboardingSetupsService,
     private readonly addonProductsService: AddonProductsService,
+    private readonly usageBillingService: UsageBillingService,
   ) {}
 
   // First-time checkout only. An org that already has a subscription
@@ -67,15 +69,26 @@ export class BillingService {
     const existing = await this.subscriptionsService
       .getMine(organizationId)
       .catch(() => null);
-    if (existing?.subscription.stripeSubscriptionId) {
+    if (
+      existing?.subscription.stripeSubscriptionId ||
+      (existing &&
+        [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING].includes(
+          existing.subscription.status,
+        ))
+    ) {
       throw new BadRequestException(
         'This organization already has a subscription — use the upgrade endpoint instead of checking out again',
       );
     }
 
     const plan = await this.plansService.findByPlanType(dto.planType);
+    if (!plan.isActive || plan.isInquiryOnly) {
+      throw new BadRequestException('This subscription plan is not available');
+    }
+    const billingCycle = dto.billingCycle ?? 'month';
     const planPriceId = await this.plansService.ensureCheckoutPrice(
       String(plan._id),
+      billingCycle,
     );
 
     const session = await this.stripeProvider.createCheckoutSession({
@@ -83,13 +96,25 @@ export class BillingService {
       successUrl: dto.successUrl,
       cancelUrl: dto.cancelUrl,
       trialDays: plan.trialDays,
+      paymentMethodCollection:
+        plan.planType === PlanType.PAY_AS_YOU_GO ? 'always' : undefined,
       metadata: {
         organizationId,
         planId: String(plan._id),
+        billingInterval: billingCycle,
       },
     });
 
-    return { checkoutUrl: session.url };
+    return {
+      checkoutUrl: session.url,
+      checkoutMode:
+        plan.planType === PlanType.PAY_AS_YOU_GO
+          ? 'PAYMENT_METHOD_AND_SUBSCRIPTION'
+          : 'SUBSCRIPTION',
+      planId: String(plan._id),
+      planType: plan.planType,
+      billingCycle,
+    };
   }
 
   // Checkout with base plan plus optional add-on tiers in a single checkout session
@@ -107,6 +132,10 @@ export class BillingService {
       ? await this.plansService.findById(dto.planId)
       : await this.plansService.findByPlanType(dto.planType!);
 
+    if (!plan.isActive) {
+      throw new BadRequestException('This subscription plan is not available');
+    }
+
     if (plan.planType === PlanType.CUSTOM || plan.isInquiryOnly) {
       throw new BadRequestException(
         'The Customized plan is inquiry-only — submit a package inquiry instead',
@@ -116,14 +145,22 @@ export class BillingService {
     const existing = await this.subscriptionsService
       .getMine(organizationId)
       .catch(() => null);
-    if (existing?.subscription.stripeSubscriptionId) {
+    if (
+      existing?.subscription.stripeSubscriptionId ||
+      (existing &&
+        [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING].includes(
+          existing.subscription.status,
+        ))
+    ) {
       throw new BadRequestException(
         'This organization already has a subscription — use the upgrade or addon endpoints instead of checking out again',
       );
     }
 
+    const billingCycle = dto.billingCycle ?? 'month';
     const planPriceId = await this.plansService.ensureCheckoutPrice(
       String(plan._id),
+      billingCycle,
     );
 
     // Deduplicate any repeated selections (same product and tier)
@@ -152,16 +189,28 @@ export class BillingService {
       successUrl: dto.successUrl,
       cancelUrl: dto.cancelUrl,
       trialDays: plan.trialDays,
+      paymentMethodCollection:
+        plan.planType === PlanType.PAY_AS_YOU_GO ? 'always' : undefined,
       metadata: {
         organizationId,
         planId: String(plan._id),
+        billingInterval: billingCycle,
         addonSelections: uniqueAddons.length
           ? JSON.stringify(uniqueAddons)
           : '',
       },
     });
 
-    return { checkoutUrl: session.url };
+    return {
+      checkoutUrl: session.url,
+      checkoutMode:
+        plan.planType === PlanType.PAY_AS_YOU_GO
+          ? 'PAYMENT_METHOD_AND_SUBSCRIPTION'
+          : 'SUBSCRIPTION',
+      planId: String(plan._id),
+      planType: plan.planType,
+      billingCycle,
+    };
   }
 
   // Add or update an add-on tier on an existing subscription
@@ -362,12 +411,24 @@ export class BillingService {
         );
         break;
       case 'invoice.paid':
+        await this.usageBillingService.markInvoiceState(
+          event.data.object as Stripe.Invoice,
+          'BILLED',
+        );
+        await this.invoicesService.upsertFromStripeEvent(
+          event.data.object as Stripe.Invoice,
+        );
+        break;
       case 'invoice.finalized':
         await this.invoicesService.upsertFromStripeEvent(
           event.data.object as Stripe.Invoice,
         );
         break;
       case 'invoice.payment_failed':
+        await this.usageBillingService.markInvoiceState(
+          event.data.object as Stripe.Invoice,
+          'FAILED',
+        );
         await this.onInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         await this.invoicesService.upsertFromStripeEvent(
           event.data.object as Stripe.Invoice,
@@ -407,6 +468,7 @@ export class BillingService {
       status: SubscriptionStatus.ACTIVE,
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(),
+      billingInterval: session.metadata?.billingInterval,
     });
 
     // Stripe does not guarantee webhook delivery order. Retrieve the source

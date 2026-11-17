@@ -35,6 +35,7 @@ import { SystemServicesModule } from '../system-services/system-services.module'
 import { AiStreamingClient } from './ai-streaming.client';
 import { AiChatStreamingService } from './ai-chat-streaming.service';
 import { BusinessMemoryModule } from '../business-memory/business-memory.module';
+import { UsageModule } from '../usage/usage.module';
 
 function redisConnection(urlValue: string) {
   const url = new URL(urlValue);
@@ -60,6 +61,7 @@ function redisConnection(urlValue: string) {
     EmailModule,
     OrganizationAgentSettingsModule,
     SystemServicesModule,
+    UsageModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: CallRecording.name, schema: CallRecordingSchema },

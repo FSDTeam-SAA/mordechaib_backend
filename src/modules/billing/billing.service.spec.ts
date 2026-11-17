@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { PlanType } from '../../common/enums/plan-type.enum';
 import { InvoicesService } from '../invoices/invoices.service';
 import { OnboardingSetupsService } from '../onboarding-setups/onboarding-setups.service';
 import { StripeProvider } from '../stripe/stripe.provider';
@@ -7,6 +8,7 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { TwilioProvisioningService } from '../twilio/twilio-provisioning.service';
 import { BillingService } from './billing.service';
 import { AddonProductsService } from '../addons/addon-products.service';
+import { UsageBillingService } from './usage-billing.service';
 
 describe('BillingService onboarding payment webhook', () => {
   it('confirms a paid onboarding checkout without running subscription activation', async () => {
@@ -23,6 +25,7 @@ describe('BillingService onboarding payment webhook', () => {
       {} as TwilioProvisioningService,
       onboardingSetups as unknown as OnboardingSetupsService,
       {} as AddonProductsService,
+      {} as UsageBillingService,
     );
     const event = {
       type: 'checkout.session.completed',
@@ -62,6 +65,7 @@ describe('BillingService onboarding payment webhook', () => {
       {} as TwilioProvisioningService,
       onboardingSetups as unknown as OnboardingSetupsService,
       {} as AddonProductsService,
+      {} as UsageBillingService,
     );
     const event = {
       type: 'checkout.session.expired',
@@ -85,5 +89,125 @@ describe('BillingService onboarding payment webhook', () => {
       paymentIntentId: 'pi_onboarding_expired',
       failureCode: 'checkout.session.expired',
     });
+  });
+});
+
+describe('BillingService subscription checkout', () => {
+  const createService = () => {
+    const stripe = { createCheckoutSession: jest.fn() };
+    const plans = {
+      findByPlanType: jest.fn(),
+      ensureCheckoutPrice: jest.fn(),
+    };
+    const subscriptions = { getMine: jest.fn() };
+    const service = new BillingService(
+      stripe as unknown as StripeProvider,
+      plans as unknown as SubscriptionPlansService,
+      subscriptions as unknown as SubscriptionsService,
+      {} as InvoicesService,
+      {} as TwilioProvisioningService,
+      {} as OnboardingSetupsService,
+      {} as AddonProductsService,
+      {} as UsageBillingService,
+    );
+    return { service, stripe, plans, subscriptions };
+  };
+
+  it('collects a card without an upfront charge for pay as you go', async () => {
+    const { service, stripe, plans, subscriptions } = createService();
+    subscriptions.getMine.mockRejectedValue(new Error('not found'));
+    plans.findByPlanType.mockResolvedValue({
+      _id: 'plan-payg',
+      planType: PlanType.PAY_AS_YOU_GO,
+      isActive: true,
+      isInquiryOnly: false,
+      trialDays: 0,
+    });
+    plans.ensureCheckoutPrice.mockResolvedValue('price-payg-zero');
+    stripe.createCheckoutSession.mockResolvedValue({
+      url: 'https://checkout.stripe.test/payg',
+    });
+
+    const result = await service.createCheckoutSession('organization-1', {
+      planType: PlanType.PAY_AS_YOU_GO,
+      successUrl: 'https://app.test/success',
+      cancelUrl: 'https://app.test/cancel',
+    });
+
+    expect(plans.ensureCheckoutPrice).toHaveBeenCalledWith(
+      'plan-payg',
+      'month',
+    );
+    expect(stripe.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priceId: 'price-payg-zero',
+        paymentMethodCollection: 'always',
+        metadata: expect.objectContaining({
+          organizationId: 'organization-1',
+          planId: 'plan-payg',
+          billingInterval: 'month',
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      checkoutMode: 'PAYMENT_METHOD_AND_SUBSCRIPTION',
+      planType: PlanType.PAY_AS_YOU_GO,
+      billingCycle: 'month',
+    });
+  });
+
+  it('uses the annual Stripe price for yearly paid-plan checkout', async () => {
+    const { service, stripe, plans, subscriptions } = createService();
+    subscriptions.getMine.mockRejectedValue(new Error('not found'));
+    plans.findByPlanType.mockResolvedValue({
+      _id: 'plan-growth',
+      planType: PlanType.GROWTH,
+      isActive: true,
+      isInquiryOnly: false,
+      trialDays: 0,
+    });
+    plans.ensureCheckoutPrice.mockResolvedValue('price-growth-year');
+    stripe.createCheckoutSession.mockResolvedValue({
+      url: 'https://checkout.stripe.test/growth',
+    });
+
+    const result = await service.createCheckoutSession('organization-1', {
+      planType: PlanType.GROWTH,
+      billingCycle: 'year',
+      successUrl: 'https://app.test/success',
+      cancelUrl: 'https://app.test/cancel',
+    });
+
+    expect(plans.ensureCheckoutPrice).toHaveBeenCalledWith(
+      'plan-growth',
+      'year',
+    );
+    expect(stripe.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentMethodCollection: undefined,
+        metadata: expect.objectContaining({ billingInterval: 'year' }),
+      }),
+    );
+    expect(result).toMatchObject({
+      checkoutMode: 'SUBSCRIPTION',
+      billingCycle: 'year',
+    });
+  });
+
+  it('does not create a second checkout for an active subscription', async () => {
+    const { service, stripe, plans, subscriptions } = createService();
+    subscriptions.getMine.mockResolvedValue({
+      subscription: { status: 'ACTIVE' },
+    });
+
+    await expect(
+      service.createCheckoutSession('organization-1', {
+        planType: PlanType.GROWTH,
+        successUrl: 'https://app.test/success',
+        cancelUrl: 'https://app.test/cancel',
+      }),
+    ).rejects.toThrow('already has a subscription');
+    expect(plans.findByPlanType).not.toHaveBeenCalled();
+    expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
   });
 });
