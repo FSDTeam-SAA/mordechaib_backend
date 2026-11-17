@@ -61,6 +61,49 @@ export class InvoicesService {
     };
   }
 
+  async listForOrganization(organizationId: string, page = 1, limit = 10) {
+    const { items, total } = await this.repository.listByOrganization(
+      organizationId,
+      page,
+      limit,
+    );
+    return {
+      items: items.map((item) => ({
+        id: String(item._id),
+        invoiceId: item.invoiceNumber ?? item.stripeInvoiceId,
+        invoiceNumber: item.invoiceNumber ?? null,
+        planName: item.planName ?? null,
+        amountUsd: item.amountUsd,
+        billingInterval: item.billingInterval ?? null,
+        status: item.status,
+        issuedAt: item.issuedAt,
+        periodStart: item.periodStart ?? null,
+        periodEnd: item.periodEnd ?? null,
+        hostedInvoiceUrl: item.hostedInvoiceUrl ?? null,
+        invoicePdfUrl: item.invoicePdfUrl ?? null,
+      })),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getDownloadRedirectForOrganization(
+    organizationId: string,
+    invoiceId: string,
+  ) {
+    const invoice = await this.repository.findById(invoiceId);
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.organizationId !== organizationId) {
+      throw new NotFoundException('Invoice not found');
+    }
+    if (!invoice.invoicePdfUrl) {
+      throw new NotFoundException('Invoice PDF is not available yet');
+    }
+    return { url: invoice.invoicePdfUrl, statusCode: 302 };
+  }
+
   async getById(id: string) {
     const invoice = await this.repository.findById(id);
     if (!invoice) throw new NotFoundException('Invoice not found');

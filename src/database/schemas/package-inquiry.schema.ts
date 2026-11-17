@@ -36,6 +36,21 @@ export class PackageInquiry {
     index: true,
   })
   status!: PackageInquiryStatus;
+
+  @Prop({ trim: true })
+  subject?: string;
+
+  @Prop({ trim: true })
+  resolutionNote?: string;
+
+  @Prop()
+  resolvedAt?: Date;
+
+  @Prop()
+  resolvedByUserId?: string;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const PackageInquirySchema =
