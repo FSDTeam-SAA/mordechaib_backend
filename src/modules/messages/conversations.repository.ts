@@ -17,7 +17,11 @@ export class ConversationsRepository {
 
   findLatest(organizationId: string, createdBy: string) {
     return this.conversationModel
-      .findOne({ organizationId, createdBy })
+      .findOne({
+        organizationId,
+        createdBy,
+        deletedAt: { $exists: false },
+      })
       .sort({ lastMessageAt: -1, createdAt: -1, _id: -1 })
       .lean()
       .exec();
@@ -28,6 +32,7 @@ export class ConversationsRepository {
       .findOne({
         _id: conversationId,
         organizationId,
+        deletedAt: { $exists: false },
         ...(createdBy ? { createdBy } : {}),
       })
       .lean()
@@ -62,6 +67,7 @@ export class ConversationsRepository {
     const filter = {
       organizationId,
       createdBy,
+      deletedAt: { $exists: false },
       ...(filters.status ? { status: filters.status } : {}),
     };
     const [items, total] = await Promise.all([
@@ -90,6 +96,7 @@ export class ConversationsRepository {
           organizationId,
           createdBy,
           status: ConversationStatus.ACTIVE,
+          deletedAt: { $exists: false },
         },
         { $set: { selectedAgentId } },
         { new: true, runValidators: true },
@@ -101,8 +108,50 @@ export class ConversationsRepository {
   recordMessage(organizationId: string, conversationId: string, sentAt: Date) {
     return this.conversationModel
       .findOneAndUpdate(
-        { _id: conversationId, organizationId },
+        {
+          _id: conversationId,
+          organizationId,
+          deletedAt: { $exists: false },
+        },
         { $inc: { totalMessageCount: 1 }, $set: { lastMessageAt: sentAt } },
+        { new: true },
+      )
+      .lean()
+      .exec();
+  }
+
+  findForDeletion(
+    organizationId: string,
+    conversationId: string,
+    createdBy: string,
+  ) {
+    return this.conversationModel
+      .findOne({ _id: conversationId, organizationId, createdBy })
+      .lean()
+      .exec();
+  }
+
+  softDelete(
+    organizationId: string,
+    conversationId: string,
+    createdBy: string,
+    deletedBy: string,
+  ) {
+    return this.conversationModel
+      .findOneAndUpdate(
+        {
+          _id: conversationId,
+          organizationId,
+          createdBy,
+          deletedAt: { $exists: false },
+        },
+        {
+          $set: {
+            status: ConversationStatus.ARCHIVED,
+            deletedAt: new Date(),
+            deletedBy,
+          },
+        },
         { new: true },
       )
       .lean()
