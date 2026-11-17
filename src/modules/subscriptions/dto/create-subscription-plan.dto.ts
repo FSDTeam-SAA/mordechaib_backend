@@ -100,6 +100,21 @@ export class CreateSubscriptionPlanDto {
   extraCallMinutePriceUsd?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  extraMeetingHourPriceUsd?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  extraAiCallMinute?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  extraAiCallMinutePriceUsd?: number;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   features?: string[];

@@ -855,6 +855,1718 @@
       }
     },
     {
+      "name": "user-subscription-flow",
+      "description": "Complete user dashboard subscription management flow covering plan viewing, upgrade, smart calculator, downgrade contact leads, specialist calls, pause/resume, 6-case cancellation flow with retention offers, invoice history with PDF download, and admin query resolution.",
+      "item": [
+        {
+          "name": "1. Plan Viewing & Estimation (Screen 1 & 2)",
+          "item": [
+            {
+              "name": "1.1 Get My Current Plan & Subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me"
+                  ]
+                },
+                "description": "Returns the currently active plan, snapshot limits, renewal date, and billing interval for the logged-in organization (Screen 1 card)."
+              },
+              "response": [
+                {
+                  "name": "Success - Active Subscription",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"subscription\": {\n    \"id\": \"6737400192e210a4023b1234\",\n    \"organizationId\": \"6a71a90167f3504f792355ba\",\n    \"planId\": \"67373f9192e210a4023b0002\",\n    \"status\": \"ACTIVE\",\n    \"billingInterval\": \"month\",\n    \"currentPeriodStart\": \"2026-11-01T00:00:00.000Z\",\n    \"currentPeriodEnd\": \"2026-12-01T00:00:00.000Z\",\n    \"cancelAtPeriodEnd\": false,\n    \"pausedUntil\": null,\n    \"snapshotLimits\": {\n      \"priceUsd\": 99,\n      \"aiActionsPerMonth\": 10000,\n      \"crmContactsLimit\": 5000,\n      \"callMinutesPerMonth\": 500,\n      \"meetingHoursPerMonth\": 30,\n      \"usersIncluded\": 5,\n      \"aiAgentsIncluded\": 6\n    }\n  },\n  \"plan\": {\n    \"id\": \"67373f9192e210a4023b0002\",\n    \"name\": \"Growth\",\n    \"planType\": \"GROWTH\",\n    \"priceUsd\": 99,\n    \"billingInterval\": \"month\",\n    \"badgeText\": \"Most Popular\",\n    \"features\": [\n      \"6 AI agents\",\n      \"AI meeting\",\n      \"10,000 AI Actions\",\n      \"5,000 contacts\",\n      \"Full ROI dashboard\",\n      \"Priority support\"\n    ]\n  }\n}"
+                }
+              ]
+            },
+            {
+              "name": "1.2 Compare Plans (Monthly)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseURL}}/subscription-plans?billingCycle=month",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscription-plans"
+                  ],
+                  "query": [
+                    {
+                      "key": "billingCycle",
+                      "value": "month"
+                    }
+                  ]
+                },
+                "description": "Returns all active plans for the Compare Plans grid with monthly pricing (Starter $49, Growth $99, Enterprise $249, Customized)."
+              },
+              "response": [
+                {
+                  "name": "Success - All Monthly Plans",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "[\n  {\n    \"id\": \"67373f9192e210a4023b0001\",\n    \"name\": \"Starter\",\n    \"planType\": \"STARTER\",\n    \"priceUsd\": 49,\n    \"billingInterval\": \"month\",\n    \"aiActionsPerMonth\": 3000,\n    \"callMinutesPerMonth\": 200,\n    \"meetingHoursPerMonth\": 10,\n    \"usersIncluded\": 1\n  },\n  {\n    \"id\": \"67373f9192e210a4023b0002\",\n    \"name\": \"Growth\",\n    \"planType\": \"GROWTH\",\n    \"priceUsd\": 99,\n    \"billingInterval\": \"month\",\n    \"badgeText\": \"Most Popular\",\n    \"aiActionsPerMonth\": 10000,\n    \"callMinutesPerMonth\": 500,\n    \"meetingHoursPerMonth\": 30,\n    \"usersIncluded\": 5\n  },\n  {\n    \"id\": \"67373f9192e210a4023b0003\",\n    \"name\": \"Enterprise\",\n    \"planType\": \"ENTERPRISE\",\n    \"priceUsd\": 249,\n    \"billingInterval\": \"month\",\n    \"aiActionsPerMonth\": 50000,\n    \"callMinutesPerMonth\": 2000,\n    \"meetingHoursPerMonth\": 75,\n    \"usersIncluded\": 9999\n  }\n]"
+                }
+              ]
+            },
+            {
+              "name": "1.3 Compare Plans (Yearly - 2 Months Free)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseURL}}/subscription-plans?billingCycle=year",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscription-plans"
+                  ],
+                  "query": [
+                    {
+                      "key": "billingCycle",
+                      "value": "year"
+                    }
+                  ]
+                },
+                "description": "Returns all plans when user toggles the Yearly billing interval tab (saves 2 months free)."
+              },
+              "response": [
+                {
+                  "name": "Success - All Yearly Plans",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "[\n  {\n    \"id\": \"67373f9192e210a4023b0004\",\n    \"name\": \"Starter Annual\",\n    \"planType\": \"STARTER\",\n    \"priceUsd\": 490,\n    \"billingInterval\": \"year\",\n    \"aiActionsPerMonth\": 3000\n  },\n  {\n    \"id\": \"67373f9192e210a4023b0005\",\n    \"name\": \"Growth Annual\",\n    \"planType\": \"GROWTH\",\n    \"priceUsd\": 990,\n    \"billingInterval\": \"year\",\n    \"aiActionsPerMonth\": 10000\n  }\n]"
+                }
+              ]
+            },
+            {
+              "name": "1.4 Smart Calculator - Image 4 Usage (1320 calls, 8500 actions, 86 meetings)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseURL}}/subscription-plans/estimate?callMinutes=1320&aiActions=8500&aiMeetings=86",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscription-plans",
+                    "estimate"
+                  ],
+                  "query": [
+                    {
+                      "key": "callMinutes",
+                      "value": "1320"
+                    },
+                    {
+                      "key": "aiActions",
+                      "value": "8500"
+                    },
+                    {
+                      "key": "aiMeetings",
+                      "value": "86"
+                    }
+                  ]
+                },
+                "description": "Smart Upgrade Calculator for Image 4 inputs: 1,320 call minutes, 8,500 AI actions, 86 AI meetings. Evaluates Pay As You Go ($690) vs Growth ($149) + 2,000 Voice Minutes ($40) + 75 meeting hours ($75) = $264/mo (Saves $426.00/mo)."
+              },
+              "response": [
+                {
+                  "name": "Success - Smart Estimate with Recommended Addons",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"estimatedMonthlyCost\": 690,\n  \"formattedEstimatedMonthlyCost\": \"$690.00\",\n  \"payAsYouGo\": {\n    \"name\": \"Pay as you go\",\n    \"planType\": \"PAY_AS_YOU_GO\",\n    \"totalCostUsd\": 690,\n    \"formattedTotal\": \"$690.00\",\n    \"rates\": {\n      \"aiActionRateUsd\": 0.04,\n      \"callMinuteRateUsd\": 0.2,\n      \"aiMeetingRateUsd\": 1\n    },\n    \"breakdown\": {\n      \"aiActions\": {\n        \"quantity\": 8500,\n        \"rateUsd\": 0.04,\n        \"costUsd\": 340,\n        \"formattedCost\": \"$340.00\"\n      },\n      \"callMinutes\": {\n        \"quantity\": 1320,\n        \"rateUsd\": 0.2,\n        \"costUsd\": 264,\n        \"formattedCost\": \"$264.00\"\n      },\n      \"aiMeetings\": {\n        \"quantity\": 86,\n        \"rateUsd\": 1,\n        \"costUsd\": 86,\n        \"formattedCost\": \"$86.00\"\n      }\n    }\n  },\n  \"subscription\": {\n    \"id\": \"6a741a3dcd2554774d14d80a\",\n    \"planType\": \"GROWTH\",\n    \"name\": \"Growth\",\n    \"displayName\": \"Growth subscription\",\n    \"priceUsd\": 149,\n    \"formattedPrice\": \"$149/month\",\n    \"limits\": {\n      \"callMinutesPerMonth\": 500,\n      \"aiActionsPerMonth\": 10000,\n      \"meetingHoursPerMonth\": 30,\n      \"crmContactsLimit\": 20000,\n      \"usersIncluded\": 5\n    },\n    \"isWithinIncludedUsage\": false,\n    \"addonsPriceUsd\": 115,\n    \"estimatedTotalCostUsd\": 264,\n    \"formattedEstimatedTotalCost\": \"$264.00\"\n  },\n  \"recommendedAddons\": [\n    {\n      \"category\": \"VOICE_MINUTES\",\n      \"name\": \"AI Voice Minutes Packs\",\n      \"addonProductId\": \"6aebfe18ab1c8db6a4bdf515\",\n      \"label\": \"2,000 Voice Minutes\",\n      \"quantity\": 2000,\n      \"priceUsd\": 40,\n      \"units\": \"call minutes\",\n      \"reason\": \"Covers 820 additional call minutes needed\"\n    },\n    {\n      \"category\": \"AI_MEETING_CAPTURE\",\n      \"name\": \"AI Meeting Capture\",\n      \"addonProductId\": \"6aebfe1aab1c8db6a4bdf518\",\n      \"label\": \"75 meeting hours\",\n      \"quantity\": 75,\n      \"priceUsd\": 75,\n      \"units\": \"meeting hours\",\n      \"reason\": \"Covers 56 additional meeting hours needed\"\n    }\n  ],\n  \"bundlePricing\": {\n    \"basePlanPriceUsd\": 149,\n    \"addonsPriceUsd\": 115,\n    \"totalMonthlyPriceUsd\": 264,\n    \"formattedTotal\": \"$264.00/month\",\n    \"monthlySavingsUsd\": 426,\n    \"formattedSavings\": \"$426.00/month\",\n    \"summary\": \"Recommended: Growth plan ($149/mo) + Add-ons: 2,000 Voice Minutes ($40), 75 meeting hours ($75). Total $264/mo (Save $426.00/mo vs Pay as you go).\"\n  },\n  \"comparison\": {\n    \"isUpgradeRecommended\": true,\n    \"recommendation\": \"CONSIDER_UPGRADING\",\n    \"badge\": \"Upgrade and save\",\n    \"headline\": \"Growth\",\n    \"message\": \"Growth with add-ons is more economical than Pay as you go.\",\n    \"monthlySavingsUsd\": 426,\n    \"formattedSavings\": \"$426.00/month\",\n    \"payAsYouGoTotalUsd\": 690,\n    \"subscriptionTotalUsd\": 264\n  }\n}"
+                }
+              ]
+            },
+            {
+              "name": "1.5 Smart Calculator - High Usage Crossing Enterprise (3000 calls, 60k actions, 100 meetings)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseURL}}/subscription-plans/estimate?callMinutes=3000&aiActions=60000&aiMeetings=100",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscription-plans",
+                    "estimate"
+                  ],
+                  "query": [
+                    {
+                      "key": "callMinutes",
+                      "value": "3000"
+                    },
+                    {
+                      "key": "aiActions",
+                      "value": "60000"
+                    },
+                    {
+                      "key": "aiMeetings",
+                      "value": "100"
+                    }
+                  ]
+                },
+                "description": "High volume case exceeding Enterprise base tier. Recommends Enterprise ($349) + 10,000 AI Actions ($300) + 2,000 Voice Minutes ($40) + 30 meeting hours ($32) = $721/mo vs Pay As You Go $3,100/mo (Saves $2,379.00/mo)."
+              },
+              "response": [
+                {
+                  "name": "Success - Enterprise Bundle with Addons",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"estimatedMonthlyCost\": 3100,\n  \"formattedEstimatedMonthlyCost\": \"$3100.00\",\n  \"payAsYouGo\": {\n    \"name\": \"Pay as you go\",\n    \"planType\": \"PAY_AS_YOU_GO\",\n    \"totalCostUsd\": 3100,\n    \"formattedTotal\": \"$3100.00\"\n  },\n  \"subscription\": {\n    \"planType\": \"ENTERPRISE\",\n    \"name\": \"Enterprise\",\n    \"priceUsd\": 349,\n    \"addonsPriceUsd\": 372,\n    \"estimatedTotalCostUsd\": 721\n  },\n  \"recommendedAddons\": [\n    {\n      \"category\": \"AI_ACTIONS\",\n      \"label\": \"10,000 Ai Actions\",\n      \"priceUsd\": 300,\n      \"reason\": \"Covers 10000 additional AI actions needed\"\n    },\n    {\n      \"category\": \"VOICE_MINUTES\",\n      \"label\": \"2,000 Voice Minutes\",\n      \"priceUsd\": 40,\n      \"reason\": \"Covers 1000 additional call minutes needed\"\n    },\n    {\n      \"category\": \"AI_MEETING_CAPTURE\",\n      \"label\": \"30 meeting hours\",\n      \"priceUsd\": 32,\n      \"reason\": \"Covers 25 additional meeting hours needed\"\n    }\n  ],\n  \"bundlePricing\": {\n    \"basePlanPriceUsd\": 349,\n    \"addonsPriceUsd\": 372,\n    \"totalMonthlyPriceUsd\": 721,\n    \"monthlySavingsUsd\": 2379,\n    \"formattedSavings\": \"$2379.00/month\"\n  }\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "2. Upgrade & Checkout Sessions",
+          "item": [
+            {
+              "name": "2.1 Buy Plan (Stripe Checkout Session)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"planType\": \"GROWTH\",\n  \"billingInterval\": \"month\",\n  \"successUrl\": \"https://noltra.ai/dashboard/subscription?session_id={CHECKOUT_SESSION_ID}\",\n  \"cancelUrl\": \"https://noltra.ai/dashboard/subscription\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/checkout-session",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "checkout-session"
+                  ]
+                },
+                "description": "Creates a Stripe Checkout Session URL for direct plan purchase without trial."
+              },
+              "response": [
+                {
+                  "name": "Success - Checkout URL",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"url\": \"https://checkout.stripe.com/c/pay/cs_test_a1b2c3d4e5f6\",\n  \"sessionId\": \"cs_test_a1b2c3d4e5f6\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "2.2 Buy Plan with Add-ons (Checkout Session)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"planType\": \"GROWTH\",\n  \"billingInterval\": \"month\",\n  \"successUrl\": \"https://noltra.ai/dashboard/subscription?session_id={CHECKOUT_SESSION_ID}\",\n  \"cancelUrl\": \"https://noltra.ai/dashboard/subscription\",\n  \"addons\": [\n    {\n      \"category\": \"AI_ACTIONS\",\n      \"packageIndex\": 1\n    },\n    {\n      \"category\": \"CALL_MINUTES\",\n      \"packageIndex\": 0\n    },\n    {\n      \"category\": \"MEETING_CAPTURE\",\n      \"packageIndex\": 0\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/checkout-session-with-addons",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "checkout-session-with-addons"
+                  ]
+                },
+                "description": "Purchases base plan together with selected add-on packs bundled together in checkout."
+              },
+              "response": [
+                {
+                  "name": "Success - Checkout with Addons",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"url\": \"https://checkout.stripe.com/c/pay/cs_test_addons_bundle_123\",\n  \"sessionId\": \"cs_test_addons_bundle_123\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "2.3 Upgrade Subscription (Direct In-App Upgrade)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"planType\": \"ENTERPRISE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/upgrade",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "upgrade"
+                  ]
+                },
+                "description": "Upgrades existing active subscription immediately using proration on Stripe."
+              },
+              "response": [
+                {
+                  "name": "Success - Upgraded",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Subscription successfully upgraded to ENTERPRISE\",\n  \"newPlan\": {\n    \"planType\": \"ENTERPRISE\",\n    \"priceUsd\": 249,\n    \"usersIncluded\": 9999,\n    \"aiActionsPerMonth\": 50000\n  }\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "3. Pause & Resume Subscription (Screens 3 & 4)",
+          "item": [
+            {
+              "name": "3.1 Pause Subscription - 30 Days",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"days\": 30\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/pause",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "pause"
+                  ]
+                },
+                "description": "Pauses subscription for 30 days (Screen 4 Option 1). Halts Stripe billing while keeping data safe."
+              },
+              "response": [
+                {
+                  "name": "Success - Paused for 30 Days",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Subscription paused until 2026-12-16T14:40:00.000Z (30 days)\",\n  \"pausedUntil\": \"2026-12-16T14:40:00.000Z\",\n  \"status\": \"PAUSED\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "3.2 Pause Subscription - 60 Days",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"days\": 60\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/pause",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "pause"
+                  ]
+                },
+                "description": "Pauses subscription for 60 days (Screen 4 Option 2)."
+              },
+              "response": [
+                {
+                  "name": "Success - Paused for 60 Days",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Subscription paused until 2027-01-15T14:40:00.000Z (60 days)\",\n  \"pausedUntil\": \"2027-01-15T14:40:00.000Z\",\n  \"status\": \"PAUSED\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "3.3 Pause Subscription - 90 Days",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"days\": 90\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/billing/pause",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "pause"
+                  ]
+                },
+                "description": "Pauses subscription for 90 days (Screen 4 Option 3)."
+              },
+              "response": [
+                {
+                  "name": "Success - Paused for 90 Days",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Subscription paused until 2027-02-14T14:40:00.000Z (90 days)\",\n  \"pausedUntil\": \"2027-02-14T14:40:00.000Z\",\n  \"status\": \"PAUSED\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "3.4 Resume Paused Subscription",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/billing/resume",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "billing",
+                    "resume"
+                  ]
+                },
+                "description": "Resumes an existing paused subscription immediately on Stripe and locally."
+              },
+              "response": [
+                {
+                  "name": "Success - Resumed",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Subscription resumed successfully\",\n  \"status\": \"ACTIVE\",\n  \"pausedUntil\": null\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "4. Downgrade & Specialist Requests (Screens 3, 5 & 6)",
+          "item": [
+            {
+              "name": "4.1 Downgrade Request (Contact Sales)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"requestedPlanName\": \"Starter\",\n  \"note\": \"We are downsizing our team for the next 2 quarters\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/downgrade-request",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "downgrade-request"
+                  ]
+                },
+                "description": "Screen 5: User clicks \"Contact Sales\" under Starter, Pay-as-you-go, or Limited Plan. Downgrade is routed to sales team."
+              },
+              "response": [
+                {
+                  "name": "Success - Downgrade Lead Created",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Our sales team will reach out shortly\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "4.2 Talk to a Specialist Request",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"I want a 15-minute consultation with an AI automation expert\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/specialist-request",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "specialist-request"
+                  ]
+                },
+                "description": "Screen 6: 15-minute call request with an AI automation specialist to get questions answered and find right solution."
+              },
+              "response": [
+                {
+                  "name": "Success - Specialist Call Lead Created",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"A specialist will reach out to schedule your call\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "5. Contact Sales Form (User Side)",
+          "item": [
+            {
+              "name": "5.1 Submit Contact Sales Inquiry (PRICING)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject\": \"PRICING\",\n  \"message\": \"We are looking to migrate 40 team members and need custom annual enterprise pricing.\",\n  \"note\": \"Best time to reach me: 2 PM EST via email or phone\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/contact-sales",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "contact-sales"
+                  ]
+                },
+                "description": "User fills the Contact Sales form in the user dashboard. Creates a lead query in the admin dashboard query section."
+              },
+              "response": [
+                {
+                  "name": "Success - Inquiry Submitted",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Your inquiry has been submitted. Our sales team will reach out shortly.\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "5.2 Submit Contact Sales Inquiry (FEATURES / ENTERPRISE)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject\": \"ENTERPRISE\",\n  \"message\": \"We require HIPAA compliance agreement, private model tuning, and custom SLA.\",\n  \"note\": \"Please provide enterprise security documentation\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/contact-sales",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "contact-sales"
+                  ]
+                },
+                "description": "Enterprise inquiry form submission with custom requirements."
+              },
+              "response": [
+                {
+                  "name": "Success - Enterprise Inquiry Submitted",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Your inquiry has been submitted. Our sales team will reach out shortly.\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "6. Cancellation Flow (All Cases - Screens 2, 3, 7, 8, 9, 10)",
+          "item": [
+            {
+              "name": "6.1 Case 1: Cancel - TOO_EXPENSIVE with DISCOUNT Retention Offer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"TOO_EXPENSIVE\",\n  \"retentionOfferChoice\": \"DISCOUNT\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Looking for a more budget-friendly plan\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Step 1: Reason TOO_EXPENSIVE. Step 2: Offered 20% Off discount. User confirms with password."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled (7-day Grace Period)",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"TOO_EXPENSIVE\",\n  \"retentionOfferChoice\": \"DISCOUNT\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\",\n  \"gracePeriodDays\": 7,\n  \"message\": \"Cancellation scheduled. Effective in 7 days. You can undo anytime before this date.\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.2 Case 2: Cancel - MISSING_FEATURES with NONE (No Offer Accepted)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"MISSING_FEATURES\",\n  \"retentionOfferChoice\": \"NONE\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Need advanced custom webhook trigger support\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Reason MISSING_FEATURES, user chose not to accept any retention offer."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"MISSING_FEATURES\",\n  \"retentionOfferChoice\": \"NONE\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\",\n  \"gracePeriodDays\": 7\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.3 Case 3: Cancel - NOT_SEEING_VALUE with PAUSE Retention Offer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"NOT_SEEING_VALUE\",\n  \"retentionOfferChoice\": \"PAUSE\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Taking a seasonal hiatus\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Reason NOT_SEEING_VALUE, retention offer chosen: PAUSE."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"NOT_SEEING_VALUE\",\n  \"retentionOfferChoice\": \"PAUSE\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.4 Case 4: Cancel - SWITCHING_PLATFORMS with DOWNGRADE Retention Offer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"SWITCHING_PLATFORMS\",\n  \"retentionOfferChoice\": \"DOWNGRADE\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Looking for a simpler tool\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Reason SWITCHING_PLATFORMS, retention offer: DOWNGRADE."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"SWITCHING_PLATFORMS\",\n  \"retentionOfferChoice\": \"DOWNGRADE\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.5 Case 5: Cancel - TECHNICAL_ISSUES with SPECIALIST Retention Offer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"TECHNICAL_ISSUES\",\n  \"retentionOfferChoice\": \"SPECIALIST\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Having trouble configuring integration webhooks\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Reason TECHNICAL_ISSUES, retention offer: SPECIALIST."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"TECHNICAL_ISSUES\",\n  \"retentionOfferChoice\": \"SPECIALIST\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.6 Case 6: Cancel - OTHER with Detailed Feedback Note",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"OTHER\",\n  \"retentionOfferChoice\": \"NONE\",\n  \"password\": \"UserSecurePassword123!\",\n  \"feedback\": \"Company is restructuring internal operations\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Reason OTHER with freeform custom feedback note."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Scheduled",
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"status\": \"PENDING\",\n  \"reason\": \"OTHER\",\n  \"retentionOfferChoice\": \"NONE\",\n  \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.7 Check Pending Cancellation Status (Screen 9)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel"
+                  ]
+                },
+                "description": "Screen 9: Displays \"Your cancellation will take effect on Date (7 days from now)\". Frontend checks this to render the pending banner."
+              },
+              "response": [
+                {
+                  "name": "Success - Pending Cancellation Details",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"isPending\": true,\n  \"request\": {\n    \"id\": \"67375a00a12e345678901234\",\n    \"status\": \"PENDING\",\n    \"reason\": \"TOO_EXPENSIVE\",\n    \"retentionOfferChoice\": \"DISCOUNT\",\n    \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\",\n    \"remainingDays\": 7,\n    \"requestedAt\": \"2026-11-16T14:40:00.000Z\"\n  }\n}"
+                }
+              ]
+            },
+            {
+              "name": "6.8 Undo Cancellation (Screen 10)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/cancel/undo",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "cancel",
+                    "undo"
+                  ]
+                },
+                "description": "Screen 10: \"Undo cancellation\" button. Cancels the scheduled cancellation and restores full subscription status."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Undone",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Cancellation request has been revoked. Your subscription remains active.\",\n  \"status\": \"ACTIVE\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "7. Invoice History & PDF Download (Screen 1)",
+          "item": [
+            {
+              "name": "7.1 Get My Invoices History",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/invoices?page=1&limit=10",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "invoices"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "Screen 1 (Bottom Table): Lists invoice history for the user org with Date, Amount, Status (Paid), Invoice number, and PDF download link."
+              },
+              "response": [
+                {
+                  "name": "Success - Invoices List",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"items\": [\n    {\n      \"id\": \"673752e5a6f23e0012345678\",\n      \"invoiceId\": \"INV-2026-7\",\n      \"invoiceNumber\": \"INV-2026-7\",\n      \"planName\": \"Growth\",\n      \"amountUsd\": 99,\n      \"billingInterval\": \"month\",\n      \"status\": \"PAID\",\n      \"issuedAt\": \"2026-11-01T00:00:00.000Z\",\n      \"periodStart\": \"2026-11-01T00:00:00.000Z\",\n      \"periodEnd\": \"2026-12-01T00:00:00.000Z\",\n      \"hostedInvoiceUrl\": \"https://invoice.stripe.com/i/acct_123/inv_456\",\n      \"invoicePdfUrl\": \"https://pay.stripe.com/invoice/inv_456/pdf\"\n    },\n    {\n      \"id\": \"673752e5a6f23e0012345679\",\n      \"invoiceId\": \"INV-2026-6\",\n      \"invoiceNumber\": \"INV-2026-6\",\n      \"planName\": \"Growth\",\n      \"amountUsd\": 99,\n      \"billingInterval\": \"month\",\n      \"status\": \"PAID\",\n      \"issuedAt\": \"2026-10-01T00:00:00.000Z\",\n      \"periodStart\": \"2026-10-01T00:00:00.000Z\",\n      \"periodEnd\": \"2026-11-01T00:00:00.000Z\",\n      \"hostedInvoiceUrl\": \"https://invoice.stripe.com/i/acct_123/inv_455\",\n      \"invoicePdfUrl\": \"https://pay.stripe.com/invoice/inv_455/pdf\"\n    }\n  ],\n  \"page\": 1,\n  \"limit\": 10,\n  \"total\": 2,\n  \"totalPages\": 1\n}"
+                }
+              ]
+            },
+            {
+              "name": "7.2 Download Invoice PDF (Redirect)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions/me/invoices/673752e5a6f23e0012345678/download",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions",
+                    "me",
+                    "invoices",
+                    "673752e5a6f23e0012345678",
+                    "download"
+                  ]
+                },
+                "description": "Screen 1: Clicking \"PDF\" action icon redirects to the Stripe-hosted official PDF download URL."
+              },
+              "response": [
+                {
+                  "name": "Success - 302 Redirect to Stripe PDF",
+                  "status": "Found",
+                  "code": 302,
+                  "header": [
+                    {
+                      "key": "Location",
+                      "value": "https://pay.stripe.com/invoice/inv_456/pdf"
+                    }
+                  ],
+                  "body": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "8. Admin - Sales Queries & Query Resolution (Admin Side)",
+          "item": [
+            {
+              "name": "8.1 Admin: List All Sales Queries",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/sales-queries?page=1&limit=10",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "sales-queries"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "Admin dashboard query section: View all incoming sales queries, downgrade requests, specialist call requests, and contact inquiries."
+              },
+              "response": [
+                {
+                  "name": "Success - Admin Query List",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"items\": [\n    {\n      \"id\": \"673752e5a6f23e0012345680\",\n      \"organizationId\": \"6a71a90167f3504f792355ba\",\n      \"packageType\": \"CONTACT_SALES\",\n      \"fullName\": \"Mahabur Rahman\",\n      \"email\": \"owner@acme.com\",\n      \"subject\": \"PRICING\",\n      \"message\": \"Organization \\\"Acme Corp\\\" submitted a Contact Sales request.\\nSubject: PRICING\\nMessage: We are looking to migrate 40 team members and need custom annual enterprise pricing.\",\n      \"status\": \"SUBMITTED\",\n      \"resolutionNote\": null,\n      \"resolvedAt\": null,\n      \"createdAt\": \"2026-11-16T14:40:00.000Z\"\n    },\n    {\n      \"id\": \"673752e5a6f23e0012345681\",\n      \"organizationId\": \"6a71a90167f3504f792355ba\",\n      \"packageType\": \"DOWNGRADE_REQUEST\",\n      \"fullName\": \"Mahabur Rahman\",\n      \"email\": \"owner@acme.com\",\n      \"subject\": null,\n      \"message\": \"Organization \\\"Acme Corp\\\" requested a downgrade to \\\"Starter\\\". Note: We are downsizing our team\",\n      \"status\": \"SUBMITTED\",\n      \"resolutionNote\": null,\n      \"resolvedAt\": null,\n      \"createdAt\": \"2026-11-16T14:35:00.000Z\"\n    }\n  ],\n  \"page\": 1,\n  \"limit\": 10,\n  \"total\": 2,\n  \"totalPages\": 1\n}"
+                }
+              ]
+            },
+            {
+              "name": "8.2 Admin: Filter Queries by Status (SUBMITTED / CONTACTED / CLOSED)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/sales-queries?status=SUBMITTED&packageType=CONTACT_SALES",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "sales-queries"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "SUBMITTED"
+                    },
+                    {
+                      "key": "packageType",
+                      "value": "CONTACT_SALES"
+                    }
+                  ]
+                },
+                "description": "Filter queries by status (SUBMITTED, CONTACTED, CLOSED) and packageType."
+              },
+              "response": [
+                {
+                  "name": "Success - Filtered Queries",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"items\": [\n    {\n      \"id\": \"673752e5a6f23e0012345680\",\n      \"packageType\": \"CONTACT_SALES\",\n      \"fullName\": \"Mahabur Rahman\",\n      \"email\": \"owner@acme.com\",\n      \"status\": \"SUBMITTED\"\n    }\n  ],\n  \"page\": 1,\n  \"limit\": 10,\n  \"total\": 1,\n  \"totalPages\": 1\n}"
+                }
+              ]
+            },
+            {
+              "name": "8.3 Admin: Get Query Details by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/sales-queries/673752e5a6f23e0012345680",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "sales-queries",
+                    "673752e5a6f23e0012345680"
+                  ]
+                },
+                "description": "Returns all fields for a specific query."
+              },
+              "response": [
+                {
+                  "name": "Success - Query Detail",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"id\": \"673752e5a6f23e0012345680\",\n  \"organizationId\": \"6a71a90167f3504f792355ba\",\n  \"packageType\": \"CONTACT_SALES\",\n  \"fullName\": \"Mahabur Rahman\",\n  \"email\": \"owner@acme.com\",\n  \"subject\": \"PRICING\",\n  \"message\": \"Organization \\\"Acme Corp\\\" submitted a Contact Sales request.\",\n  \"status\": \"SUBMITTED\",\n  \"resolutionNote\": null,\n  \"resolvedAt\": null,\n  \"createdAt\": \"2026-11-16T14:40:00.000Z\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "8.4 Admin: Resolve Query (Mark as CONTACTED / CLOSED)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CONTACTED\",\n  \"note\": \"Spoke with the customer via phone and presented enterprise custom bundle proposal.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/sales-queries/673752e5a6f23e0012345680/resolve",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "sales-queries",
+                    "673752e5a6f23e0012345680",
+                    "resolve"
+                  ]
+                },
+                "description": "Admin updates query status (e.g. to CONTACTED or CLOSED) and adds an internal note."
+              },
+              "response": [
+                {
+                  "name": "Success - Query Resolved",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Sales query status updated to CONTACTED\",\n  \"query\": {\n    \"id\": \"673752e5a6f23e0012345680\",\n    \"status\": \"CONTACTED\",\n    \"resolutionNote\": \"Spoke with the customer via phone and presented enterprise custom bundle proposal.\",\n    \"resolvedAt\": \"2026-11-16T14:45:00.000Z\",\n    \"resolvedByUserId\": \"67373f9192e210a4023b9999\"\n  }\n}"
+                }
+              ]
+            },
+            {
+              "name": "8.5 Admin: Contact User Directly via Email",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject\": \"Response regarding your Noltra.ai Enterprise inquiry\",\n  \"message\": \"Hi Mahabur,\\n\\nThank you for reaching out to Noltra.ai! We have prepared a customized enterprise proposal tailored for your 40 team members with dedicated AI model tuning.\\n\\nCould we schedule a brief 15-minute call this Wednesday?\\n\\nBest regards,\\nNoltra Sales Team\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/sales-queries/673752e5a6f23e0012345680/contact-user",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "sales-queries",
+                    "673752e5a6f23e0012345680",
+                    "contact-user"
+                  ]
+                },
+                "description": "Admin sends an email directly to the customer who submitted the inquiry."
+              },
+              "response": [
+                {
+                  "name": "Success - Email Sent",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Email successfully sent to owner@acme.com\",\n  \"recipient\": \"owner@acme.com\",\n  \"subject\": \"Response regarding your Noltra.ai Enterprise inquiry\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "9. Admin - Cancellation Queue & Actions (Admin Side)",
+          "item": [
+            {
+              "name": "9.1 Admin: List Cancellation Requests Queue",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/cancellation-requests?status=PENDING&page=1&limit=10",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "cancellation-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "PENDING"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "Lists all pending cancellation requests currently inside the 7-day grace period countdown."
+              },
+              "response": [
+                {
+                  "name": "Success - Cancellation Queue",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"items\": [\n    {\n      \"id\": \"67375a00a12e345678901234\",\n      \"organizationId\": \"6a71a90167f3504f792355ba\",\n      \"organizationName\": \"Acme Corp\",\n      \"status\": \"PENDING\",\n      \"reason\": \"TOO_EXPENSIVE\",\n      \"retentionOfferChoice\": \"DISCOUNT\",\n      \"scheduledExecutionDate\": \"2026-11-23T14:40:00.000Z\",\n      \"gracePeriodRemainingDays\": 7\n    }\n  ],\n  \"page\": 1,\n  \"limit\": 10,\n  \"total\": 1,\n  \"totalPages\": 1\n}"
+                }
+              ]
+            },
+            {
+              "name": "9.2 Admin: Execute Cancellation Early",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/cancellation-requests/67375a00a12e345678901234/execute",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "cancellation-requests",
+                    "67375a00a12e345678901234",
+                    "execute"
+                  ]
+                },
+                "description": "Admin executes the cancellation immediately without waiting for the 7-day grace period to expire."
+              },
+              "response": [
+                {
+                  "name": "Success - Executed Early",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Cancellation executed by admin. Subscription marked cancel_at_period_end on Stripe.\",\n  \"status\": \"EXECUTED\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "9.3 Admin: Undo Cancellation for Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseURL}}/subscriptions-admin/cancellation-requests/67375a00a12e345678901234/undo",
+                  "host": [
+                    "{{baseURL}}"
+                  ],
+                  "path": [
+                    "subscriptions-admin",
+                    "cancellation-requests",
+                    "67375a00a12e345678901234",
+                    "undo"
+                  ]
+                },
+                "description": "Admin revokes and undos the cancellation on behalf of the customer, keeping subscription active."
+              },
+              "response": [
+                {
+                  "name": "Success - Revoked by Admin",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    }
+                  ],
+                  "body": "{\n  \"message\": \"Cancellation request revoked by administrator. Subscription active.\",\n  \"status\": \"UNDONE\"\n}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "subscription",
       "item": [
         {
