@@ -117,6 +117,56 @@ export class CrmBriefingFactsService {
         syncedAt: aiIsoTimestamp(deal.syncedAt),
       }),
     );
+    if (boundedDeals.items.length > 0) {
+      const byCurrency = new Map<
+        string,
+        { open: number; won: number; lost: number; openAmount: number }
+      >();
+      for (const deal of boundedDeals.items) {
+        const currency = deal.currency || 'UNSPECIFIED';
+        const current = byCurrency.get(currency) || {
+          open: 0,
+          won: 0,
+          lost: 0,
+          openAmount: 0,
+        };
+        if (deal.stageCategory === 'OPEN') {
+          current.open += 1;
+          current.openAmount += deal.amount;
+        } else if (deal.stageCategory === 'WON') {
+          current.won += 1;
+        } else if (deal.stageCategory === 'LOST') {
+          current.lost += 1;
+        }
+        byCurrency.set(currency, current);
+      }
+      const overdueOpenDeals = boundedDeals.items.filter(
+        (deal) =>
+          deal.stageCategory === 'OPEN' &&
+          deal.closeDate instanceof Date &&
+          deal.closeDate.getTime() < input.to.getTime(),
+      );
+      salesItems.unshift({
+        id: `crm-sales-summary-${provider}-${input.from.toISOString()}-${input.to.toISOString()}`,
+        sourceType: 'DERIVED_CRM_SALES_METRIC',
+        sourceId: `crm-sales:${provider}:${input.from.toISOString()}:${input.to.toISOString()}`,
+        capturedAt: syncedAt || input.to.toISOString(),
+        data: {
+          provider,
+          title: 'Weekly CRM sales and pipeline status',
+          currencies: [...byCurrency.entries()].map(([currency, values]) => ({
+            currency,
+            ...values,
+          })),
+          overdueOpenDeals: overdueOpenDeals.length,
+          overdueOpenDealIds: overdueOpenDeals
+            .map((deal) => deal.externalId)
+            .slice(0, 25),
+          scope:
+            'Current synchronized deal stages and amounts. Deal advancement, pipeline velocity, and forecast accuracy require stage-history snapshots and are not inferred.',
+        },
+      });
+    }
     if (revenue.currencies.length > 0) {
       salesItems.unshift({
         id: `crm-revenue-${provider}-${input.from.toISOString()}-${input.to.toISOString()}`,

@@ -41,7 +41,10 @@ export class ContactWorkspaceActionsService {
         method: 'POST',
         path: '/api/v1/meetings',
         requiredFields: ['platform', 'title'],
-        prefill: { contactIds: [input.contactId] },
+        prefill: {
+          contactIds: [input.contactId],
+          invitees: input.email ? [input.email] : [],
+        },
       },
       createTask: {
         method: 'POST',

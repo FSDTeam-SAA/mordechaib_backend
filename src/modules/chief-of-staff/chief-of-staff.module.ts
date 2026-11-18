@@ -56,6 +56,7 @@ import { StrategicNotesService } from './strategic-notes.service';
 import { OrganizationAgentSettingsModule } from '../organization-agent-settings/organization-agent-settings.module';
 import { RoiDashboardModule } from '../roi-dashboard/roi-dashboard.module';
 import { ContactsModule } from '../contacts/contacts.module';
+import { SupportRequestsModule } from '../support-requests/support-requests.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { ContactsModule } from '../contacts/contacts.module';
     OrganizationAgentSettingsModule,
     RoiDashboardModule,
     ContactsModule,
+    SupportRequestsModule,
     BullModule.registerQueue({ name: EXECUTIVE_BRIEFINGS_QUEUE }),
     MongooseModule.forFeature([
       { name: ExecutiveBriefing.name, schema: ExecutiveBriefingSchema },

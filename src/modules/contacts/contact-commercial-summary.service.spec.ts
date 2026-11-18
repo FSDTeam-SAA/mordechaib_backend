@@ -46,6 +46,16 @@ describe('ContactCommercialSummaryService', () => {
         analysisConfidence: 0.9,
         capturedAt: new Date('2026-11-12T00:00:00.000Z'),
       },
+      openTasks: [
+        {
+          _id: 'task-1',
+          title: 'Send renewal proposal',
+          dueDate: '2026-11-10T00:00:00.000Z',
+        },
+      ],
+      upcomingMeetings: [],
+      recentCalls: [{ _id: 'call-1' }],
+      asOf: new Date('2026-11-18T00:00:00.000Z'),
     });
 
     expect(result.commercial.dealValue).toEqual(
@@ -65,6 +75,19 @@ describe('ContactCommercialSummaryService', () => {
     );
     expect(result.insights.risk).toEqual(
       expect.objectContaining({ level: 'LOW', healthScore: 82 }),
+    );
+    expect(result.commercial.expansionPotential).toEqual(
+      expect.objectContaining({
+        availability: 'AVAILABLE',
+        isEstimated: true,
+        level: 'HIGH',
+      }),
+    );
+    expect(result.insights.nextBestAction).toEqual(
+      expect.objectContaining({
+        action: 'COMPLETE_OVERDUE_TASK',
+        isAiGenerated: false,
+      }),
     );
   });
 
@@ -100,10 +123,37 @@ describe('ContactCommercialSummaryService', () => {
         currency: null,
       }),
     );
+    expect(result.commercial.expansionPotential).toEqual(
+      expect.objectContaining({
+        availability: 'AVAILABLE',
+        isEstimated: true,
+      }),
+    );
+    expect(result.commercial.lifetimeValue.availability).toBe('UNAVAILABLE');
+    expect(result.insights.nextBestAction).toEqual(
+      expect.objectContaining({
+        availability: 'AVAILABLE',
+        action: 'FOLLOW_UP_OPEN_DEAL',
+      }),
+    );
+  });
+
+  it('keeps expansion unavailable when no grounded signal exists', () => {
+    const result = service.build({
+      profile: {},
+      crmLinks: [],
+      deals: [],
+      latestHealth: null,
+      openTasks: [],
+      upcomingMeetings: [],
+      recentCalls: [],
+    });
+
     expect(result.commercial.expansionPotential.availability).toBe(
       'UNAVAILABLE',
     );
-    expect(result.commercial.lifetimeValue.availability).toBe('UNAVAILABLE');
-    expect(result.insights.nextBestAction.availability).toBe('UNAVAILABLE');
+    expect(result.insights.nextBestAction).toEqual(
+      expect.objectContaining({ action: 'CONTACT_CUSTOMER' }),
+    );
   });
 });
