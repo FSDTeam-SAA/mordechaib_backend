@@ -3,6 +3,13 @@ import { CrmDealStageCategory } from '../../database/schemas/crm-deal.schema';
 
 type CrmLink = Record<string, unknown>;
 type Deal = Record<string, unknown>;
+type OperationalRecord = Record<string, unknown>;
+
+type GroundingFactor = {
+  key: string;
+  contribution: number;
+  detail: string;
+};
 
 @Injectable()
 export class ContactCommercialSummaryService {
@@ -11,6 +18,10 @@ export class ContactCommercialSummaryService {
     crmLinks: CrmLink[];
     deals: Deal[];
     latestHealth: Record<string, unknown> | null;
+    openTasks?: OperationalRecord[];
+    upcomingMeetings?: OperationalRecord[];
+    recentCalls?: OperationalRecord[];
+    asOf?: Date;
   }) {
     const openDeals = input.deals.filter(
       (deal) => deal.stageCategory === CrmDealStageCategory.OPEN,
@@ -18,6 +29,22 @@ export class ContactCommercialSummaryService {
     const amounts = this.amounts(openDeals);
     const expectedClose = this.expectedClose(openDeals);
     const probability = this.probability(openDeals, input.crmLinks);
+    const expansionPotential = this.expansionPotential({
+      profile: input.profile,
+      openDeals,
+      latestHealth: input.latestHealth,
+      recentCalls: input.recentCalls || [],
+      upcomingMeetings: input.upcomingMeetings || [],
+    });
+    const nextBestAction = this.nextBestAction({
+      openTasks: input.openTasks || [],
+      upcomingMeetings: input.upcomingMeetings || [],
+      recentCalls: input.recentCalls || [],
+      openDeals,
+      latestHealth: input.latestHealth,
+      expectedClose,
+      asOf: input.asOf || new Date(),
+    });
 
     return {
       commercial: {
@@ -42,9 +69,7 @@ export class ContactCommercialSummaryService {
           : this.unavailable(
               'No close date is available on a linked open CRM deal.',
             ),
-        expansionPotential: this.unavailable(
-          'Expansion potential has no authoritative model or persisted source.',
-        ),
+        expansionPotential,
         lifetimeValue: this.unavailable(
           'Customer lifetime value is not persisted or attributable yet.',
         ),
@@ -77,11 +102,197 @@ export class ContactCommercialSummaryService {
               isAiGenerated: false,
             }
           : this.unavailable('No linked CRM close date is available.'),
-        nextBestAction: this.unavailable(
-          'No grounded next-best-action result is persisted.',
-        ),
+        nextBestAction,
       },
     };
+  }
+
+  private expansionPotential(input: {
+    profile: Record<string, unknown>;
+    openDeals: Deal[];
+    latestHealth: Record<string, unknown> | null;
+    recentCalls: OperationalRecord[];
+    upcomingMeetings: OperationalRecord[];
+  }) {
+    const factors: GroundingFactor[] = [];
+    const leadContribution = this.leadStatusContribution(
+      String(input.profile.leadStatus || ''),
+    );
+    if (leadContribution > 0) {
+      factors.push({
+        key: 'LEAD_STATUS',
+        contribution: leadContribution,
+        detail: `Lead status is ${String(input.profile.leadStatus)}.`,
+      });
+    }
+    if (input.openDeals.length) {
+      factors.push({
+        key: 'OPEN_DEALS',
+        contribution: Math.min(30, 20 + (input.openDeals.length - 1) * 5),
+        detail: `${input.openDeals.length} linked open CRM deal(s).`,
+      });
+    }
+    const healthScore = Number(input.latestHealth?.healthScore);
+    if (Number.isFinite(healthScore)) {
+      const contribution = Math.round(
+        Math.max(0, Math.min(100, healthScore)) * 0.25,
+      );
+      factors.push({
+        key: 'CUSTOMER_HEALTH',
+        contribution,
+        detail: `Latest customer health score is ${healthScore}.`,
+      });
+    }
+    const engagementCount =
+      input.recentCalls.length + input.upcomingMeetings.length;
+    if (engagementCount) {
+      factors.push({
+        key: 'ENGAGEMENT',
+        contribution: Math.min(15, engagementCount * 5),
+        detail: `${engagementCount} linked recent/upcoming engagement(s).`,
+      });
+    }
+    if (!factors.length) {
+      return this.unavailable(
+        'No grounded CRM, lead-status, health, or engagement signals are available.',
+      );
+    }
+    const score = Math.min(
+      100,
+      factors.reduce((total, factor) => total + factor.contribution, 0),
+    );
+    return {
+      availability: 'AVAILABLE',
+      score,
+      level: score >= 70 ? 'HIGH' : score >= 40 ? 'MEDIUM' : 'LOW',
+      unit: 'SCORE',
+      isEstimated: true,
+      isAiGenerated: false,
+      source: 'RULE_BASED_CUSTOMER_SIGNALS',
+      methodologyVersion: '1.0',
+      factors,
+    };
+  }
+
+  private nextBestAction(input: {
+    openTasks: OperationalRecord[];
+    upcomingMeetings: OperationalRecord[];
+    recentCalls: OperationalRecord[];
+    openDeals: Deal[];
+    latestHealth: Record<string, unknown> | null;
+    expectedClose: { dealId: string; value: string } | undefined;
+    asOf: Date;
+  }) {
+    const overdueTask = input.openTasks.find((task) => {
+      const dueDate = this.date(task.dueDate);
+      return dueDate
+        ? new Date(dueDate).getTime() < input.asOf.getTime()
+        : false;
+    });
+    if (overdueTask) {
+      return this.recommendation(
+        'COMPLETE_OVERDUE_TASK',
+        `Complete overdue task: ${String(overdueTask.title || 'Untitled task')}`,
+        'An explicitly linked customer task is overdue.',
+        'TASK',
+        String(overdueTask._id || overdueTask.id),
+      );
+    }
+    const meeting = input.upcomingMeetings[0];
+    if (meeting) {
+      return this.recommendation(
+        'PREPARE_FOR_MEETING',
+        `Prepare for meeting: ${String(meeting.title || 'Customer meeting')}`,
+        'An explicitly linked customer meeting is upcoming.',
+        'MEETING',
+        String(meeting._id || meeting.id),
+      );
+    }
+    if (String(input.latestHealth?.riskLevel || '').toUpperCase() === 'HIGH') {
+      return this.recommendation(
+        'REVIEW_CUSTOMER_RISK',
+        'Review customer risk and agree a follow-up plan',
+        'The latest persisted customer-health snapshot has HIGH risk.',
+        'CUSTOMER_HEALTH_SNAPSHOT',
+      );
+    }
+    if (input.expectedClose) {
+      return this.recommendation(
+        'FOLLOW_UP_OPEN_DEAL',
+        'Follow up on the next closing CRM deal',
+        `A linked open deal has an expected close date of ${input.expectedClose.value}.`,
+        'CRM_DEAL',
+        input.expectedClose.dealId,
+      );
+    }
+    const task = input.openTasks[0];
+    if (task) {
+      return this.recommendation(
+        'PROGRESS_OPEN_TASK',
+        `Progress task: ${String(task.title || 'Untitled task')}`,
+        'An explicitly linked customer task remains open.',
+        'TASK',
+        String(task._id || task.id),
+      );
+    }
+    if (input.openDeals.length) {
+      const deal = input.openDeals[0];
+      return this.recommendation(
+        'FOLLOW_UP_OPEN_DEAL',
+        'Follow up on the open CRM opportunity',
+        'The customer has a linked open CRM deal.',
+        'CRM_DEAL',
+        String(deal._id || deal.id),
+      );
+    }
+    if (!input.recentCalls.length) {
+      return this.recommendation(
+        'CONTACT_CUSTOMER',
+        'Contact the customer and capture the next step',
+        'No explicitly linked recent call is available.',
+        'CONTACT_PROFILE',
+      );
+    }
+    return this.recommendation(
+      'REVIEW_CUSTOMER',
+      'Review the latest customer interaction',
+      'Recent customer activity exists without a more urgent grounded action.',
+      'CALL',
+      String(input.recentCalls[0]._id || input.recentCalls[0].id),
+    );
+  }
+
+  private recommendation(
+    action: string,
+    value: string,
+    reason: string,
+    sourceType: string,
+    sourceId?: string,
+  ) {
+    return {
+      availability: 'AVAILABLE',
+      action,
+      value,
+      reason,
+      source: { type: sourceType, id: sourceId || null },
+      isEstimated: true,
+      isAiGenerated: false,
+      methodologyVersion: '1.0',
+    };
+  }
+
+  private leadStatusContribution(status: string) {
+    const contributions: Record<string, number> = {
+      NEW: 5,
+      CONTACTED: 10,
+      QUALIFIED: 20,
+      PROPOSAL: 25,
+      HOT_LEAD: 30,
+      NEGOTIATION: 30,
+      CLOSED_WON: 15,
+      CLOSED_LOST: 0,
+    };
+    return contributions[status.toUpperCase()] || 0;
   }
 
   private amounts(deals: Deal[]) {

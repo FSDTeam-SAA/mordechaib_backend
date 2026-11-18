@@ -25,6 +25,7 @@ import { ExecutiveBriefingFactsService } from './executive-briefing-facts.servic
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 import { RoiBriefingFactsService } from '../roi-dashboard/roi-briefing-facts.service';
 import { CustomerHealthBriefingFactsService } from '../contacts/customer-health-briefing-facts.service';
+import { SupportBriefingFactsService } from '../support-requests/support-briefing-facts.service';
 
 describe('ExecutiveBriefingFactsService', () => {
   const organizationId = '507f1f77bcf86cd799439011';
@@ -177,6 +178,12 @@ describe('ExecutiveBriefingFactsService', () => {
           items: [],
         }),
       } as unknown as CustomerHealthBriefingFactsService,
+      {
+        prepare: jest.fn().mockResolvedValue({
+          availability: BriefingFactAvailability.AVAILABLE,
+          items: [],
+        }),
+      } as unknown as SupportBriefingFactsService,
     );
     const asOf = new Date('2026-09-18T06:00:00.000Z');
 
@@ -192,15 +199,33 @@ describe('ExecutiveBriefingFactsService', () => {
       ExecutiveBriefingType.TODAY,
       asOf,
     );
+    const teamChallenges = await service.prepare(
+      organizationId,
+      requesterUserId,
+      ExecutiveBriefingType.TEAM_CHALLENGES,
+      asOf,
+    );
+    const weeklyReview = await service.prepare(
+      organizationId,
+      requesterUserId,
+      ExecutiveBriefingType.WEEKLY_REVIEW,
+      asOf,
+    );
 
     expect(first.input.period).toEqual({
       start: '2026-09-17T18:00:00.000Z',
       end: '2026-09-18T18:00:00.000Z',
       timezone: 'Asia/Dhaka',
     });
-    expect(first.input.facts.tasks.items).toHaveLength(1);
-    expect(first.input.facts.tasks.items[0].data.assigneeName).toBe(
-      'Rifat Hossain',
+    expect(first.input.facts.tasks.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceType: 'DERIVED_TASK_PRIORITY' }),
+        expect.objectContaining({ sourceType: 'DERIVED_OPERATIONAL_METRIC' }),
+        expect.objectContaining({
+          sourceType: 'TASK',
+          data: expect.objectContaining({ assigneeName: 'Rifat Hossain' }),
+        }),
+      ]),
     );
     expect(first.input.facts.actionProposals.items[0]).toEqual(
       expect.objectContaining({
@@ -221,7 +246,19 @@ describe('ExecutiveBriefingFactsService', () => {
       availability: BriefingFactAvailability.UNAVAILABLE,
       items: [],
     });
-    expect(first.input.facts.agentActivity.items).toHaveLength(1);
+    expect(first.input.facts.agentActivity.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceType: 'DERIVED_AGENT_ACTIVITY' }),
+        expect.objectContaining({ sourceType: 'AGENT_ACTIVITY' }),
+      ]),
+    );
+    expect(first.input.facts.productDesign).toEqual({
+      availability: BriefingFactAvailability.UNAVAILABLE,
+      items: [],
+    });
+    expect(first.input.facts.support.availability).toBe(
+      BriefingFactAvailability.AVAILABLE,
+    );
     expect(first.input.facts.aiQuality.availability).toBe(
       BriefingFactAvailability.AVAILABLE,
     );
@@ -251,6 +288,39 @@ describe('ExecutiveBriefingFactsService', () => {
     );
     expect(first.inputHash).toBe(second.inputHash);
     expect(first.input.idempotencyKey).toBe(second.input.idempotencyKey);
+    expect(teamChallenges.input.facts.tasks.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'DERIVED_TEAM_CHALLENGE',
+          data: expect.objectContaining({
+            title: 'Current task priority alignment',
+          }),
+        }),
+        expect.objectContaining({
+          sourceType: 'DERIVED_TEAM_CHALLENGE',
+          data: expect.objectContaining({
+            title: 'Department task accountability',
+          }),
+        }),
+      ]),
+    );
+    expect(weeklyReview.input.facts.tasks.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'DERIVED_WEEKLY_EXECUTIVE_SIGNAL',
+        }),
+        expect.objectContaining({
+          sourceType: 'DERIVED_DELIVERY_METRIC',
+        }),
+      ]),
+    );
+    expect(weeklyReview.input.facts.strategicNotes.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'DERIVED_STRATEGIC_NOTE_METRIC',
+        }),
+      ]),
+    );
   });
 
   function modelWithFindOne(value: unknown) {

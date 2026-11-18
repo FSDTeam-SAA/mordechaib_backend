@@ -17,6 +17,7 @@ import {
 import { TaskDepartment } from '../../common/enums/task-department.enum';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { localDayRange } from '../../common/helpers/local-date-range.helper';
 import { Agent } from '../../database/schemas/agent.schema';
 import {
   AiActionProposal,
@@ -34,6 +35,7 @@ import { CrmBriefingFactsService } from '../crm/crm-briefing-facts.service';
 import { OrganizationAgentSettingsService } from '../organization-agent-settings/organization-agent-settings.service';
 import { RoiBriefingFactsService } from '../roi-dashboard/roi-briefing-facts.service';
 import { CustomerHealthBriefingFactsService } from '../contacts/customer-health-briefing-facts.service';
+import { SupportBriefingFactsService } from '../support-requests/support-briefing-facts.service';
 import { executiveBriefingPeriod } from './executive-briefing-period';
 import {
   BriefingFact,
@@ -62,6 +64,8 @@ type BriefingTaskRow = Record<string, unknown> & {
   priority?: string;
   dueDate?: Date | string;
   completedAt?: Date | string;
+  updatedAt?: Date | string;
+  dependencies?: Array<{ title?: string; isComplete?: boolean }>;
 };
 
 @Injectable()
@@ -90,6 +94,7 @@ export class ExecutiveBriefingFactsService {
     private readonly agentSettings: OrganizationAgentSettingsService,
     private readonly roiFacts: RoiBriefingFactsService,
     private readonly customerHealthFacts: CustomerHealthBriefingFactsService,
+    private readonly supportFacts: SupportBriefingFactsService,
   ) {}
 
   async prepare(
@@ -116,6 +121,7 @@ export class ExecutiveBriefingFactsService {
     const start = new Date(period.start);
     const end = new Date(period.end);
     const activityEnd = new Date(Math.min(end.getTime(), asOf.getTime()));
+    const nextDayEnd = localDayRange(new Date(end.getTime() + 1), timezone).end;
     const [
       taskRows,
       meetingRows,
@@ -130,12 +136,16 @@ export class ExecutiveBriefingFactsService {
       agentPolicy,
       roiFacts,
       customerHealthFacts,
+      supportFacts,
     ] = await Promise.all([
       this.tasks
         .find({
           organizationId,
           $or: [
             { dueDate: { $gte: start, $lt: end } },
+            ...(type === ExecutiveBriefingType.TEAM_CHALLENGES
+              ? [{ dueDate: { $gte: end, $lt: nextDayEnd } }]
+              : []),
             { updatedAt: { $gte: start, $lt: end } },
             { status: { $in: [TaskStatus.BLOCKED, TaskStatus.WAITING] } },
           ],
@@ -241,6 +251,11 @@ export class ExecutiveBriefingFactsService {
         organizationCurrency: organization.defaultCurrency,
       }),
       this.customerHealthFacts.prepare({
+        organizationId,
+        from: start,
+        to: activityEnd,
+      }),
+      this.supportFacts.prepare({
         organizationId,
         from: start,
         to: activityEnd,
@@ -407,6 +422,36 @@ export class ExecutiveBriefingFactsService {
         },
       ),
     );
+    const focusFacts = this.primaryFocusFacts(
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      activityEnd,
+      period,
+    );
+    const operationalFacts = this.operationalSummaryFacts(
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      meetingFacts,
+      activityEnd,
+      period,
+    );
+    const agentActivitySummaryFacts = this.agentActivitySummaryFacts(
+      boundedActivities.items as unknown as Array<Record<string, unknown>>,
+      activityEnd,
+      period,
+    );
+    const teamChallengeTaskFacts = this.teamChallengeTaskFacts(
+      type,
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      activityEnd,
+      end,
+      nextDayEnd,
+      period,
+    );
+    const weeklyReviewTaskFacts = this.weeklyReviewTaskFacts(
+      type,
+      boundedTasks.items as unknown as BriefingTaskRow[],
+      activityEnd,
+      period,
+    );
     const healthDerivation = `Calculated from ${aiHealth.truncated ? 'the first 10,000 persisted' : 'persisted'} AI runtime activity records in the period; this is not a model-accuracy score.`;
     const healthMetrics: Array<{
       key: string;
@@ -542,7 +587,16 @@ export class ExecutiveBriefingFactsService {
       items: [],
     });
     const facts: ExecutiveBriefingFacts = {
-      tasks: this.available(taskFacts, boundedTasks.truncated),
+      tasks: this.available(
+        [
+          ...focusFacts,
+          ...operationalFacts,
+          ...teamChallengeTaskFacts,
+          ...weeklyReviewTaskFacts,
+          ...taskFacts,
+        ],
+        boundedTasks.truncated,
+      ),
       meetings: this.available(
         meetingFacts,
         boundedMeetings.truncated || boundedCalendar.truncated,
@@ -552,23 +606,23 @@ export class ExecutiveBriefingFactsService {
         boundedProposals.truncated,
       ),
       sourceAnalyses: this.available(analysisFacts, boundedAnalyses.truncated),
-      agentActivity: this.available(activityFacts, boundedActivities.truncated),
+      agentActivity: this.available(
+        [...agentActivitySummaryFacts, ...activityFacts],
+        boundedActivities.truncated,
+      ),
       sales: crmFacts.sales,
       customers: this.mergeCoverageGroups(
         crmFacts.customers,
         customerHealthFacts,
       ),
-      support: unavailable(),
+      support: supportFacts,
       finance: unavailable(),
       vendors: unavailable(),
-      marketing: {
-        availability: BriefingFactAvailability.PARTIAL,
-        items: [...marketingTaskFacts, ...marketingLeadFacts],
-      },
-      productDesign: {
-        availability: BriefingFactAvailability.PARTIAL,
-        items: productDesignFacts,
-      },
+      marketing: this.domainProgressGroup([
+        ...marketingTaskFacts,
+        ...marketingLeadFacts,
+      ]),
+      productDesign: this.domainProgressGroup(productDesignFacts),
       roi: roiFacts,
       aiQuality: {
         availability: aiHealth.truncated
@@ -577,7 +631,15 @@ export class ExecutiveBriefingFactsService {
         items: aiHealthFacts,
       },
       strategicNotes: this.available(
-        strategicNoteFacts,
+        [
+          ...this.weeklyStrategicSummaryFacts(
+            type,
+            boundedNotes.items as unknown as Array<Record<string, unknown>>,
+            activityEnd,
+            period,
+          ),
+          ...strategicNoteFacts,
+        ],
         boundedNotes.truncated,
       ),
     };
@@ -730,6 +792,485 @@ export class ExecutiveBriefingFactsService {
       },
       ...taskFacts,
     ];
+  }
+
+  private primaryFocusFacts(
+    tasks: BriefingTaskRow[],
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    const priorityRank: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+    const candidates = tasks
+      .filter((task) => task.status !== TaskStatus.COMPLETED)
+      .sort((left, right) => {
+        const statusRank = (task: BriefingTaskRow) =>
+          task.status === TaskStatus.BLOCKED
+            ? 0
+            : task.status === TaskStatus.WAITING
+              ? 1
+              : 2;
+        const statusDifference = statusRank(left) - statusRank(right);
+        if (statusDifference !== 0) return statusDifference;
+        const priorityDifference =
+          (priorityRank[left.priority || ''] ?? 3) -
+          (priorityRank[right.priority || ''] ?? 3);
+        if (priorityDifference !== 0) return priorityDifference;
+        const leftDue = aiIsoTimestamp(left.dueDate);
+        const rightDue = aiIsoTimestamp(right.dueDate);
+        return (
+          (leftDue ? Date.parse(leftDue) : Number.MAX_SAFE_INTEGER) -
+          (rightDue ? Date.parse(rightDue) : Number.MAX_SAFE_INTEGER)
+        );
+      })
+      .slice(0, 5);
+    if (!candidates.length) return [];
+    return [
+      {
+        id: `primary-focus-candidates-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_TASK_PRIORITY',
+        sourceId: `primary-focus:tasks:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: 'Grounded primary-focus candidates',
+          candidateTaskIds: candidates.map((task) => String(task._id)),
+          candidates: candidates.map((task) => ({
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            department: task.department,
+            dueDate: aiIsoTimestamp(task.dueDate),
+          })),
+          derivation:
+            'Ranked from open tasks by blocked/waiting status, priority, and due date. Strategic notes remain authoritative when supplied.',
+        },
+      },
+    ];
+  }
+
+  private operationalSummaryFacts(
+    tasks: BriefingTaskRow[],
+    meetingFacts: BriefingFact[],
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    const overdue = tasks.filter((task) => {
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return (
+        task.status !== TaskStatus.COMPLETED &&
+        !!dueDate &&
+        Date.parse(dueDate) < capturedAt.getTime()
+      );
+    }).length;
+    const counts = Object.fromEntries(
+      Object.values(TaskStatus).map((status) => [
+        status,
+        tasks.filter((task) => task.status === status).length,
+      ]),
+    );
+    if (!tasks.length && !meetingFacts.length) return [];
+    return [
+      {
+        id: `operational-summary-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_OPERATIONAL_METRIC',
+        sourceId: `operations:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: 'Task and meeting operational status',
+          totalTasks: tasks.length,
+          taskStatusCounts: counts,
+          overdueTasks: overdue,
+          blockedTasks: counts[TaskStatus.BLOCKED],
+          waitingTasks: counts[TaskStatus.WAITING],
+          completedTasks: counts[TaskStatus.COMPLETED],
+          meetingsInPeriod: meetingFacts.length,
+          derivation:
+            'Calculated only from organization tasks and meetings included in this briefing snapshot.',
+        },
+      },
+    ];
+  }
+
+  private agentActivitySummaryFacts(
+    activities: Array<Record<string, unknown>>,
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    const grouped = new Map<string, Array<Record<string, unknown>>>();
+    for (const activity of activities) {
+      const key = String(
+        activity.agentId ||
+          activity.agentType ||
+          activity.agentName ||
+          'unknown',
+      );
+      grouped.set(key, [...(grouped.get(key) || []), activity]);
+    }
+    return [...grouped.entries()].map(([key, rows]) => {
+      const latest = [...rows].sort((left, right) => {
+        const leftAt = aiIsoTimestamp(left.completedAt || left.startedAt);
+        const rightAt = aiIsoTimestamp(right.completedAt || right.startedAt);
+        return (
+          (rightAt ? Date.parse(rightAt) : 0) -
+          (leftAt ? Date.parse(leftAt) : 0)
+        );
+      })[0];
+      return {
+        id: `agent-activity-summary-${key}-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_AGENT_ACTIVITY',
+        sourceId: `agent-activity:${key}:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: `${String(latest.agentName || latest.agentType || 'AI agent')} activity`,
+          agentId: latest.agentId,
+          agentName: latest.agentName,
+          agentType: latest.agentType,
+          totalOperations: rows.length,
+          successfulOperations: rows.filter((row) => row.status === 'SUCCEEDED')
+            .length,
+          failedOperations: rows.filter((row) => row.status === 'FAILED')
+            .length,
+          latestOperationType: latest.operationType,
+          latestStatus: latest.status,
+          latestActivityAt: aiIsoTimestamp(
+            latest.completedAt || latest.startedAt,
+          ),
+          derivation:
+            'Aggregated from persisted AI agent activity in the briefing period; no activity is fabricated for inactive agents.',
+        },
+      };
+    });
+  }
+
+  private teamChallengeTaskFacts(
+    type: ExecutiveBriefingType,
+    tasks: BriefingTaskRow[],
+    capturedAt: Date,
+    periodEnd: Date,
+    nextDayEnd: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    if (type !== ExecutiveBriefingType.TEAM_CHALLENGES || !tasks.length) {
+      return [];
+    }
+    const completed = tasks.filter((task) => {
+      const completedAt = aiIsoTimestamp(task.completedAt || task.updatedAt);
+      return (
+        task.status === TaskStatus.COMPLETED &&
+        !!completedAt &&
+        Date.parse(completedAt) >= Date.parse(period.start) &&
+        Date.parse(completedAt) < periodEnd.getTime()
+      );
+    });
+    const nextDay = tasks.filter((task) => {
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return (
+        task.status !== TaskStatus.COMPLETED &&
+        !!dueDate &&
+        Date.parse(dueDate) >= periodEnd.getTime() &&
+        Date.parse(dueDate) < nextDayEnd.getTime()
+      );
+    });
+    const risks = tasks.filter((task) => {
+      if (task.status === TaskStatus.COMPLETED) return false;
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return (
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.WAITING ||
+        (task.priority === 'HIGH' &&
+          !!dueDate &&
+          Date.parse(dueDate) < capturedAt.getTime())
+      );
+    });
+    const blockers = tasks.filter(
+      (task) =>
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.WAITING ||
+        task.dependencies?.some((dependency) => !dependency.isComplete),
+    );
+    const departmentRows = new Map<string, BriefingTaskRow[]>();
+    for (const task of tasks) {
+      const department = task.department || TaskDepartment.OTHER;
+      departmentRows.set(department, [
+        ...(departmentRows.get(department) || []),
+        task,
+      ]);
+    }
+    const accountability = [...departmentRows.entries()].map(
+      ([department, rows]) => {
+        const done = rows.filter(
+          (task) => task.status === TaskStatus.COMPLETED,
+        ).length;
+        const overdue = rows.filter((task) => {
+          const dueDate = aiIsoTimestamp(task.dueDate);
+          return (
+            task.status !== TaskStatus.COMPLETED &&
+            !!dueDate &&
+            Date.parse(dueDate) < capturedAt.getTime()
+          );
+        }).length;
+        return {
+          department,
+          totalTasks: rows.length,
+          completedTasks: done,
+          openTasks: rows.length - done,
+          blockedOrWaitingTasks: rows.filter(
+            (task) =>
+              task.status === TaskStatus.BLOCKED ||
+              task.status === TaskStatus.WAITING,
+          ).length,
+          overdueTasks: overdue,
+          completionRatePercent: Number(
+            ((done / rows.length) * 100).toFixed(2),
+          ),
+        };
+      },
+    );
+    const facts: BriefingFact[] = [];
+    const add = (key: string, title: string, data: Record<string, unknown>) => {
+      facts.push({
+        id: `team-challenge-${key}-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_TEAM_CHALLENGE',
+        sourceId: `team-challenge:${key}:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: { title, ...data },
+      });
+    };
+    if (completed.length) {
+      add('completed-milestones', 'Completed task milestones', {
+        completedCount: completed.length,
+        milestones: this.taskCandidates(completed),
+        scope:
+          'Completed organization tasks only; product releases, inventory events, and SLA attainment are not inferred.',
+      });
+    }
+    if (nextDay.length) {
+      add('next-day-decisions', 'Next-day task decision candidates', {
+        candidateCount: nextDay.length,
+        candidates: this.taskCandidates(nextDay),
+        scope:
+          'Open tasks due in the next local calendar day; these are recommendations, not executable decisions unless linked to a proposal.',
+      });
+    }
+    if (risks.length) {
+      add('key-risks', 'Task risks and red flags', {
+        riskCount: risks.length,
+        risks: this.taskCandidates(risks),
+      });
+    }
+    if (blockers.length) {
+      add('strategic-blockers', 'Task blockers and dependencies', {
+        blockerCount: blockers.length,
+        blockers: blockers.slice(0, 20).map((task) => ({
+          ...this.taskCandidate(task),
+          incompleteDependencies: (task.dependencies || [])
+            .filter((dependency) => !dependency.isComplete)
+            .map((dependency) => dependency.title)
+            .filter(Boolean)
+            .slice(0, 10),
+        })),
+      });
+    }
+    add('priority-alignment', 'Current task priority alignment', {
+      highPriorityTasks: tasks.filter(
+        (task) =>
+          task.priority === 'HIGH' && task.status !== TaskStatus.COMPLETED,
+      ).length,
+      departments: accountability.map((row) => ({
+        department: row.department,
+        openTasks: row.openTasks,
+        blockedOrWaitingTasks: row.blockedOrWaitingTasks,
+      })),
+      scope:
+        'Current priority state only; historical priority movement is not inferred without change-audit records.',
+    });
+    add('team-accountability', 'Department task accountability', {
+      departments: accountability,
+      scope:
+        'Task throughput by department; this is not employee performance scoring.',
+    });
+    if (risks.length || blockers.length) {
+      add('escalations', 'Task escalation candidates', {
+        candidates: this.taskCandidates([
+          ...new Map(
+            [...risks, ...blockers].map((task) => [task._id, task]),
+          ).values(),
+        ]),
+        scope:
+          'Grounded task escalation candidates; response-time promises are not inferred.',
+      });
+    }
+    return facts;
+  }
+
+  private weeklyReviewTaskFacts(
+    type: ExecutiveBriefingType,
+    tasks: BriefingTaskRow[],
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    if (type !== ExecutiveBriefingType.WEEKLY_REVIEW || !tasks.length) {
+      return [];
+    }
+    const completed = tasks.filter(
+      (task) => task.status === TaskStatus.COMPLETED,
+    );
+    const blocked = tasks.filter(
+      (task) =>
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.WAITING,
+    );
+    const overdue = tasks.filter((task) => {
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return (
+        task.status !== TaskStatus.COMPLETED &&
+        !!dueDate &&
+        Date.parse(dueDate) < capturedAt.getTime()
+      );
+    });
+    const onTrack = tasks.filter((task) => {
+      if (
+        task.status === TaskStatus.COMPLETED ||
+        task.status === TaskStatus.BLOCKED ||
+        task.status === TaskStatus.WAITING
+      ) {
+        return false;
+      }
+      const dueDate = aiIsoTimestamp(task.dueDate);
+      return !dueDate || Date.parse(dueDate) >= capturedAt.getTime();
+    });
+    const finishedOrDue = completed.length + overdue.length;
+    const deliveryRate = finishedOrDue
+      ? Number(((completed.length / finishedOrDue) * 100).toFixed(2))
+      : null;
+    const highPriorityOpen = tasks.filter(
+      (task) =>
+        task.priority === 'HIGH' && task.status !== TaskStatus.COMPLETED,
+    );
+    return [
+      {
+        id: `weekly-executive-signals-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_WEEKLY_EXECUTIVE_SIGNAL',
+        sourceId: `weekly:executive:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: 'Weekly grounded executive signals',
+          completedTaskWins: completed.length,
+          taskRisks: new Set([...blocked, ...overdue].map((task) => task._id))
+            .size,
+          highPriorityOpenTasks: highPriorityOpen.length,
+          wins: this.taskCandidates(completed),
+          risks: this.taskCandidates([
+            ...new Map(
+              [...blocked, ...overdue].map((task) => [task._id, task]),
+            ).values(),
+          ]),
+          scope:
+            'Executive task signals only. Overall narrative and trajectory must also consider CRM, customer, support, proposal, ROI, and strategic-note facts.',
+        },
+      },
+      {
+        id: `weekly-delivery-summary-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_DELIVERY_METRIC',
+        sourceId: `weekly:delivery:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: 'Weekly operational delivery and milestones',
+          totalRelevantTasks: tasks.length,
+          completedMilestones: completed.length,
+          overdueOrMissed: overdue.length,
+          blockedOrWaiting: blocked.length,
+          onTrack: onTrack.length,
+          deliveryRatePercent: deliveryRate,
+          completed: this.taskCandidates(completed),
+          blockers: this.taskCandidates(blocked),
+          scope:
+            'Calculated from organization tasks in the weekly snapshot; project releases and external delivery events are not inferred.',
+        },
+      },
+    ];
+  }
+
+  private weeklyStrategicSummaryFacts(
+    type: ExecutiveBriefingType,
+    notes: Array<Record<string, unknown>>,
+    capturedAt: Date,
+    period: { start: string; end: string },
+  ): BriefingFact[] {
+    if (type !== ExecutiveBriefingType.WEEKLY_REVIEW || !notes.length) {
+      return [];
+    }
+    const counts = Object.fromEntries(
+      Object.values(StrategicNoteKind).map((kind) => [
+        kind,
+        notes.filter((note) => note.kind === kind).length,
+      ]),
+    );
+    return [
+      {
+        id: `weekly-strategic-summary-${period.start}-${period.end}`,
+        sourceType: 'DERIVED_STRATEGIC_NOTE_METRIC',
+        sourceId: `weekly:strategy:${period.start}:${period.end}`,
+        capturedAt: capturedAt.toISOString(),
+        data: {
+          title: 'Weekly strategic direction summary',
+          totalNotes: notes.length,
+          noteKindCounts: counts,
+          shifts: notes
+            .filter((note) =>
+              [
+                StrategicNoteKind.STRATEGIC_SHIFT,
+                StrategicNoteKind.PIVOT,
+              ].includes(note.kind as StrategicNoteKind),
+            )
+            .slice(0, 20)
+            .map((note) => ({
+              title: note.title,
+              kind: note.kind,
+              text: boundedAiText(note.content, 1_000),
+            })),
+          blockers: notes
+            .filter((note) => note.kind === StrategicNoteKind.BLOCKER)
+            .slice(0, 20)
+            .map((note) => ({
+              title: note.title,
+              text: boundedAiText(note.content, 1_000),
+            })),
+          scope:
+            'Based only on persisted CEO strategic notes applicable to the weekly review.',
+        },
+      },
+    ];
+  }
+
+  private taskCandidates(tasks: BriefingTaskRow[]) {
+    return tasks.slice(0, 20).map((task) => this.taskCandidate(task));
+  }
+
+  private taskCandidate(task: BriefingTaskRow) {
+    return {
+      taskId: String(task._id),
+      title: task.title,
+      department: task.department,
+      priority: task.priority,
+      status: task.status,
+      dueDate: aiIsoTimestamp(task.dueDate),
+      assignedToUserId: task.assignedToUserId,
+    };
+  }
+
+  private domainProgressGroup(items: BriefingFact[]): BriefingFactGroup {
+    if (!items.length) {
+      return {
+        availability: BriefingFactAvailability.UNAVAILABLE,
+        items: [],
+      };
+    }
+    return {
+      // These groups intentionally remain partial: tasks and synchronized CRM
+      // leads do not prove complete campaign, asset, or brand outcome coverage.
+      availability: BriefingFactAvailability.PARTIAL,
+      items,
+    };
   }
 
   private stableStringify(value: unknown): string {

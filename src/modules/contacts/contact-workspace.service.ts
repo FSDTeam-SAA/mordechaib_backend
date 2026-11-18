@@ -64,6 +64,10 @@ export class ContactWorkspaceService {
       latestHealth: latestHealth
         ? (latestHealth as unknown as Record<string, unknown>)
         : null,
+      openTasks: tasks.items as unknown as Record<string, unknown>[],
+      upcomingMeetings: meetings.items as unknown as Record<string, unknown>[],
+      recentCalls: calls.items as unknown as Record<string, unknown>[],
+      asOf,
     });
 
     const active = profile.status === CustomerContactStatus.ACTIVE;
