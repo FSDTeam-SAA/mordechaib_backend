@@ -33,6 +33,11 @@ describe('ContactWorkspaceActionsService', () => {
           }),
           scheduleMeeting: expect.objectContaining({
             path: '/api/v1/meetings',
+            requiredFields: ['platform', 'title'],
+            prefill: {
+              contactIds: ['66cc9bdfa847ea856c7b41d2'],
+              invitees: ['customer@example.com'],
+            },
           }),
           createTask: expect.objectContaining({ path: '/api/v1/tasks' }),
         }),

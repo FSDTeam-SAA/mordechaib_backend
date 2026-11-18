@@ -100,6 +100,18 @@ describe('CrmBriefingFactsService', () => {
     expect(result.sales.availability).toBe(BriefingFactAvailability.AVAILABLE);
     expect(result.sales.items).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'DERIVED_CRM_SALES_METRIC',
+          data: expect.objectContaining({
+            currencies: [
+              expect.objectContaining({
+                currency: 'USD',
+                open: 1,
+                openAmount: 125000,
+              }),
+            ],
+          }),
+        }),
         expect.objectContaining({ sourceType: 'CRM_REVENUE_AGGREGATE' }),
         expect.objectContaining({
           sourceType: 'CRM_DEAL',

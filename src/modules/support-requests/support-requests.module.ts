@@ -11,6 +11,7 @@ import { SupportRequestsAdminController } from './support-requests-admin.control
 import { SupportRequestsController } from './support-requests.controller';
 import { SupportRequestsRepository } from './support-requests.repository';
 import { SupportRequestsService } from './support-requests.service';
+import { SupportBriefingFactsService } from './support-briefing-facts.service';
 
 @Module({
   imports: [
@@ -24,8 +25,9 @@ import { SupportRequestsService } from './support-requests.service';
   providers: [
     SupportRequestsRepository,
     SupportRequestsService,
+    SupportBriefingFactsService,
     TemporaryUploadCleanupInterceptor,
   ],
-  exports: [SupportRequestsService],
+  exports: [SupportRequestsService, SupportBriefingFactsService],
 })
 export class SupportRequestsModule {}
