@@ -36,6 +36,8 @@ export class TwilioSettingsRepository {
       forwardingNumber: string;
       isRecordingEnabled: boolean;
       status: TwilioSettingStatus;
+      unavailableMessage?: string;
+      afterHoursMessage?: string;
     },
   ) {
     return this.settingModel

@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional, Matches } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { TwilioSettingStatus } from '../../../common/enums/twilio-setting-status.enum';
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
@@ -30,4 +37,14 @@ export class SaveTwilioSettingsDto {
   @IsEnum(TwilioSettingStatus)
   @IsOptional()
   status?: TwilioSettingStatus;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  unavailableMessage?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  afterHoursMessage?: string;
 }

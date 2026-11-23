@@ -58,6 +58,8 @@ export class TwilioSettingsService {
         forwardingNumber,
         isRecordingEnabled: input.isRecordingEnabled ?? true,
         status: input.status ?? TwilioSettingStatus.ACTIVE,
+        unavailableMessage: input.unavailableMessage?.trim() || undefined,
+        afterHoursMessage: input.afterHoursMessage?.trim() || undefined,
       });
     } catch (error: unknown) {
       if (

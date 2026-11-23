@@ -14,6 +14,14 @@ import { TwilioAccountsService } from './twilio-accounts.service';
 import { TwilioEligibilityService } from './twilio-eligibility.service';
 import { TwilioUsageService } from './twilio-usage.service';
 import { TwilioTranscriptionService } from './twilio-transcription.service';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { isWithinBusinessHours } from '../../common/helpers/business-hours.helper';
+import {
+  DEFAULT_AFTER_HOURS_MESSAGE,
+  DEFAULT_DIAL_TIMEOUT_SECONDS,
+  DEFAULT_TWILIO_VOICE_ATTRIBUTES,
+  DEFAULT_UNAVAILABLE_MESSAGE,
+} from './twilio.constants';
 
 @Injectable()
 export class TwilioService {
@@ -27,6 +35,7 @@ export class TwilioService {
     private readonly eligibility: TwilioEligibilityService,
     private readonly usage: TwilioUsageService,
     private readonly transcriptionService: TwilioTranscriptionService,
+    private readonly organizationsService: OrganizationsService,
   ) {}
 
   async handleIncomingCall(body: TwilioVoiceWebhookDto): Promise<string> {
@@ -53,6 +62,42 @@ export class TwilioService {
       );
     }
 
+    let isWithinHours = true;
+    try {
+      const organization = await this.organizationsService.findCurrent(
+        setting.organizationId,
+      );
+      if (organization) {
+        isWithinHours = isWithinBusinessHours(
+          new Date(),
+          organization.businessHours,
+          organization.timezone,
+        );
+      }
+    } catch {
+      isWithinHours = true;
+    }
+
+    if (!isWithinHours) {
+      await this.callRecordsService.recordInboundCall({
+        organizationId: setting.organizationId,
+        callSid,
+        parentCallSid: body.ParentCallSid,
+        accountSid,
+        fromNumber,
+        toNumber,
+        twilioNumber: setting.twilioNumber,
+        forwardingNumber: setting.forwardingNumber,
+        status: CallStatus.COMPLETED,
+      });
+
+      const message =
+        setting.afterHoursMessage?.trim() || DEFAULT_AFTER_HOURS_MESSAGE;
+      response.say(DEFAULT_TWILIO_VOICE_ATTRIBUTES, message);
+      response.hangup();
+      return response.toString();
+    }
+
     await this.callRecordsService.recordInboundCall({
       organizationId: setting.organizationId,
       callSid,
@@ -70,22 +115,23 @@ export class TwilioService {
     const callbackQuery = `?callSid=${encodeURIComponent(callSid)}`;
     const dialStatusCallback = this.webhookUrl(`dial-status${callbackQuery}`);
 
-    const dial = setting.isRecordingEnabled
-      ? response.dial({
-          action: dialStatusCallback,
-          method: 'POST',
-          answerOnBridge: true,
-          record: 'record-from-answer-dual',
-          recordingStatusCallback: this.webhookUrl(`recording${callbackQuery}`),
-          recordingStatusCallbackEvent: ['completed'],
-          recordingStatusCallbackMethod: 'POST',
-        })
-      : response.dial({
-          action: dialStatusCallback,
-          method: 'POST',
-          answerOnBridge: true,
-        });
+    const dialAttributes: Record<string, unknown> = {
+      action: dialStatusCallback,
+      method: 'POST',
+      answerOnBridge: true,
+      timeout: DEFAULT_DIAL_TIMEOUT_SECONDS,
+    };
 
+    if (setting.isRecordingEnabled) {
+      dialAttributes.record = 'record-from-answer-dual';
+      dialAttributes.recordingStatusCallback = this.webhookUrl(
+        `recording${callbackQuery}`,
+      );
+      dialAttributes.recordingStatusCallbackEvent = ['completed'];
+      dialAttributes.recordingStatusCallbackMethod = 'POST';
+    }
+
+    const dial = response.dial(dialAttributes);
     dial.number(setting.forwardingNumber);
 
     return response.toString();
@@ -343,9 +389,27 @@ export class TwilioService {
       );
     }
 
-    // A <Dial action> callback is a TwiML request. Returning JSON makes Twilio
-    // attempt to parse application/json as TwiML and raises error 12300.
-    return this.twilioProvider.twiml().toString();
+    const response = this.twilioProvider.twiml();
+
+    if (
+      call.direction === 'INBOUND' &&
+      (status === CallStatus.NO_ANSWER ||
+        status === CallStatus.BUSY ||
+        status === CallStatus.FAILED)
+    ) {
+      const setting = await this.settingsService.findActiveByOrganization(
+        call.organizationId,
+      );
+      const message =
+        setting?.unavailableMessage?.trim() || DEFAULT_UNAVAILABLE_MESSAGE;
+      response.say(DEFAULT_TWILIO_VOICE_ATTRIBUTES, message);
+      response.hangup();
+      return response.toString();
+    }
+
+    // A <Dial action> callback is a TwiML request. Returning empty TwiML when
+    // already completed cleanly ends the call without extra actions.
+    return response.toString();
   }
 
   private webhookUrl(path: string): string {
