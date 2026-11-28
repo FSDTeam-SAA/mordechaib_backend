@@ -26,7 +26,12 @@ export type AiClarificationQuestionInput = {
 };
 
 export type AiAnalysisSummary = {
-  summary?: string;
+  summary?:
+    | {
+        text_summary?: string;
+        bullet_point?: string[];
+      }
+    | string;
   overallConfidence?: number;
   sentimentAnalysis: {
     score: {

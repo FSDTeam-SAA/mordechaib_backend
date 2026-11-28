@@ -124,7 +124,7 @@ export class AiActionsService {
           proposalAnalysis,
           options.conversationId,
           options.effectiveTimezone || organization.timezone,
-          analysis.summary,
+          analysis.summary?.text_summary,
         ),
       ),
     );
@@ -1150,10 +1150,7 @@ export class AiActionsService {
     ) {
       throw new BadRequestException('AI returned an invalid analysis summary');
     }
-    const summary = analysis.summary?.trim();
-    if (summary && summary.length > 10_000) {
-      throw new BadRequestException('AI summary exceeds 10000 characters');
-    }
+    const summary = this.normalizeSummary(analysis.summary);
     const derivedConfidence = actions.length
       ? actions.reduce((total, action) => total + action.confidence, 0) /
         actions.length
@@ -1191,6 +1188,38 @@ export class AiActionsService {
         Object.entries(patterns).filter(([, value]) => value !== undefined),
       ),
       classifiedSegments,
+    };
+  }
+
+  private normalizeSummary(analysis: AiAnalysisSummary['summary']) {
+    if (!analysis) return undefined;
+    if (typeof analysis === 'string') {
+      const text_summary = analysis.trim();
+      if (text_summary.length > 10_000) {
+        throw new BadRequestException('AI returned an invalid analysis summary');
+      }
+      return text_summary ? { text_summary, bullet_point: [] } : undefined;
+    }
+    const text_summary = analysis.text_summary?.trim();
+    const bullet_point = analysis.bullet_point;
+    if (
+      (text_summary && text_summary.length > 10_000) ||
+      (bullet_point &&
+        (!Array.isArray(bullet_point) ||
+          bullet_point.length > 100 ||
+          bullet_point.some(
+            (point) =>
+              typeof point !== 'string' ||
+              !point.trim() ||
+              point.trim().length > 2_000,
+          )))
+    ) {
+      throw new BadRequestException('AI returned an invalid analysis summary');
+    }
+    if (!text_summary && !bullet_point?.length) return undefined;
+    return {
+      ...(text_summary ? { text_summary } : {}),
+      bullet_point: bullet_point?.map((point) => point.trim()) || [],
     };
   }
 

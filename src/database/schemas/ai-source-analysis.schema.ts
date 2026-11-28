@@ -43,6 +43,19 @@ export class TranscriptInsight {
 export const TranscriptInsightSchema =
   SchemaFactory.createForClass(TranscriptInsight);
 
+@Schema({ _id: false })
+export class AiSourceAnalysisSummary {
+  @Prop({ trim: true, maxlength: 10_000 })
+  text_summary?: string;
+
+  @Prop({ type: [String], default: [] })
+  bullet_point?: string[];
+}
+
+export const AiSourceAnalysisSummarySchema = SchemaFactory.createForClass(
+  AiSourceAnalysisSummary,
+);
+
 @Schema({ timestamps: true, collection: 'ai_source_analyses' })
 export class AiSourceAnalysis {
   @Prop({ required: true, index: true })
@@ -54,8 +67,8 @@ export class AiSourceAnalysis {
   @Prop({ type: AiProposalSourceSchema, required: true })
   source!: AiProposalSource;
 
-  @Prop({ trim: true, maxlength: 10_000 })
-  summary?: string;
+  @Prop({ type: AiSourceAnalysisSummarySchema })
+  summary?: AiSourceAnalysisSummary;
 
   @Prop({ min: 0, max: 1 })
   overallConfidence?: number;

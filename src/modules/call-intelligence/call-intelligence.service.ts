@@ -271,7 +271,9 @@ export class CallIntelligenceService {
       }),
     ]);
     const analysis = storedAnalysis
-      ? this.publicDocument(storedAnalysis as unknown as LeanRecord)
+      ? this.withPublicSummary(
+          this.publicDocument(storedAnalysis as unknown as LeanRecord),
+        )
       : null;
     const crm = await this.commercialContext.resolve(
       organizationId,
@@ -373,7 +375,14 @@ export class CallIntelligenceService {
     const analysis = details.analysis as Record<string, unknown> | null;
     const actions = details.actions as Record<string, unknown>;
     const message = 'message' in details ? details.message : undefined;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Call Intelligence Report</title><style>body{font:14px Arial,sans-serif;color:#172033;max-width:960px;margin:40px auto;line-height:1.5}h1,h2{color:#172554}section{margin:24px 0;padding:18px;border:1px solid #dbe3f0;border-radius:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;padding:14px;border-radius:8px}</style></head><body><h1>Call Intelligence Report</h1><p>Source: ${this.escapeHtml(details.source.type)} / ${this.escapeHtml(details.source.id)}</p><section><h2>Summary</h2><p>${this.escapeHtml(String(analysis?.summary || 'Not available'))}</p></section><section><h2>Source Details</h2><pre>${this.escapeHtml(JSON.stringify(details.metadata || {}, null, 2))}</pre></section>${message ? `<section><h2>Message</h2><pre>${this.escapeHtml(JSON.stringify(message, null, 2))}</pre></section>` : ''}<section><h2>Transcript</h2><pre>${this.escapeHtml(JSON.stringify(details.transcript || {}, null, 2))}</pre></section><section><h2>Analysis</h2><pre>${this.escapeHtml(JSON.stringify(analysis || {}, null, 2))}</pre></section><section><h2>Proposed Actions</h2><pre>${this.escapeHtml(JSON.stringify(actions, null, 2))}</pre></section></body></html>`;
+    const summary = analysis?.summary as
+      | { text_summary?: unknown; bullet_point?: unknown }
+      | undefined;
+    const summaryText =
+      typeof summary?.text_summary === 'string'
+        ? summary.text_summary
+        : 'Not available';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Call Intelligence Report</title><style>body{font:14px Arial,sans-serif;color:#172033;max-width:960px;margin:40px auto;line-height:1.5}h1,h2{color:#172554}section{margin:24px 0;padding:18px;border:1px solid #dbe3f0;border-radius:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;padding:14px;border-radius:8px}</style></head><body><h1>Call Intelligence Report</h1><p>Source: ${this.escapeHtml(details.source.type)} / ${this.escapeHtml(details.source.id)}</p><section><h2>Summary</h2><p>${this.escapeHtml(summaryText)}</p></section><section><h2>Source Details</h2><pre>${this.escapeHtml(JSON.stringify(details.metadata || {}, null, 2))}</pre></section>${message ? `<section><h2>Message</h2><pre>${this.escapeHtml(JSON.stringify(message, null, 2))}</pre></section>` : ''}<section><h2>Transcript</h2><pre>${this.escapeHtml(JSON.stringify(details.transcript || {}, null, 2))}</pre></section><section><h2>Analysis</h2><pre>${this.escapeHtml(JSON.stringify(analysis || {}, null, 2))}</pre></section><section><h2>Proposed Actions</h2><pre>${this.escapeHtml(JSON.stringify(actions, null, 2))}</pre></section></body></html>`;
     return {
       content: Buffer.from(html, 'utf8'),
       contentType: 'text/html; charset=utf-8',
@@ -873,6 +882,37 @@ export class CallIntelligenceService {
     const { _id, __v, ...document } = value;
     void __v;
     return { id: String(_id), ...document };
+  }
+
+  /**
+   * Keep the details endpoint on the structured summary contract while
+   * allowing analyses created before that contract to remain readable.
+   */
+  private withPublicSummary(document: Record<string, unknown>) {
+    const summary = document.summary;
+    if (typeof summary === 'string') {
+      return {
+        ...document,
+        summary: { text_summary: summary, bullet_point: [] },
+      };
+    }
+    if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+      return document;
+    }
+    const value = summary as Record<string, unknown>;
+    return {
+      ...document,
+      summary: {
+        ...(typeof value.text_summary === 'string'
+          ? { text_summary: value.text_summary }
+          : {}),
+        bullet_point: Array.isArray(value.bullet_point)
+          ? value.bullet_point.filter(
+              (point): point is string => typeof point === 'string',
+            )
+          : [],
+      },
+    };
   }
 
   private commercialReference(metadata: Record<string, unknown>) {

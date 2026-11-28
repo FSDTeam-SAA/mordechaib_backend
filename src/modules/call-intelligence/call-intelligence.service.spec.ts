@@ -293,7 +293,10 @@ describe('CallIntelligenceService', () => {
     const sourceAnalyses = {
       findBySource: jest.fn().mockResolvedValue({
         _id: '66cc9bdfa847ea856c7b41d3',
-        summary: 'Follow-up requested.',
+        summary: {
+          text_summary: 'Follow-up requested.',
+          bullet_point: ['Send the quotation before the meeting.'],
+        },
         overallConfidence: 0.9,
       }),
     };
@@ -337,7 +340,12 @@ describe('CallIntelligenceService', () => {
           durationSeconds: 75,
         }),
         transcript: expect.objectContaining({ included: false }),
-        analysis: expect.objectContaining({ summary: 'Follow-up requested.' }),
+        analysis: expect.objectContaining({
+          summary: {
+            text_summary: 'Follow-up requested.',
+            bullet_point: ['Send the quotation before the meeting.'],
+          },
+        }),
         extensions: { crm: unavailableCrmContext },
       }),
     );

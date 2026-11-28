@@ -627,7 +627,7 @@ export class AiSourceContextService {
                 ? (analysis.source as Record<string, unknown>).type
                 : undefined,
             source: analysis.source,
-            summary: boundedAiText(analysis.summary, 2000),
+            summary: boundedAiText(analysis.summary?.text_summary, 2000),
             analyzedAt: aiIsoTimestamp(
               (analysis as unknown as Record<string, unknown>).updatedAt,
             ),

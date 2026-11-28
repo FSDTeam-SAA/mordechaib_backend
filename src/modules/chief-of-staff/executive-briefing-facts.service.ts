@@ -379,7 +379,7 @@ export class ExecutiveBriefingFactsService {
             ? (analysis.source as Record<string, unknown>).type
             : undefined,
         source: analysis.source,
-        summary: boundedAiText(analysis.summary, 5_000),
+        summary: boundedAiText(analysis.summary?.text_summary, 5_000),
         analyzedAt: aiIsoTimestamp(
           (analysis as unknown as Record<string, unknown>).updatedAt,
         ),

@@ -1065,7 +1065,10 @@ describe('AiActionsService analysis ingestion', () => {
       actions: [],
       analysis: {
         ...analysis,
-        summary: 'The customer requested a commercial follow-up.',
+        summary: {
+          text_summary: 'The customer requested a commercial follow-up.',
+          bullet_point: [],
+        },
         overallConfidence: 0.91,
         classifiedSegments: [
           {
@@ -1087,7 +1090,10 @@ describe('AiActionsService analysis ingestion', () => {
       'meeting-analysis-only',
       source,
       expect.objectContaining({
-        summary: 'The customer requested a commercial follow-up.',
+        summary: {
+          text_summary: 'The customer requested a commercial follow-up.',
+          bullet_point: [],
+        },
         overallConfidence: 0.91,
         classifiedSegments: [
           expect.objectContaining({ id: 'segment-1', category: 'COMMITMENT' }),
