@@ -24,6 +24,12 @@ export class TwilioSetting {
     index: true,
   })
   status!: string;
+
+  @Prop({ trim: true })
+  unavailableMessage?: string;
+
+  @Prop({ trim: true })
+  afterHoursMessage?: string;
 }
 
 export const TwilioSettingSchema = SchemaFactory.createForClass(TwilioSetting);
